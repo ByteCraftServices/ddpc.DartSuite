@@ -1,0 +1,32 @@
+# AI Development Prompt Template
+# Verwende diese Vorlage, um der AI Entwicklungsaufgaben zu beschreiben
+
+name: "DartSuite for Autodarts"  # Name der Aufgabe/des Features
+
+description: "Autodarts.io is an online service which allows users to play darts virtually. With DartSuite users can enhance the basic funtions of Autodarts."  # Kurze Beschreibung des Ziels
+coreFeatures: 
+  - "Feature API Client: DartSuite will provide an API client to interact with the Autodarts API, allowing users to easily access and manipulate their game data."
+  - "Feature Chrome Extension: DartSuite will include a Chrome extension which helps to remote control some screens of the autodarts app on the client side"
+  - "Feature Tournament Managment: DartSuite will offer tools for managing tournaments, including player registration, match scheduling, and result tracking."
+
+objectives:
+  - "Einfaches handling übere mehrere boards die an einem Account geteilt wurden, oder schlichtweg zum Account gehören. Der Api Client ist vorweigend für das Auslesen von Spielinformationen (Resultate und Statistiken) vorgesehen"
+  - "Mit dem Tournament Manager können Benutzer die einzelnen Boardclients ansteuern. Während Matchdaten über die API abgegriffen werden sollen. Ist es eine wichtige Funktion die Lobbies der Einzelnen Matches im Browser vorzubereiten. dazu sollen Matchanfragen an die Spieler getätigt werden, so dass die Spieler nur mehr bestätigen müssen und somit alles spielbereit ist, sobalt alle Spieler in der Lobby angemeldet sind. Zudem kommen auf die Matcheinstellungen (Set, Legs, Bull off) usw. aus derm Tournament Manager"  # Objective 2
+  - "Die Browser Extension erleichtert die Interaktion der Clients mit dem Tournament Manager. Der Tournament Manager fungiert hier als Host, und gibt der Extension die Befehle weiter die mehr oder weniger eine Standalone Variante der Clients darstellen"  # Objective 3
+  - "Die Handhabung soll so einfach wie möglich gehalten werden. Das UserInterface soll minimalistisch und übersichtlich gehalten werden. Es soll möglich sein die gesamte Steuerung eines Turniers sowohl am Smartphone als auch am PC durchführen zu können. Zusätzlich sollen bestimmte Zurnierinforationen wie der Spielplan sowie laufende Matchinformationen auch an einen TV (Browser / androidTV) in einer Art Streaming ansicht angezeigt werden können."
+
+requirements:
+  - "siehe apiclient.md"  # Requirement 1
+  - "siehe dartsuite.md"  # Requirement 2
+  - "siehe tournamentmanager.md"  # Requirement 2
+  - "siehe browserextension.md"  # Requirement 3
+
+
+codeGuidelines:
+  language: "C# / Blazor Server project als UI"  # z.B. C#, Dart, etc.
+  framework: ".NET 10, Serverside Blazor"  # z.B. .NET, Flutter, etc.
+  conventions: ""  # Naming, Style, etc.
+
+
+
+notes: "Diese Anweisungen sind alle zur Gänze zu befolgen. Werden im Verlauf des Projekts Änderungen erforderlich, sind diese sorgfältig zu dokumentieren. Widersprüche sind ebenfalls aufzuzeigen. Damit eine einheitliche Vorgehensweise gewährleistet ist."  # Zusätzliche Hinweise oder Kontexte
