@@ -1,0 +1,25 @@
+namespace ddpc.DartSuite.Application.Contracts.Tournaments;
+
+public sealed record UpdateTournamentRequest(
+    Guid Id,
+    string Name,
+    string OrganizerAccount,
+    DateOnly StartDate,
+    DateOnly? EndDate,
+    bool TeamplayEnabled,
+    string Mode,
+    string Variant,
+    string? StartTime = null,
+    int GroupCount = 0,
+    int PlayoffAdvancers = 2,
+    int KnockoutsPerRound = 1,
+    int MatchesPerOpponent = 1,
+    string GroupMode = "RoundRobin",
+    string GroupDrawMode = "Random",
+    string PlanningVariant = "RoundByRound",
+    string GroupOrderMode = "ReverseEachRound",
+    bool ThirdPlaceMatch = false,
+    int PlayersPerTeam = 1,
+    int WinPoints = 2,
+    int LegFactor = 1,
+    bool AreGameModesLocked = false);

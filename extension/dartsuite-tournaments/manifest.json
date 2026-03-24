@@ -1,0 +1,56 @@
+{
+    "manifest_version": 3,
+    "name": "DartSuite Tournaments",
+    "description": "Verbindet play.autodarts.io mit DartSuite für automatisierte Turnierverwaltung.",
+    "version": "0.3.0",
+    "icons": {
+        "16": "icons/icon16.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    },
+    "action": {
+        "default_popup": "popup.html",
+        "default_title": "DartSuite Tournaments",
+        "default_icon": {
+            "16": "icons/icon16.png",
+            "48": "icons/icon48.png",
+            "128": "icons/icon128.png"
+        }
+    },
+    "background": {
+        "service_worker": "background.js"
+    },
+    "permissions": [
+        "storage",
+        "activeTab",
+        "scripting",
+        "tabs",
+        "alarms"
+    ],
+    "host_permissions": [
+        "https://play.autodarts.io/*",
+        "https://api.autodarts.io/*",
+        "http://localhost:5290/*",
+        "https://darts.angleitner.net/*"
+    ],
+    "content_scripts": [
+        {
+            "matches": [
+                "https://play.autodarts.io/*"
+            ],
+            "js": [
+                "content.js"
+            ]
+        },
+        {
+            "matches": [
+                "https://play.autodarts.io/*"
+            ],
+            "js": [
+                "boards-bridge.js"
+            ],
+            "world": "MAIN",
+            "run_at": "document_start"
+        }
+    ]
+}

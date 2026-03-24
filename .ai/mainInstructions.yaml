@@ -26,7 +26,15 @@ codeGuidelines:
   language: "C# / Blazor Server project als UI"  # z.B. C#, Dart, etc.
   framework: ".NET 10, Serverside Blazor"  # z.B. .NET, Flutter, etc.
   conventions: ""  # Naming, Style, etc.
+  documentateion: "Im Code selbst ist die Dokumentation in Form der XML Documentation zu verwenden. Sie ist ausnahmslos in Englischer Sprache zu halten."
 
-
+promptGuidelines:
+  - "Die Anweisungen in diesem Dokument sind strikt zu befolgen. Alle Änderungen müssen sorgfältig dokumentiert und auf mögliche Widersprüche überprüft werden, um eine einheitliche Vorgehensweise sicherzustellen."  # Prompt Guideline 1
+  - "Die Entwicklung soll sich an den definierten Anforderungen und Zielen orientieren, um die gewünschten Funktionen und Features zu gewährleisten."  # Prompt Guideline 2
+  - "Alle Codeänderungen müssen den festgelegten Code-Richtlinien entsprechen, um Konsistenz und Wartbarkeit zu gewährleisten."  # Prompt Guideline 3
+  - "Anpassungen oder Erweiterungen der Funktionen müssen klar dokumentiert und kommuniziert werden, um Missverständnisse zu vermeiden und die Zusammenarbeit zu fördern."  # Prompt Guideline 4
+  - "Umgesetzte Prompts müssen geprüft werden und deren Funktionalität muss sichergestellt werden. Builds sind daher eigenständig zu veranlasssen, um die Funktionalität zu überprüfen."  # Prompt Guideline 5
+  - "Sind Änderungen im Datenmodell erforderlich, müssen diese sorgfältig dokumentiert und kommuniziert werden, um die Integrität der Daten und die Kompatibilität mit bestehenden Funktionen zu gewährleisten."  # Prompt Guideline 6
+  - "Änderunen im Datenmodell können eigenständige Migrationen durchführen"  # Prompt Guideline 7
 
 notes: "Diese Anweisungen sind alle zur Gänze zu befolgen. Werden im Verlauf des Projekts Änderungen erforderlich, sind diese sorgfältig zu dokumentieren. Widersprüche sind ebenfalls aufzuzeigen. Damit eine einheitliche Vorgehensweise gewährleistet ist."  # Zusätzliche Hinweise oder Kontexte

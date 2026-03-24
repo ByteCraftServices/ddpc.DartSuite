@@ -1,0 +1,49 @@
+@page "/"
+@inject DartSuiteApiService Api
+
+<PageTitle>DartSuite</PageTitle>
+
+<h1>DartSuite Dashboard</h1>
+
+<div class="row g-3 mt-1">
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">Boards</h5>
+                <p class="card-text">@boardsCount active configured boards</p>
+                <a class="btn btn-primary" href="boards">Open Boards</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">Tournaments</h5>
+                <p class="card-text">@tournamentsCount tournaments available</p>
+                <a class="btn btn-primary" href="tournaments">Open Tournaments</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">Autodarts Login</h5>
+                <p class="card-text">Connect account and monitor board status</p>
+                <a class="btn btn-primary" href="login">Open Login</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private int boardsCount;
+    private int tournamentsCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var boards = await Api.GetBoardsAsync();
+        var tournaments = await Api.GetTournamentsAsync();
+        boardsCount = boards.Count;
+        tournamentsCount = tournaments.Count;
+    }
+}

@@ -1,0 +1,116 @@
+@page "/boards"
+@rendermode InteractiveServer
+@inject DartSuiteApiService Api
+
+<PageTitle>Boards</PageTitle>
+
+<h1>Boards</h1>
+
+<div class="card mt-3 shadow-sm">
+    <div class="card-body">
+        <EditForm Model="this" OnValidSubmit="CreateBoardAsync" FormName="create-board">
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <InputText @bind-Value="newBoardExternalId" class="form-control" placeholder="Board ID" />
+                </div>
+                <div class="col-md-4">
+                    <InputText @bind-Value="newBoardName" class="form-control" placeholder="Board Name" />
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-primary w-100" type="submit">Add Board</button>
+                </div>
+            </div>
+        </EditForm>
+        @if (boardError is not null)
+        {
+            <div class="alert alert-danger py-2 mt-2 d-flex justify-content-between align-items-center">
+                <span>@boardError</span>
+                <button type="button" class="btn-close" @onclick="() => boardError = null"></button>
+            </div>
+        }
+    </div>
+</div>
+
+<table class="table table-striped mt-3">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>External ID</th>
+            <th>Status</th>
+            <th>Extension</th>
+            <th>IP</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var board in boards)
+        {
+            <tr>
+                <td>@board.Name</td>
+                <td>@board.ExternalBoardId</td>
+                <td><span class="badge @StatusBadge(board.Status)">@board.Status</span></td>
+                <td>
+                    @if (board.IsExtensionConnected)
+                    {
+                        <span class="badge bg-success">Verbunden</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-secondary">Getrennt</span>
+                    }
+                </td>
+                <td>@board.LocalIpAddress</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private List<BoardDto> boards = new();
+    private string newBoardExternalId = string.Empty;
+    private string newBoardName = string.Empty;
+    private string? boardError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task CreateBoardAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newBoardExternalId) || string.IsNullOrWhiteSpace(newBoardName))
+        {
+            return;
+        }
+
+        try
+        {
+            boardError = null;
+            await Api.AddBoardAsync(new CreateBoardRequest(newBoardExternalId, newBoardName, null, null));
+            newBoardExternalId = string.Empty;
+            newBoardName = string.Empty;
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            boardError = ex.Message;
+        }
+        catch
+        {
+            boardError = "An unexpected error occurred. Please try again.";
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        boards = (await Api.GetBoardsAsync()).ToList();
+    }
+
+    private static string StatusBadge(string status) => status switch
+    {
+        "Running" => "bg-success",
+        "Online" => "bg-info text-dark",
+        "Starting" => "bg-warning text-dark",
+        "Error" => "bg-danger",
+        _ => "bg-secondary"
+    };
+}

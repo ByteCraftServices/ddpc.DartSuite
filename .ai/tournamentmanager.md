@@ -7,13 +7,71 @@ Der Turnamentmanager lässt Board API Client, DartSuite App und die DartSuite To
 Ein Turnier wird in der App erstellt und muss dann mit einem Namen und dem Turnierzeitraum ergänzt werden.
 Wird kein Enddatum eingegeben ist automatisch das Startdatum des Turniers zu verwenden. Nach dem erfolgreichen speichern, erhält das Turnier seine TournamentId die dann gegeüber den anderen Appteilen als Schlüssel verwendet werden kann.
 
+Der Turnierstatus nach dem Erstellen = "erstellt".
+Grundeinstellungen können ohne weiteres geändert werden.
+
+In diesem Status gibt es auch die Möglichkeit die Registrierung zu öffnen. Oder Start- und Enddatum + Uhrzeit für die Registrierung zu hinterlegen.
+
+Am Turnier selbst gibt es für den angemeldeten Spielleiter auf die Möglichkeit ein Turnier zu löschen, wenn noch kein Match gespielt wurde. 
+
+Sind bereits Laufende Matches oder beendete Matches vorhanden, kann ein Turnier nicht mehr gelöscht werden. Es gibt nur eine Möglichkeit zum abbrechen des Turniers.
+
+Wurde ein Turnier erstellt, dann kann ein eindeutige Link dazu kopiert werden, der zur Turnier - Landing Page verweist.
+Dabei wird an die Basis URL der query parameter "?tournamentId={guid}" generiert. Der Link kann von dort auch über ein popout ein einem neuen Tab geöffnet werden.
+
+
+Wenn der Spielplan erstellt wurde, dann kann der Turnierstatus auf "geplant" wechseln, beim zurücksetzen des Spielplans muss der Status wieder auf "erstellt" gewechselt.
+
+Des weiteren wird sobald das erste Match im Turnier aktiv ist der Turnierstatus auf "gestartet" gewechselt. (Das Turnier ist somit aktiv).
+
+Erst wenn es manuell agebrochen (Status = "abgebrochen") wird oder wenn das Finale beendet wird, wird auch das Turnier als Status = "beendet" aktualisiert.
+
+Somit sind alle Statuswechseln weitgehend autormatisiert. Manuelles eingreifen ist immer möglich.
+Wird der Status zurückgestellt gilt folgendes Regelwerk:
+- Von "gestartet" auf "geplant" => dann werden alle Matches zurückgesetzt. (Warnhinweis notwendig, wenn es Matches gibt die aktiv waren)
+
+- Von "geplant" auf "erstellt" => hier werden alle Spielmodi, Turnierplan und Spielplan gelöscht.
+
+- Ein Wechesln von "gestartet" auf "erstellt" kombiniert beide vorangegangen Automatisierungen.
+
+
+## Registrierung
+Das Turnier bekommt eine Checkbox "Registrierung offen" die entweder wie vorhin beschrieben manuell geöffnet und beendet werden kann. Oder auch komplett zeitgesteuert wenn Startdatum bzw. enddatum angegeben wird.
+Die Registrierung ist eine separate Landing Page in der DartSuite.
+
+Bei der Registrierung werden die Spieler die sich registireren in die Teilnehmer dem Turnier zugewiesen.
+Das ganze funktioniert auch wie das übertragen der freunde aus der Browser extension. Nur ist die Registrierung über die Landing Page als Self service zu sehen. Der Teilnehmer mbraucht dazu nur den korrekten Link (TournamentId)
+
+
+## Turnier - Landing Page 
+Diese Landing Page kann nur mit einem ?tournamentId URL Parameter geöffnet werden.
+Sie ist also immer public erreichbar, deshalb muss eine gültige Tournier Id angegeben werden.
+
+Wenn das Turnier dazu existiert, dann öffnet sich der Inhalt der Landing Page. Ansonsten wird eine Fehlermeldung ausgegeben die auf die fehlerhafte bzw. fehlende Turnierkennung verweist.
+
+Die Landing Page verlangt nach einem Login, der hier ganz einfach getätigt werden soll, wenn nicht ohnehin bereits angemeldet.
+Ist der Standardlogin via Autodarts Account nicht möglich soll eine 2. Option getätigt werden bei der nur ein Spielername eingegeben werden muss. Ohne Passwort, aber mit dem Hinweis, dass wenn man einen Autodarts.io Account besitzt doch dieser genutzt werden soll.
+
+Nun ist die Phase der Authentifizierung abgeschlossen.
+Es wird nun überprüft ob der Teilnehmer bereits in der Teilnehmerliste steht.
+Ist dies der Fall kann der Benutzer auf den Spielplan zugreifen.
+Man soll hier erst nur seine eigenen Matches sehen. Dabei werden erst di noch zu spielenden matches angezeigt und darunter die abgeschlossenen spiele. Da hier erst nur seine eigenen MAtches angezeigt werden. soll es auch eine möglichkeit geben, alle spiele (auch die anderer Teilnehmer) sehen zu können. Zusätzlich soll es auch die Möglichkeit geben "abgeschlossene Matches ausblenden"
+
+Wird mit Gruppenphase gespielt, sieht er auch immer seine eigene Gruppentabelle. Mit Links/Rechts Buttons kann endlos durch die Gruppen geswitcht werden.
+
+Sollte der Spieler nicht in der Teilnehmer Liste des Turniers sein und das Turnier mit für die Registrierung offen sein, dann soll hier ein Button angezeigt werden "{Spielername} für {Turniername}" registrieren.
+
+
+
 ## Verbindung zum Api Client
 Ist ein Turnier erstellt worden kann es anfand seiner Tournament Is geöffnet werden.
 
 Dabei werden die grundlegenden Daten in der App angezeigt.
 Sobald ein Turnier geöffnet ist soll ebenfalls die verfügbarkeit/Status der Boards angezeigt werden.
 
-Alle in der DartSuite hinzugefügten Boards können nun im Turnier selektiert werden. Sie stehen dann für die die Vergabe der Spieltermine zur verfügung.
+Alle in der DartSuite hinzugefügten Boards können nun im Turnier selektiert werden. Sie stehen dann für die die Vergabe der Spieltermine bzw. der Matches zur verfügung.
+
+Werden Teilnehmer / Boards und Spielstände bzw. Matchdetails können sich sehr schnell aktualisieren und sollen auch in der UI weitgehenst in Echtzeit dargestellt werden. Dazu ist notwendig eine Mechanik zu entwickeln die hier dieses UserExperience ermöglichen.
 
 
 ## Teilnehmer und Rollen
@@ -28,6 +86,8 @@ Das kann entweder ein Autodarts account sein oder auch ein lokaler Spieler.
 Da es existierende Accounts geben kann die mit den lokalen Spielen übereinstimmen muss in der Teilnehmerliste angegeben werden ob es um einen autodarts account handelt oder um einen lokalen spieler. Standardmäßig ist es ein Autodarts account.
 
 Wenn die Teilnehmerliste finalisiert ist, dann soll es möglich sein den Spielplan zum Turnier zu erstellen.
+
+Wichtig: Nur angemeldete Turnierleiter haben die Möglichkeit Turnierseinstellungen festzulegen. Wenn sich ein Spieler anmedeldet der nicht Turnierleiter ist, bekommt er die Einstellungen nicht angezeigt. Funktionen wie das Generieren von Spielplänen uns Spielmodi sind nicht verfügbar. Hier ist es besonders wichtig dass man nur lesend unterwegs ist. Filtermöglichkeiten sind vorhanden. und auch auf die Matchdetails kann zugegriffen werden. Die Boarddetails sind aber nicht einsehbar.
 
 ## Turniermodus
 Nach dem Erstellen der Teilnehmerliste kann der Turniermodus ausgewählt werden.
@@ -51,6 +111,8 @@ Ist Teamplay aktiviert. Dann gibt es an dieser Stelle zusätzliche Optionen zu A
 - Anzahl Spieler pro Team: Standard = 2
 - Teams erstellen: Zufällig oder fix (via Dropdown)
 
+Ist Teamplay nicht aktiviert müssen die Optionen "Anzahl Spieler pro Team" und "Teams erstellen" erst gar nicht angezeigt werden.
+
 Bei "Zufällig" wird die angebene Anzahl an Spielern in zufällig ausgeloste Teams gegeben.
 
 Bei "Fix" muss der Spielleiter die Teams manuell zusammenstellen.
@@ -69,16 +131,24 @@ Datentechnisch wird auch im Einzelspielermodus (kein Teamplay) mit Teams gearbei
 Der größte Unterschied liegt dann im Match client PC, weil dort im Teamplay immer lokale Spieler (=Teamname) zum Einsatz kommen. Im Gegensatz zum Einzelspieler Turnier, wo die regulären Autodarts Accounts der Spieler zum Einsatz kommen können.
 
 
-Nachfolgend: werden auch Teams auch Spieler bezeichnet um die Instruckionen einfacher zu halten.
+Nachfolgend: werden auch Teams auch Spieler bezeichnet um die Instrukionen einfacher zu halten.
 
 Eine Zusätzlich kann nun eine Setzliste erstellt werden.
+"Setzliste aktivieren" ist eine Einstellung in der Teilnehmerübersicht. Wird dieser Schalter aktiviert, dann bekommt man zusätzlich ein zusätzliches Numerisches Feld angezeigt "Top #". Hier kann ein numerischer WErt zwischen 1 und der Teilnehmeranzahl eingegeben werden. Damit werden dann die ersten (oberen) Einträge mit dem Setzranking Spalte "#" angezeigt. Via Drag und drop muss dann vom Spielleiter das Teilnehmerfeld in das richtige Ranking gebracht werden.
+
+Beispiel: Einstellungen: [x] Setzliste aktivieren   Top # 8    
+Dann werden die ersten 8 Teilnehmer in der Teilnehmer listen mit den #-Werden 1 bis 8 versehen.
+Das Ranking bleibt hier dann statisch durch drag & dro, werden den ranking die richtigen Spielernamen zugeteilt.
+
 Alle Teams werden nun vom Spielleiter in ein Setlist-Ranking gebracht. Dabei wird aufsteigend eine Nummer vergeben. Wenn Setzlisten aktiviert sind, dann bekommen die höhergerankten Teilnehmer (=niedrigere Zahl in der Setzliste) die Freispiele zugeteilt.
 
-Ab dem Zeipunkt in denen mit einer Setzliste gespielt wird, wird die Funktion "Shuffle" zum vergeben einer beliebigen Reihenfolge ausgeegraut.
+Ab dem Zeitpunkt in denen mit einer Setzliste gespielt wird, wird die Funktion "Shuffle" zum vergeben einer beliebigen Reihenfolge ausgeegraut.
 
-Die Teilnehmerliste wird in der App übersichtlich angezeigt:
-Ohne Setzliste: Sortierung (Nummer), Spielernamen (Teamname)
+Die Teilnehmerliste wird in der App übersichtlich in Spalten angezeigt:
+Ohne Setzliste: Sortierung (Nummer), Spielernamen (Teamname) 
 Mit Setzliste: Setzlistenposition (#Nummer => inkl. der Raute), Spielernamen (Teamname)
+
+Hinter dem Spielernamen ist ein Autodarts.io Icon anzuzeigen um die Autodarts-Accounts zu markieren.
 
 ### K.O. Modus
 Das Teilnehmerfeld wird aufgebaut.
@@ -107,6 +177,15 @@ Die Situation Freilos gegen Freilos darf nie entstehen.Sollte kein Spielplan aut
 
 Sind die Paarungen der ersten Runde zugelost. Und der Spielmodus für alle Runden wird bestätigt, dann können bereits die Paarungen mit den Freilosen aufgelöst werden. Da heißt die Spieler die ein Freilos zugelost bekommen haben dürfen sofort aufsteigen.
 
+Achtung: Matches die ein Freilos beinhalten, sind anders zu werten. 
+* Der Gewinner ist von vorneherein fix. Und kann im Turnierplan auf gleich als aufgestiegen dargestellt werden.
+* Die Matches sind aber mit dem status "Walk over" zu versehen. Demnach dürfen auch keine Statistik werte daraus entnommen werden.
+  d.h.: Für die Berechnung des Turnieraverages dürfen diese Matches nicht herangezogen werden.
+* Für Prüfungen auf "aktive", "laufende", "beendete" Matches dürfen "Walk over" Matches nicht herangezogen werden.
+  Beispiel: Im QF ist ein Match als "Walk Over" gekennzeichnet. Dann darf der Spielmodus trotzdem noch abgeändert werden, da es sich um kein Standardmatch gehandelt hat.
+  Beispiel 2: Wenn überprüft wird ob alle Matches abgeschlossen wurden, dann trifft das auch auf "Walk Over" Matches zu, obwohl sie eben nie gestartet wurden.
+* Für die Turnierplanung ist zu berücksichtigen, dass "Walk Over" matches keine Zeit benötigen und somit auch kein zugewisesenes Board benötigen. Für die Zeiplanung ist das wesentlich.
+
 ### Gruppenphase
 Die Gruppenphase besitzt verschiedene "Gruppenmodus" Optionen und definiert sich immer folgende Zusatzoptionen.
 
@@ -117,7 +196,11 @@ Die Gruppenphase besitzt verschiedene "Gruppenmodus" Optionen und definiert sich
 - Anzahl der Matches für einen Gegner: Wählbar "1 Runde" bis "12 Runden".
 - Reihenfolge: "Gegen jeden Gegner, Folgerunde absteigend", "Immer gleiche Reihenfolge", "Runde für Runde zufällig", "Alle Matches zufällig"
 
+Alle der oben angeführten Optionen sollen nur zur Verfügung stehen, wenn im Turnier der Gruppenmodus aktiv ist
+
 #### Gruppenmodus (Radiooptions)
+Diese Optionen sind ebenfalls nur beim aktivierter Gruppenphase einstellbar.
+
 - Jeder gegen Jeden: Es werden die Matchpaarung so erstellt, dass einnerhalb eine Gruppe jeder gegen jeden spielen muss. Bei 4 Teilnehmern, spielt also Jeder gegen seine 3 Gruppengegner.
 
 - Knockout: In diesem Modus wird eben falls Jeder gegen Jeden gespielt. Es fallen immer die letzten Spieler aus der Gruppe. Bis die Gruppe sich auf die Anzahl der Spieler reudziert hat die als "Aufsteiger" definiert wurden.
@@ -126,13 +209,16 @@ Die Gruppenphase besitzt verschiedene "Gruppenmodus" Optionen und definiert sich
 
 #### Auslosung
 Hier wird die Variante festgelegt wie die Gruppen gebildet werden sollen.
+Jede Form der Auslosung hat hier völlig zuföllig zu erfolgen und sie kann prinzipiell beliebig oft wiederholt werden. Solange noch keine Matches aktiv waren.
 
 Festlegung der "Gruppeneinteilung": 
 Erst wird festgelegt mit wievielen Gruppen gespielt werden soll. Dropdown 1 bis 16 Gruppen.
 
-Danach erscheint ein Raster mit der Belegung der Gruppen.Also die Anzahl von Teilnehmern innerhalb der einzelnen Gruppen. Prinzipiell wird versucht die Gruppen gleich groß zu gestalten. Für die gewählte Anzahl von Gruppen wird das in Shadowboards simuliert. Die leeren Karten können nun noch manuell umverteilt werden, falls der Turnierleiter die Anzahl manuell beinflussen möchte. Grundsätzlich ist mit dem Abschluss dann die Zuweisung der Teilnehmer in die einzelnen Karten (=Auslosung) durchzuführen um die Gruppenplanung abzuschließen.
+Danach erscheint ein Raster mit den ausgelosten (zufälligen) Belegung der Gruppen. Also die Anzahl von Teilnehmern innerhalb der einzelnen Gruppen. Prinzipiell wird versucht die Gruppen gleich groß zu gestalten. Für die gewählte Anzahl von Gruppen wird das in Shadowboards simuliert. Die leeren Karten können nun noch manuell umverteilt werden, falls der Turnierleiter die Anzahl manuell beinflussen möchte. Grundsätzlich ist mit dem Abschluss dann die Zuweisung der Teilnehmer in die einzelnen Karten (=Auslosung) durchzuführen um die Gruppenplanung abzuschließen.
 
-Der Turnierleiter wählt nun den "Auslosungsmodus"
+solange keine Matches es keine aktiven Matches (Status > Warten) gibt, kann die Auslosung beliebig oft wiederholt werden. Durch die Zufallslogik, ist die Wahrscheinlichkeit sehr hoch, dass sich pro Auslosungsvorgang ein anderes Resultat ergibt.
+
+Der Turnierleiter wählt nun den "Auslosungsmodus" der im Tab "Auslosung" angezeigt wird.
 
 - Manuell: alle Gruppen werden via Drag & Drop aus der Teilnehmerliste zusammengestellt
 - Zufällig: Die Gruppen werden via Zufallsgenerator ausgelost
@@ -191,6 +277,13 @@ Die "Matchdauer" steht dabei für die Dauer des Matches in Minuten. Die "Pause z
 
 Als separate Funktion kommt dann noch ein Dropdown "Boardauswahl" dazu. Hier kann aus allen Boardnamen ausgewählt werden oder man legt hier "dynamisch" fest. Damit wird kein fixes Board für die Matches dieser Turnierrunde übernommen. Es wird im Verlauf des Turniers ermittelt welches Verfügbar ist.
 
+Der Spielmodus kann auch für die gesamte Gruppenphase oder die gesamte K.O. Phase generiert werden. Debei werden alle Runden im Turnier automatisch aufgebaut. Dabei sollen aber wirklich nur jene Runden erstellt werden in der tatsächlich Spiele im Turnierplan existieren. 
+
+Hat also die Gruppenphase 3 Runden dann sind nur diese Runden in den Spielmodi zu erzeugen.
+In der K.O. Phase müssen ebenfalls nur jene Runden aufgebaut werden in der Spiele ausgetragen.
+
+Bsp.: 4 Gruppen mit je 2 Playoff Aufsteigern ergeben 8 Spieler in der K.O Phase. Es muss dann QF, SF und F geplant werden.
+
 ## Turnierplan
 Der Turnierplan ist die Vorraussetzung für die erstellung des Spielplans. Er beschreibt wie das Turnier ausgetragen wird und kann auch die Spielpaarungen festlegen.
 
@@ -224,11 +317,11 @@ In der Detailansicht innerhalb der Gruppenphase werden für beide Spiele alle ge
 
 ## Spielplan
 
-Der Spielplan ist die zeitlich geplante Austragung des Turniers. Je nach Turniervariante wird mit dem Spielplan auch die Planung der bespielbaren Boards ermittelt.
+Der Spielplan ist die zeitlich geplante Austragung des Turniers. Je nach Turniervariante wird mit dem Spielplan auch die Planung der bespielbaren Boards ermittelt. Bei Online Turnieren müssen keine Boards geplant werden
 
 Der Spielplan muss nicht zwingend erstellt werden. Das ist ein optionaler Schritt, der aber für seriöse und längere Turniere empfohlen wird, das sich dadurch viele Details einplanen lassen und somit ein wertvoller Beitrag zu erfolgreichen Veranstaltung sind.
 
-Der Spielplan wird immer wieder dynamisch überarbeitet. D.h.: die Startzeiten werden neu hochgerechnet und die Boards werden zugeteilt.
+Der Spielplan wird immer wieder dynamisch überarbeitet. D.h.: die Startzeiten werden neu hochgerechnet und die Boards werden zugeteilt. (Funktion "Neu generieren")
 Das berücksichtigt alle zeitlichen Verläufe Der Matches.
 + Matchdauern mit den Spielpausen
 + Vergabe der Board an denen das Spiel stattfinden wird.
@@ -243,11 +336,43 @@ Wird für jedes Match dass zu diesem Zeitpunkt noch nicht gespielt wurde wird di
 Beispiel: Spiel Nummer 8 erwartet dass zu Beginn des Match 6 Spiele fertig sein müssen (Spiel 7 Startet gleichzetig und erwartet ebenfalls dass 6 Spiele fertig sind zu Begin). Während Spiel 7 bereits läuft, läuft auch noch Spiel 5.
 Fertig sind die Spiele 1, 2, 3, 4, 6 während 5 und 7 aktiv laufen. Es sind also erst 5 Matches fertig absolviert. Daraus ergibt sich am Board an dem Spiel 8 planmäßig starten soll eine Verzögerung um 8 Minuten (wenn Matchdauer =7 Minuten und Pause = 1 Minute).
 
-Die Zuweisung der Boards folgt jeweils zu Spielbegin an den Boards. Wird an Board A ein Match gestartet, dann wird sein nachkommendes Spiel festgelegt.
+Die Zuweisung der Boards folgt jeweils zu Spielbegin an den Boards. Wird an Board A ein Match gestartet, dann wird sein nachkommendes Spiel festgelegt. Mit "Startzeit sperren" kann die Startzeit so fixiert werden, dass sie beim neuen generieren des Spielplans nicht überschrieben wird.
 
-Ausnahme: Wenn im Turnierplan bei der Paarung ein fixes Board zugeteilt wird. Dieses darf dann nicht dynamisch übersteuert werden.
+Ausnahme: Wenn im Turnierplan bei der Paarung ein fixes Board (Board sperren) zugeteilt wird. Dieses darf dann nicht dynamisch übersteuert werden.
 
 Beispiel: Finale und kleines Finale (Spiel um Platz 3), sollen auf Board 1 gespielt werden.
+
+Die Anzeige erfolgt im Tag "Spielplan" in einer Listenansicht mit Spalten
+
+1. Matchbegin (inkl. Sperre)
+2. Runde
+3. {Spieler1} vs. {Spieler2}
+   {Sets1 | Legs1 | Punkte1} {Set2 | Legs2 | Punkte2}
+4. Board (inkl Sperre)
+5. Folgen (Matchstatus = aktiv) oder Starten (wenn nächstes Match am Board und kein anderes aktives Match am Board)
+
+Und dazu kommen folgende Filtermöglichkeiten
++ "Beendete Spiele ausblenden"
++ Status 
++ "Laufende Spiele" markieren
++ "Matches ohne Board"
++ "Ergebnisanzeige": Live (Standard), Endergebnisse
+
+Die Funktion "Neu generieren" am Spielplan steht nur dem Spielleiter zur Verfügung. Dabei werden Abgeschlossene Spiele sowie "Walk Over" nicht aufgegriffen. diese fließen weder in den Zeitplan noch in die Boardvergabe ein.
+
+
+# Matches
+Die Matches sind datentechnisch vollstöndig zu verarbeiten, sodass die MAtchstatistiken jederzeit ausgewertet werden können.
+Wichtig dabei ist vor allem der korrekte Status der Matches.
+
+- Erstellt: Standard - Match hat keine Startzeit (oder kein Board bei OnSite Turnieren)
+- Geplant: Match besitzt Startzeit (und Board bei OnSite Turnieren)
+- Aktiv: Match wurde gestartet (ExternalMatchId = eingetragen)
+- Beendet: Match erhält ein Endresultat.
+
+Spielstände werden grundsätzlich online über die API (in Echtzeit über einen Listener) ermittelt.
+In den Matchdetails haben Spielleiter die Möglichkeit diese Resultate auch manuell zu verändern.
+Beim Manuellen Speichern wechselt daher der Matchstatus automatisch in den Status Beendet.
 
 
 

@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DartSuite Tournaments</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            width: 380px;
+            color: #e0e0e0;
+            background: #1a1a2e;
+            font-size: 13px;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #0f3460, #16213e);
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 2px solid #e94560;
+        }
+
+        .header .trophy {
+            font-size: 24px;
+        }
+
+        .header h3 {
+            color: #fff;
+            font-size: 15px;
+            flex: 1;
+        }
+
+        .header .manage-link {
+            font-size: 11px;
+            color: #888;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .header .manage-link:hover {
+            color: #e94560;
+        }
+
+        .tabs {
+            display: flex;
+            background: #16213e;
+            border-bottom: 1px solid #333;
+        }
+
+        .tabs button {
+            flex: 1;
+            background: none;
+            border: none;
+            color: #888;
+            padding: 8px 4px;
+            font-size: 12px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+        }
+
+        .tabs button.active {
+            color: #e94560;
+            border-bottom-color: #e94560;
+        }
+
+        .tabs button:hover {
+            color: #fff;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 12px 14px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .section {
+            background: #16213e;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+
+        .section-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: #888;
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+        }
+
+        .row {
+            margin-bottom: 8px;
+        }
+
+        label {
+            font-size: 12px;
+            color: #aaa;
+            display: block;
+            margin-bottom: 3px;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 7px 8px;
+            border-radius: 4px;
+            border: 1px solid #333;
+            background: #0f3460;
+            color: #e0e0e0;
+            font-size: 13px;
+        }
+
+        input:disabled,
+        select:disabled {
+            opacity: 0.5;
+        }
+
+        button.btn {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            border: none;
+            color: #fff;
+            font-weight: bold;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        button.btn-primary {
+            background: #e94560;
+        }
+
+        button.btn-primary:hover {
+            background: #c73e54;
+        }
+
+        button.btn-secondary {
+            background: #0f3460;
+            border: 1px solid #333;
+        }
+
+        button.btn-secondary:hover {
+            background: #1a4a7a;
+        }
+
+        button.btn-success {
+            background: #2e7d32;
+        }
+
+        button.btn-success:hover {
+            background: #388e3c;
+        }
+
+        button.btn-danger {
+            background: #c62828;
+        }
+
+        button.btn-danger:hover {
+            background: #d32f2f;
+        }
+
+        button.btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            padding: 4px 0;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #555;
+            flex-shrink: 0;
+        }
+
+        .dot.online {
+            background: #4caf50;
+        }
+
+        .dot.offline {
+            background: #f44336;
+        }
+
+        .dot.warning {
+            background: #ff9800;
+        }
+
+        .info {
+            font-size: 11px;
+            color: #888;
+            padding: 4px 0;
+        }
+
+        .error {
+            color: #f44336;
+            font-size: 11px;
+            padding: 4px 0;
+        }
+
+        .success {
+            color: #4caf50;
+            font-size: 11px;
+            padding: 4px 0;
+        }
+
+        .tournament-card {
+            background: #0f3460;
+            border-radius: 6px;
+            padding: 8px 10px;
+            margin-bottom: 6px;
+            border-left: 3px solid #333;
+        }
+
+        .tournament-card.active {
+            border-left-color: #4caf50;
+        }
+
+        .tournament-card.selected {
+            border-left-color: #e94560;
+            background: #1a4a7a;
+        }
+
+        .tournament-card .name {
+            font-weight: bold;
+            font-size: 13px;
+        }
+
+        .tournament-card .meta {
+            font-size: 11px;
+            color: #aaa;
+        }
+
+        .tournament-card .code {
+            font-family: monospace;
+            color: #e94560;
+            font-weight: bold;
+        }
+
+        .board-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #0f3460;
+            border-radius: 4px;
+            padding: 6px 8px;
+            margin-bottom: 4px;
+        }
+
+        .board-item .board-name {
+            font-size: 12px;
+        }
+
+        .board-item .board-status {
+            font-size: 10px;
+        }
+
+        .board-item button {
+            width: auto;
+            padding: 4px 10px;
+            font-size: 11px;
+        }
+
+        .friend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 0;
+            font-size: 12px;
+        }
+
+        .friend-item input[type="checkbox"] {
+            width: auto;
+        }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 2px 0;
+        }
+
+        .checkbox-row input[type="checkbox"] {
+            width: auto;
+        }
+
+        .checkbox-row label {
+            margin: 0;
+            font-size: 12px;
+        }
+
+        #statusMessage {
+            padding: 6px 14px;
+            font-size: 11px;
+            min-height: 16px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <span class="trophy">🏆</span>
+        <h3>DartSuite Tournaments</h3>
+        <a class="manage-link" id="manageLink" title="Erweiterung verwalten">⚙</a>
+    </div>
+
+    <div class="tabs">
+        <button class="active" data-tab="tournament">Turnier</button>
+        <button data-tab="boards">Boards</button>
+        <button data-tab="friends" id="friendsTabBtn">Freunde</button>
+        <button data-tab="settings">Einstellungen</button>
+    </div>
+
+    <!-- ═══ Tab: Turnier ═══ -->
+    <div class="tab-content active" id="tab-tournament">
+        <div class="section">
+            <div class="section-title">Verbindung</div>
+            <div class="status-bar">
+                <span class="dot" id="apiDot"></span>
+                <span id="apiStatus">Prüfe...</span>
+            </div>
+            <div class="status-bar">
+                <span class="dot" id="autoDot"></span>
+                <span id="autoStatus">Autodarts: unbekannt</span>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Turnier auswählen</div>
+            <div class="row">
+                <label for="hostInput">Turnier Host</label>
+                <input id="hostInput" placeholder="Autodarts Benutzername" list="hostSuggestions" />
+                <datalist id="hostSuggestions"></datalist>
+            </div>
+            <div class="row">
+                <label for="codeInput">Turnier-Code (3-stellig)</label>
+                <input id="codeInput" placeholder="z.B. 3ER" maxlength="3"
+                    style="text-transform:uppercase; font-family:monospace; font-size:16px; letter-spacing:4px; text-align:center;" />
+            </div>
+            <div class="row">
+                <label for="tournamentSelect">— oder Turnier aus Liste —</label>
+                <select id="tournamentSelect" disabled>
+                    <option value="">Zuerst Host eingeben</option>
+                </select>
+            </div>
+            <div id="tournamentError" class="error" style="display:none"></div>
+            <div id="tournamentSuccess" class="success" style="display:none"></div>
+        </div>
+
+        <div class="section" id="activeTournamentSection" style="display:none">
+            <div class="section-title">Aktives Turnier</div>
+            <div id="activeTournamentInfo"></div>
+            <div id="boardSelectSection" style="display:none;margin-top:8px">
+                <label for="activeBoardSelect">Board auswählen (meine Boards)</label>
+                <div style="display:flex;gap:4px;align-items:center">
+                    <select id="activeBoardSelect" style="flex:1">
+                        <option value="">Board wählen...</option>
+                    </select>
+                    <button id="refreshBoardSchedule" title="Spielplan aktualisieren"
+                        style="background:#0f3460;border:1px solid #333;color:#e0e0e0;border-radius:4px;padding:6px 8px;cursor:pointer;font-size:14px;flex-shrink:0">🔄</button>
+                </div>
+                <div class="info">Wähle das Board an dem du spielst, damit DartSuite Kommandos korrekt verarbeitet
+                    werden.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Tab: Boards ═══ -->
+    <div class="tab-content" id="tab-boards">
+        <div class="section">
+            <div class="section-title">Lokale Autodarts Boards</div>
+            <div id="boardsList">
+                <div class="info">Boards werden geladen...</div>
+            </div>
+            <div class="row" style="margin-top:8px">
+                <button class="btn btn-primary" id="transferBoards" disabled>Ausgewählte an Turnier übergeben</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Tab: Freunde ═══ -->
+    <div class="tab-content" id="tab-friends">
+        <div class="section">
+            <div class="section-title">Autodarts Freunde</div>
+            <div class="row" style="margin-bottom:4px">
+                <button class="btn btn-secondary" id="selectAllFriends">Alle auswählen</button>
+            </div>
+            <div id="friendsList">
+                <div class="info">Freunde werden geladen...</div>
+            </div>
+            <div class="row" style="margin-top:8px">
+                <button class="btn btn-primary" id="importFriends" disabled>Ausgewählte als Teilnehmer
+                    importieren</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ Tab: Einstellungen ═══ -->
+    <div class="tab-content" id="tab-settings">
+        <div class="section">
+            <div class="section-title">API</div>
+            <div class="row">
+                <label for="apiBaseUrl">API URL</label>
+                <input id="apiBaseUrl" placeholder="http://localhost:5290" />
+            </div>
+            <div class="row">
+                <label for="defaultHost">Standard Host</label>
+                <input id="defaultHost" placeholder="Wird als Vorauswahl für Turnier Host verwendet" />
+            </div>
+        </div>
+        <div class="section">
+            <div class="section-title">Managed Mode</div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="autoManaged" checked />
+                <label for="autoManaged">Automatisch aktiviert</label>
+            </div>
+            <div class="checkbox-row">
+                <input type="checkbox" id="fullscreen" />
+                <label for="fullscreen">Vollbild bei Teilnahme</label>
+            </div>
+        </div>
+        <div class="row" style="padding:0 14px 8px">
+            <button class="btn btn-primary" id="saveSettings">Einstellungen speichern</button>
+        </div>
+    </div>
+
+    <div id="statusMessage"></div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>

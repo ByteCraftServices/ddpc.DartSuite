@@ -135,10 +135,12 @@ Wischgesten sollen hie immer möglich sein. So kann schnell manuell durch die Ta
 - https://github.com/lbormann/darts-hub
 - https://github.com/lbormann/darts-caller
 - https://github.com/lbormann/darts-voice
+- https://github.com/thomasasen/autodarts_local_tournament
 - https://greasyfork.org/de/scripts/565599-autodarts-lobbyfilter
 - https://greasyfork.org/de/scripts/567854-autodarts-simpleconnect
 - https://greasyfork.org/de/scripts/490771-back-to-ad-button-on-autodarts-board-manager
 - https://greasyfork.org/de/scripts/489918-x01-active-player-score-display-for-autodarts
+- https://greasyfork.org/de/scripts/502077-autodarts-rematch-button-for-local-matches
 
 
 

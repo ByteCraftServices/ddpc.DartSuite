@@ -1,0 +1,196 @@
+@page "/login"
+@using ddpc.DartSuite.Application.Contracts.Autodarts
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@rendermode InteractiveServer
+@inject DartSuiteApiService Api
+@inject ProtectedLocalStorage LocalStorage
+
+<PageTitle>Login</PageTitle>
+
+<h1>Autodarts Login</h1>
+
+<div class="card mt-3 shadow-sm">
+    <div class="card-body">
+        @if (profile is null)
+        {
+            <div class="mb-3">
+                <label class="form-label" for="email">E-Mail</label>
+                <input class="form-control" id="email" type="email" @bind="emailInput" placeholder="user@example.com" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="password">Passwort</label>
+                <input class="form-control" id="password" type="password" @bind="passwordInput"
+                       @onkeydown="HandleKeyDownAsync" />
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="rememberLogin" @bind="rememberLogin" />
+                <label class="form-check-label" for="rememberLogin">Login merken</label>
+            </div>
+            <button class="btn btn-primary w-100" @onclick="LoginAsync" disabled="@isLoading">
+                @if (isLoading)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                }
+                Autodarts.io verbinden
+            </button>
+        }
+        else
+        {
+            <div class="d-flex align-items-center mb-3">
+                <span class="badge bg-success me-2">Verbunden</span>
+                <span class="fw-semibold">@(profile.DisplayName ?? profile.Email ?? "Autodarts")</span>
+                <button class="btn btn-outline-secondary btn-sm ms-auto" @onclick="LogoutAsync">Abmelden</button>
+            </div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(connectionStatus))
+        {
+            <div class="alert @statusAlertClass mt-3 mb-0">@connectionStatus</div>
+        }
+
+        @if (profile is not null)
+        {
+            <div class="mt-3">
+                <h6 class="text-muted">Profil</h6>
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Name</dt>
+                    <dd class="col-sm-8">@(profile.DisplayName ?? "n/a")</dd>
+                    <dt class="col-sm-4">E-Mail</dt>
+                    <dd class="col-sm-8">@(profile.Email ?? "n/a")</dd>
+                </dl>
+            </div>
+        }
+
+        @if (boards.Count > 0)
+        {
+            <div class="mt-3">
+                <h6 class="text-muted">Verfügbare Boards</h6>
+                <ul class="list-group">
+                    @foreach (var board in boards)
+                    {
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>@board.Name</span>
+                            <span class="text-muted small">@board.ExternalBoardId (@(board.Ownership ?? "unbekannt"))</span>
+                        </li>
+                    }
+                </ul>
+            </div>
+        }
+        else if (profile is not null)
+        {
+            <div class="alert alert-warning mt-3 mb-0 small">
+                <strong>Boards konnten nicht geladen werden.</strong>
+                Der API-Zugriff auf die Board-Verwaltung ist mit dem aktuellen Token eingeschränkt.
+                Boards können manuell über die Board-Verwaltung hinzugefügt werden.
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string? connectionStatus;
+    private string statusAlertClass = "alert-info";
+    private const string StorageKeyEmail = "autodarts.email";
+    private const string StorageKeyRefreshToken = "autodarts.refreshToken";
+    private AutodartsProfileDto? profile;
+    private List<AutodartsBoardInfoDto> boards = new();
+    private bool rememberLogin = true;
+    private bool isLoading;
+    private bool sessionRestored;
+    private string? emailInput;
+    private string? passwordInput;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || sessionRestored) return;
+        sessionRestored = true;
+
+        await TryRestoreSessionAsync();
+        StateHasChanged();
+    }
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await LoginAsync();
+        }
+    }
+
+    private async Task LoginAsync()
+    {
+        if (string.IsNullOrWhiteSpace(emailInput) || string.IsNullOrWhiteSpace(passwordInput))
+        {
+            connectionStatus = "E-Mail und Passwort sind erforderlich.";
+            statusAlertClass = "alert-warning";
+            return;
+        }
+
+        isLoading = true;
+        connectionStatus = null;
+        StateHasChanged();
+
+        try
+        {
+            var response = await Api.LoginAutodartsAsync(emailInput, passwordInput);
+            profile = response.Profile;
+            boards = response.Boards.ToList();
+            connectionStatus = "Verbindung hergestellt";
+            statusAlertClass = "alert-success";
+
+            if (rememberLogin)
+            {
+                await LocalStorage.SetAsync(StorageKeyEmail, emailInput);
+            }
+        }
+        catch (Exception ex)
+        {
+            connectionStatus = ex.Message;
+            statusAlertClass = "alert-danger";
+            profile = null;
+            boards = new();
+        }
+        finally
+        {
+            isLoading = false;
+            passwordInput = null;
+        }
+    }
+
+    private async Task TryRestoreSessionAsync()
+    {
+        try
+        {
+            var status = await Api.GetAutodartsStatusAsync();
+            if (status.IsConnected && status.Profile is not null)
+            {
+                profile = status.Profile;
+                connectionStatus = "Sitzung wiederhergestellt";
+                statusAlertClass = "alert-success";
+
+                try { boards = (await Api.GetAutodartsBoardsAsync()).ToList(); }
+                catch { /* boards optional */ }
+            }
+
+            var stored = await LocalStorage.GetAsync<string>(StorageKeyEmail);
+            if (stored.Success && !string.IsNullOrWhiteSpace(stored.Value))
+            {
+                emailInput = stored.Value;
+            }
+        }
+        catch
+        {
+            // Server nicht erreichbar – kein Fehler anzeigen
+        }
+    }
+
+    private async Task LogoutAsync()
+    {
+        await LocalStorage.DeleteAsync(StorageKeyEmail);
+        await LocalStorage.DeleteAsync(StorageKeyRefreshToken);
+        profile = null;
+        boards = new();
+        connectionStatus = "Abgemeldet";
+        statusAlertClass = "alert-info";
+    }
+}

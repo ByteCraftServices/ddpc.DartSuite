@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ddpc.DartSuite.Api/ddpc.DartSuite.Api.csproj" />
+    <Project Path="src/ddpc.DartSuite.ApiClient/ddpc.DartSuite.ApiClient.csproj" />
+    <Project Path="src/ddpc.DartSuite.Application/ddpc.DartSuite.Application.csproj" />
+    <Project Path="src/ddpc.DartSuite.Domain/ddpc.DartSuite.Domain.csproj" />
+    <Project Path="src/ddpc.DartSuite.Infrastructure/ddpc.DartSuite.Infrastructure.csproj" />
+    <Project Path="src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ddpc.DartSuite.Application.Tests/ddpc.DartSuite.Application.Tests.csproj" />
+    <Project Path="tests/ddpc.DartSuite.Domain.Tests/ddpc.DartSuite.Domain.Tests.csproj" />
+    <Project Path="tests/ddpc.DartSuite.Infrastructure.Tests/ddpc.DartSuite.Infrastructure.Tests.csproj" />
+  </Folder>
+</Solution>
