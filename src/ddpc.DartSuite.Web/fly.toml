@@ -1,4 +1,4 @@
 [build]
   dockerfile = "Dockerfile"
   build-target = "build"
-  context = "./src/ddpc.Web"
+  context = "./src/ddpc.Dartsuite.Web"
