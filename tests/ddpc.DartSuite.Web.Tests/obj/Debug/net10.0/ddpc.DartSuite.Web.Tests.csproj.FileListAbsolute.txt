@@ -147,3 +147,4 @@ C:\Users\marti\repos\ddpc.DartSuite\tests\ddpc.DartSuite.Web.Tests\obj\Debug\net
 C:\Users\marti\repos\ddpc.DartSuite\tests\ddpc.DartSuite.Web.Tests\obj\Debug\net10.0\ddpc.DartSuite.Web.Tests.pdb
 C:\Users\marti\repos\ddpc.DartSuite\tests\ddpc.DartSuite.Web.Tests\obj\Debug\net10.0\ddpc.DartSuite.Web.Tests.genruntimeconfig.cache
 C:\Users\marti\repos\ddpc.DartSuite\tests\ddpc.DartSuite.Web.Tests\obj\Debug\net10.0\ref\ddpc.DartSuite.Web.Tests.dll
+C:\Users\marti\repos\ddpc.DartSuite\tests\ddpc.DartSuite.Web.Tests\bin\Debug\net10.0\appsettings.Test.json
