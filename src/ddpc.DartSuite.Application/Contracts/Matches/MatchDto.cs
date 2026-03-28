@@ -20,4 +20,5 @@ public sealed record MatchDto(
     bool IsBoardLocked,
     DateTimeOffset? StartedUtc,
     DateTimeOffset? FinishedUtc,
+    string Status = "Erstellt",
     string? ExternalMatchId = null);

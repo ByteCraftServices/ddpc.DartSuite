@@ -22,4 +22,7 @@ public sealed record UpdateTournamentRequest(
     int PlayersPerTeam = 1,
     int WinPoints = 2,
     int LegFactor = 1,
-    bool AreGameModesLocked = false);
+    bool AreGameModesLocked = false,
+    bool IsRegistrationOpen = false,
+    DateTimeOffset? RegistrationStartUtc = null,
+    DateTimeOffset? RegistrationEndUtc = null);

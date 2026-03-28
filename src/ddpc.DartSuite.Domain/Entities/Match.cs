@@ -21,6 +21,7 @@ public sealed class Match
     public DateTimeOffset? PlannedStartUtc { get; set; }
     public bool IsStartTimeLocked { get; set; }
     public bool IsBoardLocked { get; set; }
+    public MatchStatus Status { get; set; } = MatchStatus.Erstellt;
     public DateTimeOffset? StartedUtc { get; set; }
     public DateTimeOffset? FinishedUtc { get; set; }
     public string? ExternalMatchId { get; set; }
@@ -28,7 +29,29 @@ public sealed class Match
     /// <summary>Sentinel ID for bye slots.</summary>
     public static readonly Guid ByeParticipantId = Guid.Empty;
 
-    public bool IsBye => HomeParticipantId == ByeParticipantId || AwayParticipantId == ByeParticipantId;
+    public bool IsBye => Status == MatchStatus.WalkOver;
+
+    /// <summary>Recomputes Status from current field values (does not override WalkOver unless it's a bye).</summary>
+    public void RecomputeStatus()
+    {
+        // A bye is when exactly one participant slot is empty.
+        bool isBye = (HomeParticipantId == Guid.Empty) != (AwayParticipantId == Guid.Empty);
+        if (isBye)
+        {
+            Status = MatchStatus.WalkOver;
+            return;
+        }
+
+        if (Status == MatchStatus.WalkOver) return;
+        if (FinishedUtc is not null || WinnerParticipantId is not null)
+            Status = MatchStatus.Beendet;
+        else if (ExternalMatchId is not null || StartedUtc is not null)
+            Status = MatchStatus.Aktiv;
+        else if (PlannedStartUtc is not null)
+            Status = MatchStatus.Geplant;
+        else
+            Status = MatchStatus.Erstellt;
+    }
 
     public void ReportResult(int homeLegs, int awayLegs, int homeSets = 0, int awaySets = 0)
     {

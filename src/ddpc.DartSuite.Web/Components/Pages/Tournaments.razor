@@ -1,5 +1,4 @@
 @page "/tournaments"
-@rendermode InteractiveServer
 @using ddpc.DartSuite.Application.Contracts.Matches
 
 <PageTitle>Turniere</PageTitle>
@@ -138,7 +137,7 @@
                                         class="@(detailMatch.WinnerParticipantId == detailMatch.HomeParticipantId ? "text-success fw-bold" : "")" style="cursor:pointer;text-decoration:underline dotted"
                                         @onclick="() => OpenPlayerDetail(detailMatch.HomeParticipantId)">
                                         @(homeP?.DisplayName?.ToUpperInvariant() ?? "?")
-                                        @if (homeP?.IsAutodartsAccount == true) { <span class="ms-1" style="font-size:0.7em">🎯</span> }
+                                        @if (homeP?.IsAutodartsAccount == true) { <span class="autodarts-icon ms-1" style="font-size:0.7em"></span> }
                                     </h5>
                                     </div>
                                     <div class="col-auto text-center">
@@ -156,7 +155,7 @@
                                             class="@(detailMatch.WinnerParticipantId == detailMatch.AwayParticipantId ? "text-success fw-bold" : "")" style="cursor:pointer;text-decoration:underline dotted"
                                             @onclick="() => OpenPlayerDetail(detailMatch.AwayParticipantId)">
                                             @(awayP?.DisplayName?.ToUpperInvariant() ?? "?")
-                                            @if (awayP?.IsAutodartsAccount == true) { <span class="ms-1" style="font-size:0.7em">🎯</span> }
+                                            @if (awayP?.IsAutodartsAccount == true) { <span class="autodarts-icon ms-1" style="font-size:0.7em"></span> }
                                         </h5>
                                         </div>
                                     </div>
@@ -169,6 +168,22 @@
                                         @if (detailMatch.StartedUtc is not null)
                                         {
                                             <p class="small text-muted">▶ Gestartet: @detailMatch.StartedUtc.Value.LocalDateTime.ToString("dd.MM.yyyy HH:mm")</p>
+                                            var matchElapsed = (detailMatch.FinishedUtc ?? DateTimeOffset.UtcNow) - detailMatch.StartedUtc.Value;
+                                            var matchRound = roundSettings.FirstOrDefault(r => r.Phase == detailMatch.Phase && r.RoundNumber == detailMatch.Round);
+                                            <p class="small text-muted">⏱ @(detailMatch.FinishedUtc.HasValue ? "Spieldauer" : "Spielzeit"): @($"{(int)matchElapsed.TotalMinutes} min")
+                                                @if (detailMatch.FinishedUtc is null && matchRound is not null && matchRound.MatchDurationMinutes > 0)
+                                                {
+                                                    var remaining = matchRound.MatchDurationMinutes - (int)matchElapsed.TotalMinutes;
+                                                    @if (remaining > 0)
+                                                    {
+                                                        <span class="text-muted">(~@remaining min verbleibend)</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-danger">(+@(Math.Abs(remaining)) min über geplanter Dauer)</span>
+                                                    }
+                                                }
+                                            </p>
                                         }
                                         @if (assignedBoard is not null)
                                         {
@@ -183,7 +198,7 @@
                                                 {
                                                     <a href="https://play.autodarts.io/boards/@(assignedBoard.ExternalBoardId)/follow" target="_blank"
                                                            rel="noopener" class="btn btn-outline-primary btn-sm">
-                                                        🎯 Spiel verfolgen
+                                                        <span class="autodarts-icon"></span> Spiel verfolgen
                                                     </a>
                                                     <button class="btn btn-outline-secondary btn-sm" @onclick="() => SyncMatchFromExternalAsync(detailMatch)" disabled="@isSyncing">
                                                         @if (isSyncing) { <span class="spinner-border spinner-border-sm me-1"></span> }
@@ -240,6 +255,24 @@
                                         {
                                             <p class="mt-2">🏆 Gewinner: <strong
                                                 class="text-success">@ParticipantName(detailMatch.WinnerParticipantId)</strong></p>
+                                            }
+
+                                            @{
+                                                var homeNextMatch = GetNextMatchInfo(detailMatch, detailMatch.HomeParticipantId);
+                                                var awayNextMatch = GetNextMatchInfo(detailMatch, detailMatch.AwayParticipantId);
+                                            }
+                                            @if (homeNextMatch is not null || awayNextMatch is not null)
+                                            {
+                                                <div class="small text-muted mt-2">
+                                                    @if (homeNextMatch is not null)
+                                                    {
+                                                        <p class="mb-1">➡ @(homeP?.DisplayName?.ToUpperInvariant() ?? "?"): @homeNextMatch</p>
+                                                    }
+                                                    @if (awayNextMatch is not null)
+                                                    {
+                                                        <p class="mb-1">➡ @(awayP?.DisplayName?.ToUpperInvariant() ?? "?"): @awayNextMatch</p>
+                                                    }
+                                                </div>
                                             }
 
                                             <hr />
@@ -343,7 +376,7 @@
                                             <div class="modal-header">
                                                 <h5 class="modal-title">
                                                     @detailParticipant.DisplayName.ToUpperInvariant()
-                                                    @if (detailParticipant.IsAutodartsAccount) { <span class="ms-1" title="Autodarts">🎯</span> }
+                                                    @if (detailParticipant.IsAutodartsAccount) { <span class="autodarts-icon ms-1" title="Autodarts"></span> }
                                                     @if (detailParticipant.IsManager) { <span class="badge text-bg-warning ms-1">Spielleiter</span> }
                                                 </h5>
                                                 <button type="button" class="btn-close" @onclick="() => detailParticipant = null"></button>
@@ -373,7 +406,7 @@
 
                                                     <dl class="row mb-3">
                                                         <dt class="col-sm-4">Account</dt>
-                                                        <dd class="col-sm-8">@detailParticipant.AccountName @(detailParticipant.IsAutodartsAccount ? "🎯" : "(Lokal)")</dd>
+                                                        <dd class="col-sm-8">@detailParticipant.AccountName @if (detailParticipant.IsAutodartsAccount) { <span class="autodarts-icon"></span> } else { <span>(Lokal)</span> }</dd>
                                                         <dt class="col-sm-4">Setzposition</dt>
                                                         <dd class="col-sm-8">@detailParticipant.Seed</dd>
                                                         <dt class="col-sm-4">Gesamt</dt>
@@ -576,11 +609,35 @@
                                                     <span class="badge text-bg-secondary">@selectedTournament.Mode</span>
                                                     <span class="badge text-bg-info">@selectedTournament.Variant</span>
                                                     <span class="badge text-bg-warning">@selectedTournament.Status</span>
-                                                    <button
-                                                        class="btn btn-sm @(selectedTournament.IsLocked ? "btn-outline-success" : "btn-outline-danger")"
-                                                        @onclick="ToggleLockAsync" disabled="@isWorking">
-                                                        @(selectedTournament.IsLocked ? "🔓 Entsperren" : "🔒 Sperren")
-                                                    </button>
+                                                    @if (IsCurrentUserManager)
+                                                    {
+                                                        <div class="btn-group ms-1">
+                                                            <button class="btn btn-sm btn-outline-warning dropdown-toggle" data-bs-toggle="dropdown"
+                                                                    disabled="@isWorking" title="Status ändern">
+                                                                Status
+                                                            </button>
+                                                            <ul class="dropdown-menu">
+                                                                <li><button class="dropdown-item @(selectedTournament.Status == "Erstellt" ? "active" : "")"
+                                                                            @onclick='() => UpdateTournamentStatusAsync("Erstellt")'>Erstellt</button></li>
+                                                                <li><button class="dropdown-item @(selectedTournament.Status == "Geplant" ? "active" : "")"
+                                                                            @onclick='() => UpdateTournamentStatusAsync("Geplant")'>Geplant</button></li>
+                                                                <li><button class="dropdown-item @(selectedTournament.Status == "Gestartet" ? "active" : "")"
+                                                                            @onclick='() => UpdateTournamentStatusAsync("Gestartet")'>Gestartet</button></li>
+                                                                <li><button class="dropdown-item @(selectedTournament.Status == "Beendet" ? "active" : "")"
+                                                                            @onclick='() => UpdateTournamentStatusAsync("Beendet")'>Beendet</button></li>
+                                                                <li><hr class="dropdown-divider" /></li>
+                                                                <li><button class="dropdown-item text-danger @(selectedTournament.Status == "Abgebrochen" ? "active" : "")"
+                                                                            @onclick='() => UpdateTournamentStatusAsync("Abgebrochen")'>Abgebrochen</button></li>
+                                                            </ul>
+                                                        </div>
+                                                        <button
+                                                            class="btn btn-sm @(selectedTournament.IsLocked ? "btn-outline-success" : "btn-outline-danger")"
+                                                            @onclick="ToggleLockAsync" disabled="@isWorking">
+                                                            @(selectedTournament.IsLocked ? "🔓 Entsperren" : "🔒 Sperren")
+                                                        </button>
+                                                        <button class="btn btn-sm btn-outline-danger" @onclick="DeleteTournamentAsync"
+                                                                disabled="@isWorking" title="Turnier löschen">🗑</button>
+                                                    }
                                                 </div>
                                             </div>
                                             <div class="card-body">
@@ -597,13 +654,13 @@
                                                                     @if (selectedTournament.Mode == "GroupAndKnockout")
                                                                     {
                                                                         <li class="nav-item"><button class="nav-link @(activeTab == "groups" ? "active" : "")"
-                                                                                                         @onclick='() => activeTab = "groups"'>Gruppenphase</button></li>
+                                                                                                         @onclick='() => activeTab = "groups"'>Gruppenphase <span class="badge @PhaseBadgeCss("Group") ms-1">@PhaseBadgeText("Group")</span></button></li>
                                                                         }
                                                                         <li class="nav-item"><button class="nav-link @(activeTab == "knockout" ? "active" : "")"
-                                                                                                         @onclick='() => activeTab = "knockout"'>K.O.-Phase</button></li>
+                                                                                                         @onclick='() => activeTab = "knockout"'>K.O.-Phase <span class="badge @PhaseBadgeCss("Knockout") ms-1">@PhaseBadgeText("Knockout")</span></button></li>
                                                                             <li class="nav-item"><button class="nav-link @(activeTab == "schedule" ? "active" : "")"
                                                                                                          @onclick='() => activeTab = "schedule"'>Spielplan <span
-                                                                                class="badge text-bg-secondary ms-1">@ScheduledMatches.Count</span></button></li>
+                                                                                class="badge @ScheduleBadgeCss ms-1">@ScheduleBadgeText</span></button></li>
                                                                             </ul>
 
                                                                             @* ═══════ Tab: Allgemein ═══════ *@
@@ -673,6 +730,41 @@
                                                                                                disabled="@selectedTournament.IsLocked" />
                                                                                         <label class="form-check-label" for="editThirdPlace">Spiel um Platz 3</label>
                                                                                     </div>
+
+                                                                                    @* ─── Registration Settings ─── *@
+                                                                                    <h6 class="fw-semibold mt-3 mb-2">Registrierung</h6>
+                                                                                    <div class="form-check mb-2">
+                                                                                        <input class="form-check-input" type="checkbox" id="editRegistrationOpen" @bind="editIsRegistrationOpen"
+                                                                                               disabled="@selectedTournament.IsLocked" />
+                                                                                        <label class="form-check-label" for="editRegistrationOpen">Registrierung offen</label>
+                                                                                    </div>
+                                                                                    <div class="row g-2 mb-3">
+                                                                                        <div class="col-md-6">
+                                                                                            <label class="form-label small">Registrierung Start</label>
+                                                                                            <input type="datetime-local" class="form-control form-control-sm" @bind="editRegistrationStart"
+                                                                                                   disabled="@selectedTournament.IsLocked" />
+                                                                                        </div>
+                                                                                        <div class="col-md-6">
+                                                                                            <label class="form-label small">Registrierung Ende</label>
+                                                                                            <input type="datetime-local" class="form-control form-control-sm" @bind="editRegistrationEnd"
+                                                                                                   disabled="@selectedTournament.IsLocked" />
+                                                                                        </div>
+                                                                                    </div>
+
+                                                                                    @* ─── Tournament Link ─── *@
+                                                                                    @if (!string.IsNullOrEmpty(selectedTournament.JoinCode))
+                                                                                    {
+                                                                                        <div class="mb-3">
+                                                                                            <label class="form-label fw-semibold">Turnier-Link</label>
+                                                                                            <div class="input-group">
+                                                                                                <input type="text" class="form-control form-control-sm" readonly
+                                                                                                       value="@TournamentLink" />
+                                                                                                <button class="btn btn-outline-secondary btn-sm" @onclick="CopyTournamentLink">
+                                                                                                    📋 Kopieren
+                                                                                                </button>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    }
 
                                                                                     @if (editMode == "GroupAndKnockout")
                                                                                     {
@@ -775,7 +867,7 @@
                                                                                     {
                                                                                         <div class="alert alert-success py-2">@editSuccess</div>
                                                                                     }
-                                                                                    @if (!selectedTournament.IsLocked)
+                                                                                    @if (!selectedTournament.IsLocked && IsCurrentUserManager)
                                                                                     {
                                                                                         <button class="btn btn-primary" @onclick="SaveTournamentAsync" disabled="@isWorking">💾
                                                                                             Speichern</button>
@@ -804,7 +896,26 @@
                                                                                                             <tr>
                                                                                                                 <td><span role="button" @onclick="() => OpenBoardDetail(board)" class="text-decoration-none fw-semibold" style="cursor:pointer">@board.Name</span></td>
                                                                                                                 <td><span class="badge @BoardStatusBadge(board.Status)">@board.Status</span></td>
-                                                                                                                <td>@(string.IsNullOrEmpty(board.CurrentMatchLabel) ? "—" : board.CurrentMatchLabel)
+                                                                                                                <td>
+                                                                                                                    @if (!string.IsNullOrEmpty(board.CurrentMatchLabel))
+                                                                                                                    {
+                                                                                                                        var boardMatch = board.CurrentMatchId.HasValue
+                                                                                                                            ? matches.FirstOrDefault(m => m.Id == board.CurrentMatchId.Value)
+                                                                                                                            : null;
+                                                                                                                        @if (boardMatch is not null)
+                                                                                                                        {
+                                                                                                                            <span role="button" class="text-primary fw-semibold" style="cursor:pointer;text-decoration:underline dotted"
+                                                                                                                                  @onclick="() => OpenMatchDetail(boardMatch)"><span class="autodarts-icon"></span> @board.CurrentMatchLabel</span>
+                                                                                                                        }
+                                                                                                                        else
+                                                                                                                        {
+                                                                                                                            <span>@board.CurrentMatchLabel</span>
+                                                                                                                        }
+                                                                                                                    }
+                                                                                                                    else
+                                                                                                                    {
+                                                                                                                        <span>—</span>
+                                                                                                                    }
                                                                                                                 </td>
                                                                                                                 <td class="d-flex gap-1">
                                                                                                                     <a href="https://play.autodarts.io/boards/@(board.ExternalBoardId)/follow"
@@ -832,17 +943,31 @@
                                                                                             @if (!selectedTournament.IsLocked)
                                                                                             {
                                                                                                 <div class="row g-2 align-items-end mb-2">
-                                                                                                    <div class="col-md-3">
+                                                                                                    <div class="col-md-3 position-relative">
                                                                                                         <label class="form-label small mb-1">Anzeigename</label>
-                                                                                                        <input class="form-control" @bind="participantName" @bind:event="oninput"
-                                                                                                               placeholder="z.B. Max Mustermann" @onkeydown="HandleParticipantKeyAsync" />
+                                                                                                        <input class="form-control" value="@participantName" @oninput="OnParticipantNameInput"
+                                                                                                               placeholder="z.B. Max Mustermann" @onkeydown="HandleParticipantKeyAsync"
+                                                                                                               @onfocusout="() => { Task.Delay(200).ContinueWith(_ => InvokeAsync(() => { showParticipantSuggestions = false; StateHasChanged(); })); }" />
+                                                                                                        @if (showParticipantSuggestions && participantSuggestions.Any())
+                                                                                                        {
+                                                                                                            <div class="list-group position-absolute w-100 shadow-sm" style="z-index:1050; max-height:200px; overflow-y:auto; top:100%">
+                                                                                                                @foreach (var s in participantSuggestions)
+                                                                                                                {
+                                                                                                                    <button type="button" class="list-group-item list-group-item-action small py-1"
+                                                                                                                            @onmousedown="() => SelectParticipantSuggestion(s)" @onmousedown:preventDefault>
+                                                                                                                        @s.DisplayName <span class="text-muted">(@s.AccountName)</span>
+                                                                                                                        @if (s.IsAutodartsAccount) { <span class="autodarts-icon"></span> }
+                                                                                                                    </button>
+                                                                                                                }
+                                                                                                            </div>
+                                                                                                        }
                                                                                                     </div>
                                                                                                     <div class="col-md-2">
                                                                                                         <div class="form-check mb-0">
                                                                                                             <input class="form-check-input" type="checkbox" id="isAuto"
                                                                                                                    checked="@participantIsAutodarts"
                                                                                                                    @onchange="OnAutodartsCheckChanged" />
-                                                                                                            <label class="form-check-label small" for="isAuto">🎯 Autodarts</label>
+                                                                                                            <label class="form-check-label small" for="isAuto"><span class="autodarts-icon"></span> Autodarts</label>
                                                                                                         </div>
                                                                                                     </div>
                                                                                                     <div class="col-md-3">
@@ -879,7 +1004,7 @@
                                                                                                         <li class="list-group-item d-flex justify-content-between align-items-center">
                                                                                                             <span>
                                                                                                                 <span role="button" style="cursor:pointer;text-decoration:underline dotted" @onclick="() => OpenPlayerDetail(p.Id)">
-                                                                                                                    @if (p.IsAutodartsAccount) { <span title="Autodarts">🎯</span> }
+                                                                                                                    @if (p.IsAutodartsAccount) { <span class="autodarts-icon" title="Autodarts"></span> }
                                                                                                                     @p.DisplayName.ToUpperInvariant()
                                                                                                                 </span>
                                                                                                                 @if (p.IsManager)
@@ -1090,11 +1215,13 @@
                                                                                                                             </select>
                                                                                                                         </div>
                                                                                                                     </div>
-                                                                                                                    <div class="d-flex gap-2">
+                                                                                                                    <div class="d-flex gap-2 flex-wrap">
                                                                                                                         <button class="btn btn-primary btn-sm" @onclick="SaveRoundAsync" disabled="@isWorking">Runde
                                                                                                                             speichern</button>
                                                                                                                             <button class="btn btn-outline-secondary btn-sm" @onclick="ApplyRoundToAllAsync"
-                                                                                                                                    disabled="@isWorking">@(newRoundPhase == "Group" ? "Für Gruppenphase festlegen" : "Für K.O. Phase festlegen")</button>
+                                                                                                                                    disabled="@isWorking">Für alle Runden festlegen</button>
+                                                                                                                            <button class="btn btn-outline-secondary btn-sm" @onclick="ApplyRoundToSubsequentAsync"
+                                                                                                                                    disabled="@isWorking">Für alle nachfolgenden Runden festlegen</button>
                                                                                                                         </div>
                                                                                                                         @if (roundError is not null)
                                                                                                                         {
@@ -1109,7 +1236,7 @@
                                                                                                         @if (activeTab == "draw")
                                                                                                         {
                                                                                                             <div class="mb-3">
-                                                                                                                @if (!matches.Any() && participants.Count >= 2 && !selectedTournament.IsLocked)
+                                                                                                                @if (!matches.Any() && participants.Count >= 2 && !selectedTournament.IsLocked && IsCurrentUserManager)
                                                                                                                 {
                                                                                                                     <div class="d-flex align-items-center gap-3 mb-3">
                                                                                                                         @if (selectedTournament.Mode == "GroupAndKnockout")
@@ -1121,19 +1248,18 @@
                                                                                                                                 K.O.-Plan generieren</button>
                                                                                                                             </div>
                                                                                                                         }
-                                                                                                                        else if (matches.Any() && !HasPlayedMatches() && !selectedTournament.IsLocked)
+                                                                                                                        else if (matches.Any() && !selectedTournament.IsLocked && IsCurrentUserManager)
                                                                                                                         {
                                                                                                                             <div class="d-flex align-items-center gap-3 mb-3">
                                                                                                                                 <button class="btn btn-warning" @onclick="RegenerateMatchesAsync" disabled="@isWorking">🔄
                                                                                                                                     Turnierplan neu generieren</button>
                                                                                                                                     <small class="text-muted">Alle bestehenden Paarungen werden gelöscht.</small>
                                                                                                                                 </div>
-                                                                                                                            }
-                    else if (HasPlayedMatches())
-                                                                                                                            {
-                                                                                                                                <div class="alert alert-info py-2">Es wurden bereits Matches gespielt. Der Turnierplan kann nicht
-                                                                                                                                    mehr automatisch neu generiert werden.</div>
+                                                                                                                                @if (HasPlayedMatches())
+                                                                                                                                {
+                                                                                                                                    <div class="alert alert-warning py-2">⚠ Es wurden bereits Matches gespielt. Beim Neugenerieren werden alle Ergebnisse gelöscht.</div>
                                                                                                                                 }
+                                                                                                                            }
 
                                                                                                                                 @if (matches.Any())
                                                                                                                                 {
@@ -1141,7 +1267,7 @@
                                                                                                                                     <ul class="list-group">
                                                                                                                                         @foreach (var match in matches.Where(m => m.Round == 1).OrderBy(m => m.MatchNumber))
                                                                                                                                         {
-                                                                                                                                            var isBye = match.HomeParticipantId == Guid.Empty || match.AwayParticipantId == Guid.Empty;
+                                                                                                                                            var isBye = match.Status == "WalkOver";
                                                                                                                                             <li class="list-group-item @(isBye ? "list-group-item-light" : "")" style="cursor:pointer"
                                                                                                                                                 @onclick="() => OpenMatchDetail(match)">
                                                                                                                                                 <span class="text-muted small me-1">@MatchLabel(match)</span>
@@ -1308,7 +1434,7 @@
                                                                                                                                                 var isTarget = dropTargetMatchId == match.Id;
                                                                                                                                                 var isActive = match.WinnerParticipantId is null && match.FinishedUtc is null && match.BoardId is
                                                                                                                                                 not null;
-                                                                                                                                                var isBye = match.HomeParticipantId == Guid.Empty || match.AwayParticipantId == Guid.Empty;
+                                                                                                                                                var isBye = match.Status == "WalkOver";
                                                                                                                                                 <li class="list-group-item @(isTarget ? "border-primary border-2" : "") @(isActive ? "border-start border-success border-3" : "") @(isBye ? "list-group-item-light" : "")"
                                                                                                                                                     style="cursor:pointer; @(isTarget ? "background:rgba(13,110,253,.08)" : "")"
                                                                                                                                                     @ondragover:preventDefault @ondragover="() => dropTargetMatchId = match.Id"
@@ -1387,12 +1513,29 @@
                                                                                                                                             {
                                                                                                                                                 <div class="d-flex justify-content-between align-items-center mb-3">
                                                                                                                                                     <h6 class="fw-semibold mb-0">Spielplan — Chronologische Übersicht</h6>
-                                                                                                                                                    @if (matches.Any() && !selectedTournament.IsLocked &&
+                                                                                                                                                    @if (matches.Any() && !selectedTournament.IsLocked && IsCurrentUserManager &&
                                                                                                                                                                         !string.IsNullOrEmpty(selectedTournament.StartTime))
                                                                                                                                                     {
                                                                                                                                                         <button class="btn btn-primary btn-sm" @onclick="GenerateScheduleAsync" disabled="@isWorking">⏰
                                                                                                                                                             Spielplan generieren</button>
                                                                                                                                                         }
+                                                                                                                                                    </div>
+
+                                                                                                                                                    @* Spielplan Filters *@
+                                                                                                                                                    <div class="d-flex flex-wrap gap-3 align-items-center mb-3 small">
+                                                                                                                                                        <div class="form-check">
+                                                                                                                                                            <input class="form-check-input" type="checkbox" id="schedHideFinished" @bind="scheduleHideFinished" />
+                                                                                                                                                            <label class="form-check-label" for="schedHideFinished">Beendete ausblenden</label>
+                                                                                                                                                        </div>
+                                                                                                                                                        <div class="form-check">
+                                                                                                                                                            <input class="form-check-input" type="checkbox" id="schedNoBoard" @bind="scheduleShowNoBoard" />
+                                                                                                                                                            <label class="form-check-label" for="schedNoBoard">Nur ohne Board</label>
+                                                                                                                                                        </div>
+                                                                                                                                                        <select class="form-select form-select-sm" style="width:auto" @bind="scheduleStatusFilter">
+                                                                                                                                                            <option value="all">Alle Status</option>
+                                                                                                                                                            <option value="running">Laufende Spiele</option>
+                                                                                                                                                            <option value="upcoming">Anstehende Spiele</option>
+                                                                                                                                                        </select>
                                                                                                                                                     </div>
 
                                                                                                                                                     @* Board availability / drag source *@
@@ -1640,7 +1783,7 @@
                             <span class="badge text-bg-secondary">⛓️‍💥 Extension nicht verbunden</span>
                         }
                         <a href="https://play.autodarts.io/boards/@(detailBoard.ExternalBoardId)/follow" target="_blank"
-                           rel="noopener" class="btn btn-outline-primary btn-sm">🎯 Board verfolgen</a>
+                           rel="noopener" class="btn btn-outline-primary btn-sm"><span class="autodarts-icon"></span> Board verfolgen</a>
                     </div>
                     @if (currentMatch is not null)
                     {

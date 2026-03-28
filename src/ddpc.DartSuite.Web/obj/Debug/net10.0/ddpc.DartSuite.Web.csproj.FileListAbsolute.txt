@@ -70,7 +70,6 @@ C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\sco
 C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\scopedcss\Components\Layout\ReconnectModal.razor.rz.scp.css
 C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\scopedcss\bundle\ddpc.DartSuite.Web.styles.css
 C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\scopedcss\projectbundle\ddpc.DartSuite.Web.bundle.scp.css
-C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\compressed\bilduvuwdi-{0}-ay8jaqzaae-ay8jaqzaae.gz
 C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\compressed\kajo45kk5e-{0}-bqjiyaj88i-bqjiyaj88i.gz
 C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\compressed\us6bhdzlqu-{0}-c2jlpeoesf-c2jlpeoesf.gz
 C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\compressed\bo9l6wah4w-{0}-erw9l3u2r3-erw9l3u2r3.gz
@@ -118,8 +117,6 @@ C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\com
 C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\compressed\cfjvexd3jx-{0}-abdmv1u4y3-abdmv1u4y3.gz
 C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\compressed\pnlg6mnpgd-{0}-b9228eflpl-b9228eflpl.gz
 C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\compressed\6tpmizkkqf-{0}-2tj1sjhksk-2tj1sjhksk.gz
-C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\compressed\abcx9n2f0p-{0}-emby5obgqf-emby5obgqf.gz
-C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\compressed\hmsfy4p1td-{0}-emby5obgqf-emby5obgqf.gz
 C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\staticwebassets.build.json
 C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\staticwebassets.build.json.cache
 C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\staticwebassets.development.json
@@ -131,3 +128,6 @@ C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\ref
 C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\ddpc.DartSuite.Web.pdb
 C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\ddpc.DartSuite.Web.genruntimeconfig.cache
 C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\ref\ddpc.DartSuite.Web.dll
+C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\compressed\bilduvuwdi-{0}-3wziwcaztv-3wziwcaztv.gz
+C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\compressed\abcx9n2f0p-{0}-pwprbbybz2-pwprbbybz2.gz
+C:\Users\marti\repos\ddpc.DartSuite\src\ddpc.DartSuite.Web\obj\Debug\net10.0\compressed\hmsfy4p1td-{0}-pwprbbybz2-pwprbbybz2.gz

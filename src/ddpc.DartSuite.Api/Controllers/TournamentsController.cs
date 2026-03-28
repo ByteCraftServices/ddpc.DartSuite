@@ -73,6 +73,14 @@ public sealed class TournamentsController(ITournamentManagementService tournamen
         return Ok(await tournamentService.GetParticipantsAsync(tournamentId, cancellationToken));
     }
 
+    [HttpGet("participants/search")]
+    public async Task<ActionResult<IReadOnlyList<ParticipantDto>>> SearchParticipants([FromQuery] string q, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(q) || q.Length < 2)
+            return Ok(Array.Empty<ParticipantDto>());
+        return Ok(await tournamentService.SearchParticipantsAsync(q, cancellationToken));
+    }
+
     [HttpPost("{tournamentId:guid}/participants")]
     public async Task<ActionResult<ParticipantDto>> AddParticipant(Guid tournamentId, [FromBody] AddParticipantRequest request, CancellationToken cancellationToken)
     {
@@ -150,8 +158,29 @@ public sealed class TournamentsController(ITournamentManagementService tournamen
     [HttpPatch("{tournamentId:guid}/status")]
     public async Task<ActionResult<TournamentDto>> UpdateStatus(Guid tournamentId, [FromQuery] string status, CancellationToken cancellationToken)
     {
-        var result = await tournamentService.UpdateStatusAsync(tournamentId, status, cancellationToken);
-        return result is null ? NotFound() : Ok(result);
+        try
+        {
+            var result = await tournamentService.UpdateStatusAsync(tournamentId, status, cancellationToken);
+            return result is null ? NotFound() : Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+    }
+
+    [HttpDelete("{tournamentId:guid}")]
+    public async Task<IActionResult> DeleteTournament(Guid tournamentId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var deleted = await tournamentService.DeleteTournamentAsync(tournamentId, cancellationToken);
+            return deleted ? NoContent() : NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     // ─── Teams ───

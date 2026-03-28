@@ -1,0 +1,809 @@
+@page "/matches"
+@using ddpc.DartSuite.Application.Contracts.Boards
+@using ddpc.DartSuite.Application.Contracts.Matches
+@using ddpc.DartSuite.Application.Contracts.Tournaments
+@inject DartSuiteApiService Api
+@inject AppStateService AppState
+@inject NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>Matches</PageTitle>
+
+<h1 class="mb-3">Matches</h1>
+
+@if (AppState.SelectedTournament is null)
+{
+    <div class="alert alert-info">Bitte wählen Sie ein Turnier in der Kopfzeile aus.</div>
+}
+else
+{
+    <div class="mb-3">
+        <span class="badge @StatusBadgeClass(AppState.SelectedTournament.Status) me-2">@AppState.SelectedTournament.Status</span>
+        <strong>@AppState.SelectedTournament.Name</strong>
+    </div>
+
+    @* ─── Filters ─── *@
+    <div class="d-flex flex-wrap gap-2 align-items-center mb-3 small filter-bar">
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="hideFinished" @bind="hideFinished" />
+            <label class="form-check-label" for="hideFinished">Beendete ausblenden</label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="hideTbd" @bind="hideTbd" />
+            <label class="form-check-label" for="hideTbd">TBD ausblenden</label>
+        </div>
+        <select class="form-select form-select-sm" style="width:auto" @bind="statusFilter">
+            <option value="all">Alle Status</option>
+            <option value="running">Laufende Spiele</option>
+            <option value="upcoming">Anstehende Spiele</option>
+            <option value="inactive">Inaktive Spiele</option>
+        </select>
+        <select class="form-select form-select-sm" style="width:auto" @bind="phaseFilter">
+            <option value="all">Alle Phasen</option>
+            <option value="Group">Gruppenphase</option>
+            <option value="Knockout">K.O.-Phase</option>
+        </select>
+        <input type="text" class="form-control form-control-sm" style="width:200px;min-width:120px"
+               placeholder="Spieler suchen…"
+               @bind="searchText" @bind:event="oninput" />
+    </div>
+
+    @* ─── Actions toolbar ─── *@
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <button class="btn btn-outline-secondary btn-sm" @onclick="SelectAll"
+                disabled="@(!FilteredMatches.Any())">Alle auswählen</button>
+        <button class="btn btn-outline-warning btn-sm" @onclick="SelectInactive"
+                disabled="@(!matches.Any(m => m.Status == "Inaktiv"))">Inaktive auswählen</button>
+        <button class="btn btn-outline-danger btn-sm" @onclick="DeselectAll"
+                disabled="@(!selectedMatchIds.Any())">Auswahl aufheben</button>
+        @if (selectedMatchIds.Any())
+        {
+            <button class="btn btn-danger btn-sm" @onclick="BulkResetAsync">
+                Auswahl zurücksetzen (@selectedMatchIds.Count)
+            </button>
+        }
+        <div class="ms-auto d-flex flex-wrap gap-2">
+            <button class="btn btn-outline-info btn-sm" @onclick="RunCleanupAsync" disabled="@isCleanupRunning">
+                @if (isCleanupRunning) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                Auto-Cleanup
+            </button>
+            <button class="btn btn-outline-info btn-sm" @onclick="CheckExternalAsync" disabled="@isCheckingExternal">
+                @if (isCheckingExternal) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                ExternalIDs prüfen
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(actionMessage))
+    {
+        <div class="alert @(actionIsError ? "alert-danger" : "alert-success") py-2 d-flex justify-content-between align-items-center">
+            <span>@actionMessage</span>
+            <button type="button" class="btn-close" @onclick="() => actionMessage = null"></button>
+        </div>
+    }
+
+    @if (FilteredMatches.Any())
+    {
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th style="width:2rem">
+                            <input type="checkbox" class="form-check-input"
+                                   checked="@IsAllFilteredSelected()" @onchange="ToggleSelectAllFiltered" />
+                        </th>
+                        <th style="width:5rem" class="d-none d-md-table-cell">Uhrzeit</th>
+                        <th style="width:3.5rem">Match</th>
+                        <th>Heim</th>
+                        <th style="width:3rem" class="text-center">Erg.</th>
+                        <th>Gast</th>
+                        <th class="d-none d-md-table-cell">Board</th>
+                        <th style="width:5rem">Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var match in FilteredMatches)
+                    {
+                        var assignedBoard = boards.FirstOrDefault(b => b.Id == match.BoardId);
+                        var isDone = match.FinishedUtc is not null;
+                        var isRunning = match.StartedUtc is not null && match.FinishedUtc is null;
+                        var isInactive = match.Status == "Inaktiv";
+                        var isSelected = selectedMatchIds.Contains(match.Id);
+                        <tr class="@(isDone ? "table-light text-muted" : "") @(isRunning ? "table-info" : "") @(isInactive ? "table-warning" : "") @(isSelected ? "table-active" : "")">
+                            <td @onclick:stopPropagation>
+                                <input type="checkbox" class="form-check-input"
+                                       checked="@isSelected" @onchange="() => ToggleSelect(match.Id)" />
+                            </td>
+                            <td class="small d-none d-md-table-cell" @onclick="() => OpenMatchDetail(match)" style="cursor:pointer">
+                                @if (match.PlannedStartUtc is not null)
+                                {
+                                    @match.PlannedStartUtc.Value.LocalDateTime.ToString("HH:mm")
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td @onclick="() => OpenMatchDetail(match)" style="cursor:pointer">
+                                <span class="badge text-bg-secondary">@MatchLabel(match)</span>
+                            </td>
+                            <td class="@(match.WinnerParticipantId == match.HomeParticipantId ? "fw-bold text-success" : "")"
+                                @onclick="() => OpenMatchDetail(match)" style="cursor:pointer">
+                                @ParticipantName(match.HomeParticipantId)
+                            </td>
+                            <td class="text-center small" @onclick="() => OpenMatchDetail(match)" style="cursor:pointer">
+                                @if (isDone || isRunning)
+                                {
+                                    <span>@FormatScore(match)</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">vs</span>
+                                }
+                            </td>
+                            <td class="@(match.WinnerParticipantId == match.AwayParticipantId ? "fw-bold text-success" : "")"
+                                @onclick="() => OpenMatchDetail(match)" style="cursor:pointer">
+                                @ParticipantName(match.AwayParticipantId)
+                            </td>
+                            <td class="d-none d-md-table-cell" @onclick="() => OpenMatchDetail(match)" style="cursor:pointer">
+                                @if (assignedBoard is not null)
+                                {
+                                    <span class="badge text-bg-success">@assignedBoard.Name</span>
+                                }
+                                else if (!isDone)
+                                {
+                                    <span class="badge text-bg-warning">⚠ kein Board</span>
+                                }
+                            </td>
+                            <td @onclick="() => OpenMatchDetail(match)" style="cursor:pointer">
+                                @MatchStatusBadgeHtml(match)
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="text-muted small mt-2">
+            @FilteredMatches.Count von @matches.Count Matches angezeigt
+            @if (selectedMatchIds.Any())
+            {
+                <span>— @selectedMatchIds.Count ausgewählt</span>
+            }
+        </div>
+    }
+    else if (matches.Any())
+    {
+        <p class="text-muted">Keine Matches entsprechen den aktuellen Filtern.</p>
+    }
+    else
+    {
+        <p class="text-muted">Noch keine Matches vorhanden. Erstellen Sie zuerst den Spielplan im Turnier.</p>
+    }
+}
+
+@* ─── Match Detail / Edit Modal ─── *@
+@if (detailMatch is not null)
+{
+    var homeP = participants.FirstOrDefault(p => p.Id == detailMatch.HomeParticipantId);
+    var awayP = participants.FirstOrDefault(p => p.Id == detailMatch.AwayParticipantId);
+    var round = roundSettings.FirstOrDefault(r => r.Phase == detailMatch.Phase && r.RoundNumber == detailMatch.Round);
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="CloseModal">
+        <div class="modal-dialog modal-dialog-centered modal-lg" @onclick:stopPropagation>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Match Details — @MatchLabel(detailMatch)</h5>
+                    <button type="button" class="btn-close" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-3">
+                        <h5>
+                            <strong>@(homeP?.DisplayName ?? "TBD")</strong>
+                            <span class="text-muted mx-2">vs</span>
+                            <strong>@(awayP?.DisplayName ?? "TBD")</strong>
+                        </h5>
+                    </div>
+
+                    @if (!isEditing)
+                    {
+                        @* ─── Read-only view ─── *@
+                        <dl class="row mb-0">
+                            <dt class="col-sm-4">Status</dt>
+                            <dd class="col-sm-8"><span class="badge @MatchStatusBadgeCss(detailMatch)">@MatchStatusText(detailMatch)</span></dd>
+                            <dt class="col-sm-4">Ergebnis</dt>
+                            <dd class="col-sm-8">@FormatScore(detailMatch)</dd>
+                            <dt class="col-sm-4">Phase</dt>
+                            <dd class="col-sm-8">@(detailMatch.Phase == "Group" ? "Gruppenphase" : "K.O.-Phase") — Runde @detailMatch.Round</dd>
+                            @if (round is not null)
+                            {
+                                <dt class="col-sm-4">Spielmodus</dt>
+                                <dd class="col-sm-8">@round.BaseScore @round.OutMode | @(round.GameMode == "Sets" ? $"{round.Sets} Sets / {round.Legs} Legs" : $"{round.Legs} Legs")</dd>
+                            }
+                            <dt class="col-sm-4">Board</dt>
+                            <dd class="col-sm-8">
+                                @{ var board = boards.FirstOrDefault(b => b.Id == detailMatch.BoardId); }
+                                @if (board is not null) { <span>@board.Name</span> } else { <span class="text-muted">Nicht zugewiesen</span> }
+                            </dd>
+                            <dt class="col-sm-4">Board gesperrt</dt>
+                            <dd class="col-sm-8">@(detailMatch.IsBoardLocked ? "Ja" : "Nein")</dd>
+                            <dt class="col-sm-4">Zeit gesperrt</dt>
+                            <dd class="col-sm-8">@(detailMatch.IsStartTimeLocked ? "Ja" : "Nein")</dd>
+                            @if (detailMatch.WinnerParticipantId.HasValue)
+                            {
+                                <dt class="col-sm-4">Gewinner</dt>
+                                <dd class="col-sm-8 fw-bold text-success">@ParticipantName(detailMatch.WinnerParticipantId.Value)</dd>
+                            }
+                            @if (detailMatch.PlannedStartUtc.HasValue)
+                            {
+                                <dt class="col-sm-4">Geplant</dt>
+                                <dd class="col-sm-8">@detailMatch.PlannedStartUtc.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</dd>
+                            }
+                            @if (detailMatch.StartedUtc.HasValue)
+                            {
+                                <dt class="col-sm-4">Gestartet</dt>
+                                <dd class="col-sm-8">@detailMatch.StartedUtc.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</dd>
+                            }
+                            @if (detailMatch.FinishedUtc.HasValue)
+                            {
+                                <dt class="col-sm-4">Beendet</dt>
+                                <dd class="col-sm-8">@detailMatch.FinishedUtc.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</dd>
+                            }
+                            @if (round is not null && round.MatchDurationMinutes > 0)
+                            {
+                                <dt class="col-sm-4">Geplante Dauer</dt>
+                                <dd class="col-sm-8">@round.MatchDurationMinutes min</dd>
+                            }
+                            @if (detailMatch.StartedUtc.HasValue)
+                            {
+                                var elapsed = (detailMatch.FinishedUtc ?? DateTimeOffset.UtcNow) - detailMatch.StartedUtc.Value;
+                                <dt class="col-sm-4">@(detailMatch.FinishedUtc.HasValue ? "Spieldauer" : "Spielzeit")</dt>
+                                <dd class="col-sm-8">
+                                    @($"{(int)elapsed.TotalMinutes} min")
+                                    @if (detailMatch.FinishedUtc is null && round is not null && round.MatchDurationMinutes > 0)
+                                    {
+                                        var remaining = round.MatchDurationMinutes - (int)elapsed.TotalMinutes;
+                                        @if (remaining > 0)
+                                        {
+                                            <span class="text-muted ms-2">(~@remaining min verbleibend)</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-danger ms-2">(+@(Math.Abs(remaining)) min über geplanter Dauer)</span>
+                                        }
+                                    }
+                                </dd>
+                            }
+                        </dl>
+                        <div class="d-flex flex-wrap gap-2 justify-content-center mt-3">
+                            <button class="btn btn-primary btn-sm" @onclick="StartEditing">Bearbeiten</button>
+                            <button class="btn btn-outline-primary btn-sm" @onclick="GoToTournamentMatch">Im Turnier öffnen →</button>
+                        </div>
+                    }
+                    else
+                    {
+                        @* ─── Edit view ─── *@
+                        <div class="row g-3">
+                            <div class="col-sm-6">
+                                <label class="form-label small">Status</label>
+                                <select class="form-select form-select-sm" @bind="editStatus">
+                                    <option value="Erstellt">Erstellt</option>
+                                    <option value="Geplant">Geplant</option>
+                                    <option value="Aktiv">Aktiv</option>
+                                    <option value="Beendet">Beendet</option>
+                                    <option value="Inaktiv">Inaktiv</option>
+                                    <option value="WalkOver">WalkOver</option>
+                                </select>
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label small">Board</label>
+                                <select class="form-select form-select-sm" @bind="editBoardId">
+                                    <option value="">— kein Board —</option>
+                                    @foreach (var b in boards)
+                                    {
+                                        <option value="@b.Id">@b.Name</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-6 col-sm-3">
+                                <label class="form-label small">Home Legs</label>
+                                <input type="number" class="form-control form-control-sm" min="0" @bind="editHomeLegs" />
+                            </div>
+                            <div class="col-6 col-sm-3">
+                                <label class="form-label small">Away Legs</label>
+                                <input type="number" class="form-control form-control-sm" min="0" @bind="editAwayLegs" />
+                            </div>
+                            <div class="col-6 col-sm-3">
+                                <label class="form-label small">Home Sets</label>
+                                <input type="number" class="form-control form-control-sm" min="0" @bind="editHomeSets" />
+                            </div>
+                            <div class="col-6 col-sm-3">
+                                <label class="form-label small">Away Sets</label>
+                                <input type="number" class="form-control form-control-sm" min="0" @bind="editAwaySets" />
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label small">Gewinner</label>
+                                <select class="form-select form-select-sm" @bind="editWinnerId">
+                                    <option value="">— kein Gewinner —</option>
+                                    <option value="@detailMatch.HomeParticipantId">@(homeP?.DisplayName ?? "Home")</option>
+                                    <option value="@detailMatch.AwayParticipantId">@(awayP?.DisplayName ?? "Away")</option>
+                                </select>
+                            </div>
+                            <div class="col-6 col-sm-3">
+                                <div class="form-check mt-4">
+                                    <input class="form-check-input" type="checkbox" id="editBoardLocked" @bind="editIsBoardLocked" />
+                                    <label class="form-check-label small" for="editBoardLocked">Board gesperrt</label>
+                                </div>
+                            </div>
+                            <div class="col-6 col-sm-3">
+                                <div class="form-check mt-4">
+                                    <input class="form-check-input" type="checkbox" id="editTimeLocked" @bind="editIsStartTimeLocked" />
+                                    <label class="form-check-label small" for="editTimeLocked">Zeit gesperrt</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(editError))
+                        {
+                            <div class="alert alert-danger py-1 mt-2 small">@editError</div>
+                        }
+
+                        <div class="d-flex flex-wrap gap-2 justify-content-center mt-3">
+                            <button class="btn btn-success btn-sm" @onclick="SaveMatchAsync" disabled="@isSaving">
+                                @if (isSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                Speichern
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="CancelEditing">Abbrechen</button>
+                            <button class="btn btn-outline-danger btn-sm" @onclick="ResetSingleMatchAsync">Zurücksetzen</button>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "matchId")]
+    public string? QueryMatchId { get; set; }
+
+    private List<MatchDto> matches = [];
+    private List<ParticipantDto> participants = [];
+    private List<TournamentRoundDto> roundSettings = [];
+    private List<BoardDto> boards = [];
+    private MatchDto? detailMatch;
+    private Timer? _autoRefreshTimer;
+
+    // Selection
+    private HashSet<Guid> selectedMatchIds = [];
+
+    // Filters
+    private bool hideFinished;
+    private bool hideTbd;
+    private string statusFilter = "all";
+    private string phaseFilter = "all";
+    private string searchText = "";
+
+    // Cleanup state
+    private bool isCleanupRunning;
+    private bool isCheckingExternal;
+    private string? actionMessage;
+    private bool actionIsError;
+
+    // Edit state
+    private bool isEditing;
+    private bool isSaving;
+    private string? editError;
+    private string editStatus = "";
+    private string editBoardId = "";
+    private int editHomeLegs;
+    private int editAwayLegs;
+    private int editHomeSets;
+    private int editAwaySets;
+    private string editWinnerId = "";
+    private bool editIsBoardLocked;
+    private bool editIsStartTimeLocked;
+
+    private List<MatchDto> FilteredMatches
+    {
+        get
+        {
+            var query = matches.AsEnumerable();
+
+            if (hideTbd)
+                query = query.Where(m => m.HomeParticipantId != Guid.Empty && m.AwayParticipantId != Guid.Empty);
+
+            if (hideFinished)
+                query = query.Where(m => m.FinishedUtc is null);
+
+            query = statusFilter switch
+            {
+                "running" => query.Where(m => m.StartedUtc is not null && m.FinishedUtc is null),
+                "upcoming" => query.Where(m => m.StartedUtc is null && m.FinishedUtc is null),
+                "inactive" => query.Where(m => m.Status == "Inaktiv"),
+                _ => query
+            };
+
+            if (phaseFilter != "all")
+                query = query.Where(m => m.Phase == phaseFilter);
+
+            if (!string.IsNullOrWhiteSpace(searchText))
+            {
+                var term = searchText.Trim();
+                query = query.Where(m =>
+                    ParticipantName(m.HomeParticipantId).Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                    ParticipantName(m.AwayParticipantId).Contains(term, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return query
+                .OrderBy(m => m.PlannedStartUtc ?? DateTimeOffset.MaxValue)
+                .ThenBy(m => m.Phase == "Group" ? 0 : 1)
+                .ThenBy(m => m.Round)
+                .ThenBy(m => m.MatchNumber)
+                .ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        AppState.OnChange += OnAppStateChanged;
+        await LoadDataAsync();
+
+        if (!string.IsNullOrEmpty(QueryMatchId) && Guid.TryParse(QueryMatchId, out var qMatchId))
+        {
+            var found = matches.FirstOrDefault(m => m.Id == qMatchId);
+            if (found is not null)
+                detailMatch = found;
+        }
+
+        _autoRefreshTimer = new Timer(OnAutoRefresh, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+    }
+
+    private async void OnAppStateChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadDataAsync();
+            StateHasChanged();
+        });
+    }
+
+    private async void OnAutoRefresh(object? _)
+    {
+        if (AppState.SelectedTournament is null) return;
+        try
+        {
+            matches = (await Api.GetMatchesAsync(AppState.SelectedTournament.Id)).ToList();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* ignore refresh errors */ }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        if (AppState.SelectedTournament is not null)
+        {
+            var id = AppState.SelectedTournament.Id;
+            matches = (await Api.GetMatchesAsync(id)).ToList();
+            participants = (await Api.GetParticipantsAsync(id)).ToList();
+            roundSettings = (await Api.GetRoundsAsync(id)).ToList();
+            boards = (await Api.GetBoardsAsync()).ToList();
+        }
+        else
+        {
+            matches = [];
+            participants = [];
+            roundSettings = [];
+            boards = [];
+        }
+    }
+
+    // ─── Selection ───
+
+    private void ToggleSelect(Guid matchId)
+    {
+        if (!selectedMatchIds.Remove(matchId))
+            selectedMatchIds.Add(matchId);
+    }
+
+    private void SelectAll()
+    {
+        foreach (var m in FilteredMatches)
+            selectedMatchIds.Add(m.Id);
+    }
+
+    private void SelectInactive()
+    {
+        foreach (var m in matches.Where(m => m.Status == "Inaktiv"))
+            selectedMatchIds.Add(m.Id);
+    }
+
+    private void DeselectAll() => selectedMatchIds.Clear();
+
+    private bool IsAllFilteredSelected()
+    {
+        var filtered = FilteredMatches;
+        return filtered.Count > 0 && filtered.All(m => selectedMatchIds.Contains(m.Id));
+    }
+
+    private void ToggleSelectAllFiltered()
+    {
+        if (IsAllFilteredSelected())
+        {
+            foreach (var m in FilteredMatches)
+                selectedMatchIds.Remove(m.Id);
+        }
+        else
+        {
+            foreach (var m in FilteredMatches)
+                selectedMatchIds.Add(m.Id);
+        }
+    }
+
+    // ─── Bulk actions ───
+
+    private async Task BulkResetAsync()
+    {
+        if (!selectedMatchIds.Any()) return;
+        try
+        {
+            actionMessage = null;
+            var result = await Api.BatchResetMatchesAsync(selectedMatchIds.ToList());
+            actionMessage = $"{result.Count} Matches wurden zurückgesetzt.";
+            actionIsError = false;
+            selectedMatchIds.Clear();
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            actionMessage = $"Fehler: {ex.Message}";
+            actionIsError = true;
+        }
+    }
+
+    // ─── Auto-cleanup ───
+
+    private async Task RunCleanupAsync()
+    {
+        if (AppState.SelectedTournament is null) return;
+        isCleanupRunning = true;
+        try
+        {
+            var result = await Api.CleanupStaleMatchesAsync(AppState.SelectedTournament.Id, 120);
+            actionMessage = result.Count > 0
+                ? $"{result.Count} veraltete Matches wurden zurückgesetzt."
+                : "Keine veralteten Matches gefunden.";
+            actionIsError = false;
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            actionMessage = $"Cleanup-Fehler: {ex.Message}";
+            actionIsError = true;
+        }
+        finally
+        {
+            isCleanupRunning = false;
+        }
+    }
+
+    private async Task CheckExternalAsync()
+    {
+        if (AppState.SelectedTournament is null) return;
+        isCheckingExternal = true;
+        try
+        {
+            var result = await Api.CheckExternalMatchesAsync(AppState.SelectedTournament.Id);
+            actionMessage = result.Count > 0
+                ? $"{result.Count} Matches auf Inaktiv gesetzt (ExternalMatchId ungültig)."
+                : "Alle ExternalMatchIds sind gültig.";
+            actionIsError = false;
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            actionMessage = $"Prüfungsfehler: {ex.Message}";
+            actionIsError = true;
+        }
+        finally
+        {
+            isCheckingExternal = false;
+        }
+    }
+
+    // ─── Detail modal ───
+
+    private void OpenMatchDetail(MatchDto match)
+    {
+        detailMatch = match;
+        isEditing = false;
+        editError = null;
+    }
+
+    private void CloseModal()
+    {
+        detailMatch = null;
+        isEditing = false;
+    }
+
+    private void StartEditing()
+    {
+        if (detailMatch is null) return;
+        editStatus = detailMatch.Status;
+        editBoardId = detailMatch.BoardId?.ToString() ?? "";
+        editHomeLegs = detailMatch.HomeLegs;
+        editAwayLegs = detailMatch.AwayLegs;
+        editHomeSets = detailMatch.HomeSets;
+        editAwaySets = detailMatch.AwaySets;
+        editWinnerId = detailMatch.WinnerParticipantId?.ToString() ?? "";
+        editIsBoardLocked = detailMatch.IsBoardLocked;
+        editIsStartTimeLocked = detailMatch.IsStartTimeLocked;
+        editError = null;
+        isEditing = true;
+    }
+
+    private void CancelEditing()
+    {
+        isEditing = false;
+        editError = null;
+    }
+
+    private async Task SaveMatchAsync()
+    {
+        if (detailMatch is null) return;
+        isSaving = true;
+        editError = null;
+        try
+        {
+            Guid? boardId = Guid.TryParse(editBoardId, out var bid) ? bid : null;
+            Guid? winnerId = Guid.TryParse(editWinnerId, out var wid) ? wid : null;
+
+            var request = new UpdateMatchRequest(
+                detailMatch.Id, boardId,
+                editHomeLegs, editAwayLegs, editHomeSets, editAwaySets,
+                editStatus, editIsStartTimeLocked, editIsBoardLocked, winnerId);
+
+            var updated = await Api.UpdateMatchAsync(request);
+            if (updated is not null)
+            {
+                detailMatch = updated;
+                // Update in local list
+                var idx = matches.FindIndex(m => m.Id == updated.Id);
+                if (idx >= 0) matches[idx] = updated;
+            }
+            isEditing = false;
+        }
+        catch (Exception ex)
+        {
+            editError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task ResetSingleMatchAsync()
+    {
+        if (detailMatch is null) return;
+        isSaving = true;
+        editError = null;
+        try
+        {
+            var reset = await Api.ResetMatchAsync(detailMatch.Id);
+            if (reset is not null)
+            {
+                detailMatch = reset;
+                var idx = matches.FindIndex(m => m.Id == reset.Id);
+                if (idx >= 0) matches[idx] = reset;
+            }
+            isEditing = false;
+        }
+        catch (Exception ex)
+        {
+            editError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void GoToTournamentMatch()
+    {
+        if (detailMatch is not null)
+            Nav.NavigateTo($"/tournaments?matchId={detailMatch.Id}");
+    }
+
+    // ─── Label Helpers ───
+
+    private string MatchLabel(MatchDto m)
+    {
+        if (m.Phase == "Group")
+        {
+            var groupLetter = ((char)('A' + (m.GroupNumber ?? 1) - 1)).ToString();
+            var matchesInGroup = matches
+                .Where(x => x.Phase == "Group" && x.GroupNumber == m.GroupNumber)
+                .OrderBy(x => x.Round).ThenBy(x => x.MatchNumber)
+                .ToList();
+            var idx = matchesInGroup.IndexOf(m) + 1;
+            return $"{groupLetter}{idx}";
+        }
+
+        var koMatches = matches.Where(x => x.Phase == "Knockout").ToList();
+        var maxRound = koMatches.Select(x => x.Round).DefaultIfEmpty(1).Max();
+        var fromEnd = maxRound - m.Round;
+        var prefix = fromEnd switch
+        {
+            0 => "F",
+            1 => "SF",
+            2 => "QF",
+            3 => "8F",
+            4 => "16F",
+            _ => $"R{m.Round}"
+        };
+        if (prefix == "F") return "F";
+        var matchesInRound = koMatches.Where(x => x.Round == m.Round).OrderBy(x => x.MatchNumber).ToList();
+        return $"{prefix}{matchesInRound.IndexOf(m) + 1}";
+    }
+
+    private string ParticipantName(Guid id)
+    {
+        if (id == Guid.Empty) return "Freilos";
+        return participants.FirstOrDefault(p => p.Id == id)?.DisplayName ?? "TBD";
+    }
+
+    private string FormatScore(MatchDto match)
+    {
+        var isSetMode = roundSettings
+            .FirstOrDefault(r => r.Phase == match.Phase && r.RoundNumber == match.Round)?.GameMode == "Sets";
+        if (isSetMode)
+            return $"{match.HomeSets}:{match.AwaySets} ({match.HomeLegs}:{match.AwayLegs})";
+        return $"{match.HomeLegs}:{match.AwayLegs}";
+    }
+
+    private static string StatusBadgeClass(string status) => status switch
+    {
+        "Erstellt" => "bg-secondary",
+        "Geplant" => "bg-warning text-dark",
+        "Gestartet" => "bg-success",
+        "Beendet" => "bg-primary",
+        "Abgebrochen" => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private static string MatchStatusBadgeCss(MatchDto m) => m.Status switch
+    {
+        "Beendet" => "bg-primary",
+        "Aktiv" => "bg-success",
+        "Inaktiv" => "bg-warning text-dark",
+        "Geplant" => "bg-info text-dark",
+        "WalkOver" => "bg-dark",
+        _ => "bg-secondary"
+    };
+
+    private static string MatchStatusText(MatchDto m) => m.Status switch
+    {
+        "Beendet" => "Beendet",
+        "Aktiv" => "Laufend",
+        "Inaktiv" => "Inaktiv",
+        "Geplant" => "Geplant",
+        "WalkOver" => "WalkOver",
+        _ => "Anstehend"
+    };
+
+    private static RenderFragment MatchStatusBadgeHtml(MatchDto m) => m.Status switch
+    {
+        "Beendet" => @<span class="badge bg-primary">Beendet</span>,
+        "Aktiv" => @<span class="badge bg-success">▶ Laufend</span>,
+        "Inaktiv" => @<span class="badge bg-warning text-dark">Inaktiv</span>,
+        "Geplant" => @<span class="badge bg-info text-dark">Geplant</span>,
+        "WalkOver" => @<span class="badge bg-dark">WalkOver</span>,
+        _ => @<span class="badge bg-secondary">Anstehend</span>
+    };
+
+    public void Dispose()
+    {
+        _autoRefreshTimer?.Dispose();
+        AppState.OnChange -= OnAppStateChanged;
+    }
+}

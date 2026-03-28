@@ -1,13 +1,51 @@
 ﻿@inherits LayoutComponentBase
+@using ddpc.DartSuite.Application.Contracts.Autodarts
+@using ddpc.DartSuite.Application.Contracts.Tournaments
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@inject DartSuiteApiService Api
+@inject AppStateService AppState
+@inject ProtectedLocalStorage LocalStorage
+@implements IDisposable
 
 <div class="page">
     <div class="sidebar">
-        <NavMenu />
+        <NavMenu Tournaments="tournaments" SelectedTournamentId="@selectedTournamentId"
+                 OnTournamentChanged="OnTournamentChanged" />
     </div>
 
     <main>
-        <div class="top-row px-4">
-            <span class="fw-semibold">DartSuite Tournament Control</span>
+        <div class="top-row px-4 d-none d-sm-flex">
+            <div class="d-flex align-items-center gap-3 w-100">
+                <a href="" class="fw-semibold me-auto text-decoration-none text-dark">DartSuite Tournament Control</a>
+
+                @* ─── Tournament selector ─── *@
+                <select class="form-select form-select-sm" style="width:auto;max-width:260px"
+                        value="@selectedTournamentId" @onchange="OnTournamentChanged">
+                    <option value="">-- Turnier --</option>
+                    @foreach (var t in tournaments)
+                    {
+                        <option value="@t.Id">@t.Name</option>
+                    }
+                </select>
+
+                @* ─── Autodarts account ─── *@
+                @if (AppState.IsAutodartsConnected && AppState.AutodartsProfile is not null)
+                {
+                    <div class="d-flex align-items-center gap-2">
+                        @if (!string.IsNullOrEmpty(AppState.AutodartsProfile.Email))
+                        {
+                            <img src="@GravatarUrl(AppState.AutodartsProfile.Email)" alt="Avatar"
+                                 class="rounded-circle" width="32" height="32" referrerpolicy="no-referrer" />
+                        }
+                        <span class="small fw-semibold text-nowrap">@(AppState.AutodartsProfile.DisplayName ?? AppState.AutodartsProfile.Email)</span>
+                        <span class="badge bg-success">Verbunden</span>
+                    </div>
+                }
+                else
+                {
+                    <a href="login" class="btn btn-outline-secondary btn-sm">Login</a>
+                }
+            </div>
         </div>
 
         <article class="content px-4">
@@ -21,3 +59,90 @@
     <a href="." class="reload">Reload</a>
     <span class="dismiss">🗙</span>
 </div>
+
+@code {
+    private List<TournamentDto> tournaments = new();
+    private string selectedTournamentId = "";
+    private bool initialized;
+
+    protected override void OnInitialized()
+    {
+        AppState.OnChange += OnAppStateChanged;
+    }
+
+    private void OnAppStateChanged()
+    {
+        // Sync header dropdown when another page sets the selected tournament
+        if (AppState.SelectedTournament is not null)
+            selectedTournamentId = AppState.SelectedTournament.Id.ToString();
+        else
+            selectedTournamentId = "";
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || initialized) return;
+        initialized = true;
+
+        try
+        {
+            tournaments = (await Api.GetTournamentsAsync())
+                .Where(t => t.Status != "Beendet" && t.Status != "Abgebrochen")
+                .ToList();
+
+            // Restore saved tournament selection
+            var stored = await LocalStorage.GetAsync<string>("dartsuite.selectedTournamentId");
+            if (stored.Success && !string.IsNullOrWhiteSpace(stored.Value))
+            {
+                var match = tournaments.FirstOrDefault(t => t.Id.ToString() == stored.Value);
+                if (match is not null)
+                {
+                    selectedTournamentId = stored.Value;
+                    // Set without firing OnChange back to us (we already set selectedTournamentId)
+                    AppState.SetSelectedTournamentSilent(match);
+                }
+            }
+
+            // Restore Autodarts session
+            var status = await Api.GetAutodartsStatusAsync();
+            if (status.IsConnected && status.Profile is not null)
+            {
+                AppState.SetAutodartsProfileSilent(status.Profile, true);
+            }
+        }
+        catch { /* API not reachable */ }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnTournamentChanged(ChangeEventArgs e)
+    {
+        selectedTournamentId = e.Value?.ToString() ?? "";
+        var tournament = tournaments.FirstOrDefault(t => t.Id.ToString() == selectedTournamentId);
+        AppState.SetSelectedTournament(tournament);
+
+        try
+        {
+            if (!string.IsNullOrEmpty(selectedTournamentId))
+                await LocalStorage.SetAsync("dartsuite.selectedTournamentId", selectedTournamentId);
+            else
+                await LocalStorage.DeleteAsync("dartsuite.selectedTournamentId");
+        }
+        catch { /* storage may not be available */ }
+    }
+
+    private static string GravatarUrl(string email)
+    {
+        using var md5 = System.Security.Cryptography.MD5.Create();
+        var hash = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(email.Trim().ToLowerInvariant()));
+        var hex = Convert.ToHexStringLower(hash);
+        return $"https://www.gravatar.com/avatar/{hex}?s=64&d=identicon";
+    }
+
+    public void Dispose()
+    {
+        AppState.OnChange -= OnAppStateChanged;
+    }
+}

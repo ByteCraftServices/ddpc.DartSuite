@@ -1,9 +1,9 @@
 @page "/login"
 @using ddpc.DartSuite.Application.Contracts.Autodarts
 @using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
-@rendermode InteractiveServer
 @inject DartSuiteApiService Api
 @inject ProtectedLocalStorage LocalStorage
+@inject AppStateService AppState
 
 <PageTitle>Login</PageTitle>
 
@@ -19,12 +19,16 @@
             </div>
             <div class="mb-3">
                 <label class="form-label" for="password">Passwort</label>
-                <input class="form-control" id="password" type="password" @bind="passwordInput"
-                       @onkeydown="HandleKeyDownAsync" />
+                <div class="input-group">
+                    <input class="form-control" id="password" type="@(showPassword ? "text" : "password")"
+                           @bind="passwordInput" @onkeydown="HandleKeyDownAsync" />
+                    <button class="btn btn-outline-secondary" type="button" tabindex="-1"
+                            @onclick="() => showPassword = !showPassword">@(showPassword ? "🙈" : "👁")</button>
+                </div>
             </div>
             <div class="form-check mb-3">
                 <input class="form-check-input" type="checkbox" id="rememberLogin" @bind="rememberLogin" />
-                <label class="form-check-label" for="rememberLogin">Login merken</label>
+                <label class="form-check-label" for="rememberLogin">Angemeldet bleiben</label>
             </div>
             <button class="btn btn-primary w-100" @onclick="LoginAsync" disabled="@isLoading">
                 @if (isLoading)
@@ -97,6 +101,7 @@
     private bool rememberLogin = true;
     private bool isLoading;
     private bool sessionRestored;
+    private bool showPassword;
     private string? emailInput;
     private string? passwordInput;
 
@@ -137,6 +142,7 @@
             boards = response.Boards.ToList();
             connectionStatus = "Verbindung hergestellt";
             statusAlertClass = "alert-success";
+            AppState.SetAutodartsProfile(profile, true);
 
             if (rememberLogin)
             {
@@ -167,6 +173,7 @@
                 profile = status.Profile;
                 connectionStatus = "Sitzung wiederhergestellt";
                 statusAlertClass = "alert-success";
+                AppState.SetAutodartsProfile(profile, true);
 
                 try { boards = (await Api.GetAutodartsBoardsAsync()).ToList(); }
                 catch { /* boards optional */ }
@@ -192,5 +199,6 @@
         boards = new();
         connectionStatus = "Abgemeldet";
         statusAlertClass = "alert-info";
+        AppState.SetAutodartsProfile(null, false);
     }
 }

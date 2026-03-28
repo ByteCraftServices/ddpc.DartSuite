@@ -32,11 +32,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "c:\\Users\\marti\\repos\\ddpc.DartSuite\\src\\ddpc.DartSuite.Application\\ddpc.DartSuite.Application.csproj",
+      "projectUniqueName": "C:\\Users\\marti\\repos\\ddpc.DartSuite\\src\\ddpc.DartSuite.Application\\ddpc.DartSuite.Application.csproj",
       "projectName": "ddpc.DartSuite.Application",
-      "projectPath": "c:\\Users\\marti\\repos\\ddpc.DartSuite\\src\\ddpc.DartSuite.Application\\ddpc.DartSuite.Application.csproj",
+      "projectPath": "C:\\Users\\marti\\repos\\ddpc.DartSuite\\src\\ddpc.DartSuite.Application\\ddpc.DartSuite.Application.csproj",
       "packagesPath": "C:\\Users\\marti\\.nuget\\packages\\",
-      "outputPath": "c:\\Users\\marti\\repos\\ddpc.DartSuite\\src\\ddpc.DartSuite.Application\\obj\\",
+      "outputPath": "C:\\Users\\marti\\repos\\ddpc.DartSuite\\src\\ddpc.DartSuite.Application\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\marti\\AppData\\Roaming\\NuGet\\NuGet.Config"

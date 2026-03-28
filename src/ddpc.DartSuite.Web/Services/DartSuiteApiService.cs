@@ -97,8 +97,10 @@ public sealed class DartSuiteApiService
     }
 
     public async Task<IReadOnlyList<ParticipantDto>> GetParticipantsAsync(Guid tournamentId, CancellationToken cancellationToken = default)
-        =>
-        ;
+        => await _httpClient.GetFromJsonAsync<IReadOnlyList<ParticipantDto>>($"api/tournaments/{tournamentId}/participants", cancellationToken) ?? Array.Empty<ParticipantDto>();
+
+    public async Task<IReadOnlyList<ParticipantDto>> SearchParticipantsAsync(string query, CancellationToken cancellationToken = default)
+        => await _httpClient.GetFromJsonAsync<IReadOnlyList<ParticipantDto>>($"api/tournaments/participants/search?q={Uri.EscapeDataString(query)}", cancellationToken) ?? Array.Empty<ParticipantDto>();
 
     public async Task<ParticipantDto> AddParticipantAsync(AddParticipantRequest request, CancellationToken cancellationToken = default)
     {
@@ -141,6 +143,12 @@ public sealed class DartSuiteApiService
         var response = await _httpClient.PatchAsync($"api/tournaments/{tournamentId}/status?status={Uri.EscapeDataString(status)}", null, cancellationToken);
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<TournamentDto>(cancellationToken: cancellationToken);
+    }
+
+    public async Task DeleteTournamentAsync(Guid tournamentId, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.DeleteAsync($"api/tournaments/{tournamentId}", cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
     }
 
     public async Task<IReadOnlyList<TeamDto>> GetTeamsAsync(Guid tournamentId, CancellationToken cancellationToken = default)
@@ -250,6 +258,34 @@ public sealed class DartSuiteApiService
         var response = await _httpClient.PostAsync($"api/matches/{matchId}/reset", null, cancellationToken);
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<MatchDto>(cancellationToken: cancellationToken);
+    }
+
+    public async Task<MatchDto?> UpdateMatchAsync(UpdateMatchRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PutAsJsonAsync($"api/matches/{request.MatchId}", request, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<MatchDto>(cancellationToken: cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<MatchDto>> BatchResetMatchesAsync(IReadOnlyList<Guid> matchIds, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsJsonAsync("api/matches/batch-reset", matchIds, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<IReadOnlyList<MatchDto>>(cancellationToken: cancellationToken)) ?? Array.Empty<MatchDto>();
+    }
+
+    public async Task<IReadOnlyList<MatchDto>> CleanupStaleMatchesAsync(Guid tournamentId, int staleMinutes = 120, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsync($"api/matches/{tournamentId}/cleanup?staleMinutes={staleMinutes}", null, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<IReadOnlyList<MatchDto>>(cancellationToken: cancellationToken)) ?? Array.Empty<MatchDto>();
+    }
+
+    public async Task<IReadOnlyList<MatchDto>> CheckExternalMatchesAsync(Guid tournamentId, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsync($"api/matches/{tournamentId}/check-external", null, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<IReadOnlyList<MatchDto>>(cancellationToken: cancellationToken)) ?? Array.Empty<MatchDto>();
     }
 
     public async Task<AutodartsLoginResponse> LoginAutodartsAsync(string usernameOrEmail, string password, CancellationToken cancellationToken = default)

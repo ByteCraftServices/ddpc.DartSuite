@@ -26,4 +26,7 @@ public sealed record TournamentDto(
     bool ThirdPlaceMatch,
     int PlayersPerTeam,
     int WinPoints,
-    int LegFactor);
+    int LegFactor,
+    bool IsRegistrationOpen = false,
+    DateTimeOffset? RegistrationStartUtc = null,
+    DateTimeOffset? RegistrationEndUtc = null);

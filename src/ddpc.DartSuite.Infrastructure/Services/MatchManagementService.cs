@@ -17,7 +17,7 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         m.HomeParticipantId, m.AwayParticipantId,
         m.HomeLegs, m.AwayLegs, m.HomeSets, m.AwaySets, m.WinnerParticipantId,
         m.PlannedStartUtc, m.IsStartTimeLocked, m.IsBoardLocked,
-        m.StartedUtc, m.FinishedUtc, m.ExternalMatchId);
+        m.StartedUtc, m.FinishedUtc, m.Status.ToString(), m.ExternalMatchId);
 
     public async Task<MatchDto?> GetMatchAsync(Guid matchId, CancellationToken cancellationToken = default)
     {
@@ -36,7 +36,7 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
                 x.HomeParticipantId, x.AwayParticipantId,
                 x.HomeLegs, x.AwayLegs, x.HomeSets, x.AwaySets, x.WinnerParticipantId,
                 x.PlannedStartUtc, x.IsStartTimeLocked, x.IsBoardLocked,
-                x.StartedUtc, x.FinishedUtc, x.ExternalMatchId))
+                x.StartedUtc, x.FinishedUtc, x.Status.ToString(), x.ExternalMatchId))
             .ToListAsync(cancellationToken);
     }
 
@@ -55,6 +55,19 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         var existingKo = await dbContext.Matches
             .Where(x => x.TournamentId == tournamentId && x.Phase == MatchPhase.Knockout)
             .ToListAsync(cancellationToken);
+
+        // Clear board references to deleted matches
+        var deletedIds = existingKo.Select(m => m.Id).ToHashSet();
+        var staleBoards = await dbContext.Boards
+            .Where(b => b.CurrentMatchId != null && deletedIds.Contains(b.CurrentMatchId.Value))
+            .ToListAsync(cancellationToken);
+        foreach (var board in staleBoards)
+        {
+            board.CurrentMatchId = null;
+            board.CurrentMatchLabel = null;
+            board.UpdatedUtc = DateTimeOffset.UtcNow;
+        }
+
         dbContext.Matches.RemoveRange(existingKo);
 
         // Pad to next power of 2 with byes
@@ -92,12 +105,13 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
             };
 
             // Auto-resolve bye matches
-            if (match.IsBye)
+            if (match.HomeParticipantId == Match.ByeParticipantId || match.AwayParticipantId == Match.ByeParticipantId)
             {
                 var winner = match.HomeParticipantId == Match.ByeParticipantId
                     ? match.AwayParticipantId : match.HomeParticipantId;
                 match.WinnerParticipantId = winner;
                 match.FinishedUtc = DateTimeOffset.UtcNow;
+                match.Status = MatchStatus.WalkOver;
             }
 
             dbContext.Matches.Add(match);
@@ -142,6 +156,9 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
 
         // Advance winners from bye matches into next round
         await AdvanceByeWinnersAsync(tournamentId, cancellationToken);
+
+        // Auto-transition: plan created → Geplant
+        await AutoAdvanceTournamentStatusAsync(tournamentId, cancellationToken);
 
         return await GetMatchesAsync(tournamentId, cancellationToken);
     }
@@ -215,6 +232,19 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         var existingGroup = await dbContext.Matches
             .Where(x => x.TournamentId == tournamentId && x.Phase == MatchPhase.Group)
             .ToListAsync(cancellationToken);
+
+        // Clear board references to deleted matches
+        var deletedGroupIds = existingGroup.Select(m => m.Id).ToHashSet();
+        var staleGroupBoards = await dbContext.Boards
+            .Where(b => b.CurrentMatchId != null && deletedGroupIds.Contains(b.CurrentMatchId.Value))
+            .ToListAsync(cancellationToken);
+        foreach (var board in staleGroupBoards)
+        {
+            board.CurrentMatchId = null;
+            board.CurrentMatchLabel = null;
+            board.UpdatedUtc = DateTimeOffset.UtcNow;
+        }
+
         dbContext.Matches.RemoveRange(existingGroup);
 
         // Distribute participants into groups based on draw mode
@@ -255,6 +285,10 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Auto-transition: plan created → Geplant
+        await AutoAdvanceTournamentStatusAsync(tournamentId, cancellationToken);
+
         return await GetMatchesAsync(tournamentId, cancellationToken);
     }
 
@@ -368,11 +402,15 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         if (match is null) return null;
 
         match.ReportResult(request.HomeLegs, request.AwayLegs, request.HomeSets, request.AwaySets);
+        match.RecomputeStatus();
         await dbContext.SaveChangesAsync(cancellationToken);
 
         // Advance winner to next round in KO
         if (match.Phase == MatchPhase.Knockout && match.WinnerParticipantId.HasValue)
             await AdvanceWinnerAsync(match, cancellationToken);
+
+        // Auto-transition tournament status (Gestartet / Beendet)
+        await AutoAdvanceTournamentStatusAsync(match.TournamentId, cancellationToken);
 
         return ToDto(match);
     }
@@ -472,7 +510,7 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         var boardEndTimes = boards.ToDictionary(b => b.Id, _ => startUtc);
         var playerLastEnd = new Dictionary<Guid, DateTimeOffset>();
 
-        foreach (var match in matches.Where(m => !m.IsBye))
+        foreach (var match in matches.Where(m => m.Status != MatchStatus.WalkOver))
         {
             // Skip finished or started matches — don't replan them
             if (match.FinishedUtc is not null || match.StartedUtc is not null)
@@ -643,6 +681,7 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         if (finished && match.FinishedUtc is null)
         {
             match.ReportResult(homeLegs, awayLegs, homeSets, awaySets);
+            match.RecomputeStatus();
             await dbContext.SaveChangesAsync(cancellationToken);
 
             if (match.Phase == MatchPhase.Knockout && match.WinnerParticipantId.HasValue)
@@ -650,8 +689,12 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         }
         else
         {
+            match.RecomputeStatus();
             await dbContext.SaveChangesAsync(cancellationToken);
         }
+
+        // Auto-transition tournament status (Gestartet / Beendet)
+        await AutoAdvanceTournamentStatusAsync(match.TournamentId, cancellationToken);
 
         return ToDto(match);
     }
@@ -669,9 +712,64 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         match.StartedUtc = null;
         match.FinishedUtc = null;
         match.ExternalMatchId = null;
+        match.RecomputeStatus();
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return ToDto(match);
+    }
+
+    // ─── Auto-Transition Tournament Status ───
+
+    private async Task AutoAdvanceTournamentStatusAsync(Guid tournamentId, CancellationToken cancellationToken)
+    {
+        var tournament = await dbContext.Tournaments.FirstOrDefaultAsync(x => x.Id == tournamentId, cancellationToken);
+        if (tournament is null || tournament.Status == TournamentStatus.Abgebrochen) return;
+
+        var allMatches = await dbContext.Matches.AsNoTracking()
+            .Where(x => x.TournamentId == tournamentId)
+            .ToListAsync(cancellationToken);
+
+        var realMatches = allMatches.Where(m => m.Status != MatchStatus.WalkOver
+            && m.HomeParticipantId != Guid.Empty && m.AwayParticipantId != Guid.Empty).ToList();
+
+        // Erstellt → Geplant: matches exist (plan was generated)
+        if (tournament.Status == TournamentStatus.Erstellt && allMatches.Count > 0)
+        {
+            tournament.Status = TournamentStatus.Geplant;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        // Geplant → Gestartet: any real match is active (has StartedUtc or ExternalMatchId)
+        if (tournament.Status == TournamentStatus.Geplant && realMatches.Any(m => m.StartedUtc is not null || m.ExternalMatchId is not null))
+        {
+            tournament.Status = TournamentStatus.Gestartet;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        // Gestartet → Beendet: finale is finished
+        if (tournament.Status == TournamentStatus.Gestartet)
+        {
+            var koMatches = allMatches.Where(m => m.Phase == MatchPhase.Knockout).ToList();
+            if (koMatches.Count > 0)
+            {
+                var maxRound = koMatches.Where(m => m.Status != MatchStatus.WalkOver).Select(m => m.Round).DefaultIfEmpty(0).Max();
+                var finale = koMatches.Where(m => m.Round == maxRound && m.Status != MatchStatus.WalkOver).ToList();
+                if (finale.Count > 0 && finale.All(m => m.FinishedUtc is not null))
+                {
+                    tournament.Status = TournamentStatus.Beendet;
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    return;
+                }
+            }
+            else if (realMatches.Count > 0 && realMatches.All(m => m.FinishedUtc is not null))
+            {
+                // No KO phase — all matches finished (e.g., group-only tournament)
+                tournament.Status = TournamentStatus.Beendet;
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+        }
     }
 
     // ─── Prediction (original) ───
@@ -684,5 +782,123 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
             prediction.AwayWinProbability,
             Math.Max(1, (int)Math.Round(prediction.EstimatedRemainingDuration.TotalMinutes)),
             prediction.ExpectedResult);
+    }
+
+    public async Task<MatchDto?> UpdateMatchAsync(UpdateMatchRequest request, CancellationToken cancellationToken = default)
+    {
+        var match = await dbContext.Matches.FirstOrDefaultAsync(x => x.Id == request.MatchId, cancellationToken);
+        if (match is null) return null;
+
+        match.BoardId = request.BoardId;
+        match.HomeLegs = request.HomeLegs;
+        match.AwayLegs = request.AwayLegs;
+        match.HomeSets = request.HomeSets;
+        match.AwaySets = request.AwaySets;
+        match.IsStartTimeLocked = request.IsStartTimeLocked;
+        match.IsBoardLocked = request.IsBoardLocked;
+        match.WinnerParticipantId = request.WinnerParticipantId;
+
+        if (Enum.TryParse<MatchStatus>(request.Status, out var status))
+            match.Status = status;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return ToDto(match);
+    }
+
+    public async Task<IReadOnlyList<MatchDto>> BatchResetMatchesAsync(IReadOnlyList<Guid> matchIds, CancellationToken cancellationToken = default)
+    {
+        var matches = await dbContext.Matches
+            .Where(x => matchIds.Contains(x.Id))
+            .ToListAsync(cancellationToken);
+
+        foreach (var match in matches)
+        {
+            match.HomeLegs = 0;
+            match.AwayLegs = 0;
+            match.HomeSets = 0;
+            match.AwaySets = 0;
+            match.WinnerParticipantId = null;
+            match.StartedUtc = null;
+            match.FinishedUtc = null;
+            match.ExternalMatchId = null;
+            match.RecomputeStatus();
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return matches.Select(ToDto).ToList();
+    }
+
+    public async Task<IReadOnlyList<MatchDto>> CleanupStaleMatchesAsync(Guid tournamentId, int staleMinutes, CancellationToken cancellationToken = default)
+    {
+        var cutoff = DateTimeOffset.UtcNow.AddMinutes(-staleMinutes);
+        var allMatches = await dbContext.Matches
+            .Where(x => x.TournamentId == tournamentId)
+            .ToListAsync(cancellationToken);
+
+        // Sonderfall: Turnier im Status 'Erstellt' und keine Gruppenmatches -> alle KO-Matches löschen
+        var tournament = await dbContext.Tournaments.FirstOrDefaultAsync(x => x.Id == tournamentId, cancellationToken);
+        bool isDraft = tournament != null && tournament.Status == TournamentStatus.Erstellt;
+        bool hasNoGroupMatches = !allMatches.Any(x => x.Phase == MatchPhase.Group);
+        var koMatches = allMatches.Where(x => x.Phase == MatchPhase.Knockout).ToList();
+        if (isDraft && hasNoGroupMatches && koMatches.Count > 0)
+        {
+            dbContext.Matches.RemoveRange(koMatches);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return koMatches.Select(ToDto).ToList();
+        }
+
+        var staleMatches = allMatches
+            .Where(x => x.StartedUtc != null
+                && x.StartedUtc < cutoff
+                && x.FinishedUtc == null
+                && x.Status != MatchStatus.WalkOver
+                && x.Status != MatchStatus.Beendet)
+            .ToList();
+
+        // Also include bye matches (exactly one participant is empty) that don't have correct WalkOver status
+        var byeMatches = allMatches
+            .Where(x => (x.HomeParticipantId == Guid.Empty) != (x.AwayParticipantId == Guid.Empty))
+            .Where(x => x.Status != MatchStatus.WalkOver)
+            .ToList();
+
+        var matchesToClean = staleMatches.Union(byeMatches).Distinct().ToList();
+        var cleanedMatchIds = matchesToClean.Select(m => m.Id).ToHashSet();
+
+        foreach (var match in matchesToClean)
+        {
+            match.HomeLegs = 0;
+            match.AwayLegs = 0;
+            match.HomeSets = 0;
+            match.AwaySets = 0;
+            match.WinnerParticipantId = null;
+            match.StartedUtc = null;
+            match.FinishedUtc = null;
+            match.ExternalMatchId = null;
+            match.RecomputeStatus();
+        }
+
+        // Clear CurrentMatchId on boards referencing cleaned-up or non-existent matches
+        var boardsWithCurrentMatch = await dbContext.Boards
+            .Where(b => b.CurrentMatchId != null)
+            .ToListAsync(cancellationToken);
+        var referencedMatchIds = boardsWithCurrentMatch.Select(b => b.CurrentMatchId!.Value).Distinct().ToList();
+        var existingMatchIds = await dbContext.Matches
+            .Where(m => referencedMatchIds.Contains(m.Id))
+            .Select(m => m.Id)
+            .ToListAsync(cancellationToken);
+        var existingSet = existingMatchIds.ToHashSet();
+
+        foreach (var board in boardsWithCurrentMatch)
+        {
+            if (cleanedMatchIds.Contains(board.CurrentMatchId!.Value) || !existingSet.Contains(board.CurrentMatchId!.Value))
+            {
+                board.CurrentMatchId = null;
+                board.CurrentMatchLabel = null;
+                board.UpdatedUtc = DateTimeOffset.UtcNow;
+            }
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return matchesToClean.Select(ToDto).ToList();
     }
 }

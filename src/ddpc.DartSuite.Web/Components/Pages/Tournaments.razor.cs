@@ -4,12 +4,22 @@ using ddpc.DartSuite.Application.Contracts.Tournaments;
 using ddpc.DartSuite.Web.Services;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.JSInterop;
 
 namespace ddpc.DartSuite.Web.Components.Pages;
 
 public partial class Tournaments : IDisposable
 {
     [Inject] private DartSuiteApiService Api { get; set; } = default!;
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+    [Inject] private AppStateService AppState { get; set; } = default!;
+
+    [SupplyParameterFromQuery(Name = "matchId")]
+    public string? QueryMatchId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "tab")]
+    public string? QueryTab { get; set; }
 
     private Timer? _autoRefreshTimer;
 
@@ -58,6 +68,9 @@ public partial class Tournaments : IDisposable
     private int editWinPoints = 2;
     private int editLegFactor = 1;
     private int editPlayersPerTeam = 1;
+    private bool editIsRegistrationOpen;
+    private DateTime? editRegistrationStart;
+    private DateTime? editRegistrationEnd;
     private string? editError;
     private string? editSuccess;
 
@@ -67,6 +80,8 @@ public partial class Tournaments : IDisposable
     private bool participantIsAutodarts = true;
     private bool participantIsManager;
     private string? participantError;
+    private List<ParticipantDto> participantSuggestions = [];
+    private bool showParticipantSuggestions;
 
     // ─── Participant Edit Modal ───
     private ParticipantDto? editingParticipant;
@@ -117,6 +132,11 @@ public partial class Tournaments : IDisposable
 
     // ─── Spielplan: Collapsed Groups ───
     private bool showGroupMatches;
+
+    // ─── Spielplan: Filters ───
+    private bool scheduleHideFinished;
+    private bool scheduleShowNoBoard;
+    private string scheduleStatusFilter = "all"; // all | running | upcoming
 
     // ─── Board Detail Modal ───
     private BoardDto? detailBoard;
@@ -174,10 +194,48 @@ public partial class Tournaments : IDisposable
     private bool isAutodartsConnected;
     private string? autodartsDisplayName;
 
+    /// <summary>True if the current user is a Spielleiter for the selected tournament.</summary>
+    private bool IsCurrentUserManager =>
+        selectedTournament is not null && autodartsDisplayName is not null &&
+        (string.Equals(selectedTournament.OrganizerAccount, autodartsDisplayName, StringComparison.OrdinalIgnoreCase)
+         || participants.Any(p => p.IsManager && string.Equals(p.AccountName, autodartsDisplayName, StringComparison.OrdinalIgnoreCase))
+         || participants.Any(p => p.IsManager && string.Equals(p.DisplayName, autodartsDisplayName, StringComparison.OrdinalIgnoreCase)));
+
     // ─── Lifecycle ───
     protected override async Task OnInitializedAsync()
     {
         await Task.WhenAll(LoadTournamentsAsync(), LoadBoardsAsync(), TryLoadAutodartsSessionAsync());
+
+        // If a matchId was passed via query string (e.g. from Boards page), open that match
+        if (!string.IsNullOrEmpty(QueryMatchId) && Guid.TryParse(QueryMatchId, out var qMatchId))
+        {
+            // Find which tournament this match belongs to
+            foreach (var t in tournaments)
+            {
+                var tMatches = (await Api.GetMatchesAsync(t.Id)).ToList();
+                var found = tMatches.FirstOrDefault(m => m.Id == qMatchId);
+                if (found is not null)
+                {
+                    await SelectTournamentAsync(t);
+                    matches = tMatches;
+                    OpenMatchDetail(found);
+                    break;
+                }
+            }
+        }
+
+        // If a tab query param was passed, switch to that tab (and auto-select tournament if needed)
+        if (!string.IsNullOrEmpty(QueryTab))
+        {
+            activeTab = QueryTab;
+            if (selectedTournament is null && AppState.SelectedTournament is not null)
+            {
+                var t = tournaments.FirstOrDefault(t => t.Id == AppState.SelectedTournament.Id);
+                if (t is not null)
+                    await SelectTournamentAsync(t);
+            }
+        }
+
         _autoRefreshTimer = new Timer(OnAutoRefresh, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
     }
 
@@ -253,6 +311,31 @@ public partial class Tournaments : IDisposable
     public void Dispose()
     {
         _autoRefreshTimer?.Dispose();
+    }
+
+    private string TournamentLink => selectedTournament is not null
+        ? $"{Navigation.BaseUri}tournaments?tournamentId={selectedTournament.Id}"
+        : string.Empty;
+
+    private async Task CopyTournamentLink()
+    {
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", TournamentLink);
+    }
+
+    private async Task DeleteTournamentAsync()
+    {
+        if (selectedTournament is null) return;
+        try
+        {
+            isWorking = true;
+            await Api.DeleteTournamentAsync(selectedTournament.Id);
+            await LoadTournamentsAsync();
+            selectedTournament = tournaments.FirstOrDefault();
+            if (selectedTournament is not null)
+                await SelectTournamentAsync(selectedTournament);
+        }
+        catch (Exception ex) { editError = ex.Message; }
+        finally { isWorking = false; }
     }
 
     private async Task LoadTournamentsAsync()
@@ -349,6 +432,9 @@ public partial class Tournaments : IDisposable
         editLegFactor = t.LegFactor;
         editPlayersPerTeam = t.PlayersPerTeam;
         editAreGameModesLocked = t.AreGameModesLocked;
+        editIsRegistrationOpen = t.IsRegistrationOpen;
+        editRegistrationStart = t.RegistrationStartUtc?.LocalDateTime;
+        editRegistrationEnd = t.RegistrationEndUtc?.LocalDateTime;
     }
 
     // ─── Save Tournament ───
@@ -389,7 +475,10 @@ public partial class Tournaments : IDisposable
                 editTeamplay, editMode, editVariant, editStartTime,
                 editGroupCount, editPlayoffAdvancers, editKnockoutsPerRound, editMatchesPerOpponent,
                 editGroupMode, editGroupDrawMode, editPlanningVariant, editGroupOrderMode,
-                editThirdPlaceMatch, editPlayersPerTeam, editWinPoints, editLegFactor, editAreGameModesLocked));
+                editThirdPlaceMatch, editPlayersPerTeam, editWinPoints, editLegFactor, editAreGameModesLocked,
+                editIsRegistrationOpen,
+                editRegistrationStart.HasValue ? new DateTimeOffset(editRegistrationStart.Value) : null,
+                editRegistrationEnd.HasValue ? new DateTimeOffset(editRegistrationEnd.Value) : null));
             await LoadTournamentsAsync();
             selectedTournament = tournaments.FirstOrDefault(x => x.Id == updated.Id) ?? updated;
             PopulateEditFields(selectedTournament);
@@ -439,6 +528,34 @@ public partial class Tournaments : IDisposable
     private async Task HandleParticipantKeyAsync(KeyboardEventArgs e)
     {
         if (e.Key == "Enter") await AddParticipantAsync();
+    }
+
+    private async Task OnParticipantNameInput(ChangeEventArgs e)
+    {
+        participantName = e.Value?.ToString() ?? string.Empty;
+        if (participantName.Length >= 2)
+        {
+            try
+            {
+                participantSuggestions = (await Api.SearchParticipantsAsync(participantName)).ToList();
+                showParticipantSuggestions = participantSuggestions.Count > 0;
+            }
+            catch { showParticipantSuggestions = false; }
+        }
+        else
+        {
+            showParticipantSuggestions = false;
+            participantSuggestions = [];
+        }
+    }
+
+    private void SelectParticipantSuggestion(ParticipantDto suggestion)
+    {
+        participantName = suggestion.DisplayName;
+        participantAccount = suggestion.AccountName;
+        participantIsAutodarts = suggestion.IsAutodartsAccount;
+        participantIsManager = suggestion.IsManager;
+        showParticipantSuggestions = false;
     }
 
     private void OnAutodartsCheckChanged(ChangeEventArgs e)
@@ -578,13 +695,20 @@ public partial class Tournaments : IDisposable
 
     private async Task RegenerateMatchesAsync()
     {
-        confirmationMessage = "Der bestehende Turnierplan wird gelöscht und neu generiert.";
+        confirmationMessage = HasPlayedMatches()
+            ? "⚠ Es wurden bereits Matches gespielt. Alle Ergebnisse werden gelöscht und der Turnierplan komplett neu generiert. Wirklich fortfahren?"
+            : "Der bestehende Turnierplan wird gelöscht und neu generiert.";
         confirmationAction = async () =>
         {
             if (selectedTournament is null) return;
             try
             {
                 isWorking = true;
+                if (selectedTournament.Mode == "GroupAndKnockout")
+                {
+                    await Api.GenerateGroupMatchesAsync(selectedTournament.Id);
+                    groupStandings = (await Api.GetGroupStandingsAsync(selectedTournament.Id)).ToList();
+                }
                 matches = (await Api.GenerateMatchesAsync(selectedTournament.Id)).ToList();
                 activeTab = "knockout";
             }
@@ -666,6 +790,31 @@ public partial class Tournaments : IDisposable
             var phaseRounds = matches.Where(m => m.Phase == newRoundPhase).Select(m => m.Round).Distinct().OrderBy(r => r).ToList();
             if (phaseRounds.Count == 0)
                 phaseRounds = Enumerable.Range(1, 8).ToList();
+            foreach (var r in phaseRounds)
+            {
+                await Api.SaveRoundAsync(selectedTournament.Id, new SaveTournamentRoundRequest(
+                    selectedTournament.Id, newRoundPhase, r,
+                    newRoundBaseScore, newRoundInMode, newRoundOutMode, newRoundGameMode, newRoundLegs, newRoundSets, newRoundMaxRounds, newRoundBullMode, newRoundBullOffMode,
+                    newRoundDuration, newRoundPause, newRoundPlayerPause, assignment, fixedId));
+            }
+            await LoadRoundsAsync();
+        }
+        catch (Exception ex) { roundError = ex.Message; }
+        finally { isWorking = false; }
+    }
+
+    private async Task ApplyRoundToSubsequentAsync()
+    {
+        if (selectedTournament is null) return;
+        try
+        {
+            isWorking = true;
+            roundError = null;
+            ParseBoardAssignment(out var assignment, out var fixedId);
+            var phaseRounds = matches.Where(m => m.Phase == newRoundPhase && m.Round >= newRoundNumber)
+                .Select(m => m.Round).Distinct().OrderBy(r => r).ToList();
+            if (phaseRounds.Count == 0)
+                phaseRounds = Enumerable.Range(newRoundNumber, 8).ToList();
             foreach (var r in phaseRounds)
             {
                 await Api.SaveRoundAsync(selectedTournament.Id, new SaveTournamentRoundRequest(
@@ -892,6 +1041,67 @@ public partial class Tournaments : IDisposable
         && m.HomeParticipantId != Guid.Empty
         && m.AwayParticipantId != Guid.Empty);
 
+    // ─── Tab Badge Helpers ───
+
+    private (int total, int finished, int running) GetPhaseStats(string phase)
+    {
+        var phaseMatches = matches
+            .Where(m => m.Phase == phase && m.HomeParticipantId != Guid.Empty && m.AwayParticipantId != Guid.Empty)
+            .ToList();
+        var total = phaseMatches.Count;
+        var finished = phaseMatches.Count(m => m.FinishedUtc is not null);
+        var running = phaseMatches.Count(m => m.StartedUtc is not null && m.FinishedUtc is null);
+        return (total, finished, running);
+    }
+
+    private string PhaseBadgeCss(string phase)
+    {
+        var (total, finished, running) = GetPhaseStats(phase);
+        if (total == 0) return "text-bg-secondary";
+        if (finished == total) return "text-bg-success";
+        if (running > 0) return "text-bg-warning";
+        return "text-bg-secondary";
+    }
+
+    private string PhaseBadgeText(string phase)
+    {
+        var (total, finished, running) = GetPhaseStats(phase);
+        if (total == 0) return "0";
+        if (running > 0) return $"{finished}/{total} ▶{running}";
+        return $"{finished}/{total}";
+    }
+
+    private string ScheduleBadgeCss
+    {
+        get
+        {
+            var all = matches
+                .Where(m => m.HomeParticipantId != Guid.Empty && m.AwayParticipantId != Guid.Empty)
+                .ToList();
+            if (all.Count == 0) return "text-bg-secondary";
+            var finished = all.Count(m => m.FinishedUtc is not null);
+            if (finished == all.Count) return "text-bg-success";
+            var running = all.Count(m => m.StartedUtc is not null && m.FinishedUtc is null);
+            if (running > 0) return "text-bg-warning";
+            return "text-bg-secondary";
+        }
+    }
+
+    private string ScheduleBadgeText
+    {
+        get
+        {
+            var all = matches
+                .Where(m => m.HomeParticipantId != Guid.Empty && m.AwayParticipantId != Guid.Empty)
+                .ToList();
+            if (all.Count == 0) return "0";
+            var finished = all.Count(m => m.FinishedUtc is not null);
+            var running = all.Count(m => m.StartedUtc is not null && m.FinishedUtc is null);
+            if (running > 0) return $"{finished}/{all.Count} ▶{running}";
+            return $"{finished}/{all.Count}";
+        }
+    }
+
     private static string BoardStatusBadge(string status) => status switch
     {
         "Running" => "bg-success",
@@ -901,14 +1111,33 @@ public partial class Tournaments : IDisposable
         _ => "bg-secondary"
     };
 
-    /// <summary>Returns all matches chronologically sorted for Spielplan.</summary>
-    private List<MatchDto> ScheduledMatches => matches
-        .Where(m => m.HomeParticipantId != Guid.Empty && m.AwayParticipantId != Guid.Empty)
-        .OrderBy(m => m.PlannedStartUtc ?? DateTimeOffset.MaxValue)
-        .ThenBy(m => m.Phase == "Group" ? 0 : 1)
-        .ThenBy(m => m.Round)
-        .ThenBy(m => m.MatchNumber)
-        .ToList();
+    /// <summary>Returns all matches chronologically sorted for Spielplan, with filters applied.</summary>
+    private List<MatchDto> ScheduledMatches
+    {
+        get
+        {
+            var query = matches
+                .Where(m => m.HomeParticipantId != Guid.Empty && m.AwayParticipantId != Guid.Empty);
+
+            if (scheduleHideFinished)
+                query = query.Where(m => m.FinishedUtc is null);
+
+            if (scheduleShowNoBoard)
+                query = query.Where(m => !m.BoardId.HasValue && m.FinishedUtc is null);
+
+            if (scheduleStatusFilter == "running")
+                query = query.Where(m => m.StartedUtc is not null && m.FinishedUtc is null);
+            else if (scheduleStatusFilter == "upcoming")
+                query = query.Where(m => m.StartedUtc is null && m.FinishedUtc is null);
+
+            return query
+                .OrderBy(m => m.PlannedStartUtc ?? DateTimeOffset.MaxValue)
+                .ThenBy(m => m.Phase == "Group" ? 0 : 1)
+                .ThenBy(m => m.Round)
+                .ThenBy(m => m.MatchNumber)
+                .ToList();
+        }
+    }
 
     /// <summary>Matches without board assignment that still need to be played.</summary>
     private List<MatchDto> UnassignedUpcoming => ScheduledMatches
@@ -1195,7 +1424,10 @@ public partial class Tournaments : IDisposable
             isWorking = true;
             var updated = await Api.UpdateTournamentStatusAsync(selectedTournament.Id, status);
             if (updated is not null)
+            {
                 selectedTournament = updated;
+                matches = (await Api.GetMatchesAsync(selectedTournament.Id)).ToList();
+            }
         }
         catch (Exception ex) { resultError = ex.Message; }
         finally { isWorking = false; }
@@ -1256,4 +1488,55 @@ public partial class Tournaments : IDisposable
     private bool IsGroupCompleted(int groupNumber) =>
         matches.Where(m => m.Phase == "Group" && m.GroupNumber == groupNumber && m.HomeParticipantId != Guid.Empty && m.AwayParticipantId != Guid.Empty).All(m => m.FinishedUtc is not null)
         && matches.Any(m => m.Phase == "Group" && m.GroupNumber == groupNumber);
+
+    /// <summary>Gets the next match info for a participant after a given match.</summary>
+    private string? GetNextMatchInfo(MatchDto currentMatch, Guid participantId)
+    {
+        if (participantId == Guid.Empty) return null;
+
+        // In KO: find the match in the next round where the winner goes
+        if (currentMatch.Phase == "Knockout")
+        {
+            var koMatches = matches.Where(m => m.Phase == "Knockout").OrderBy(m => m.Round).ThenBy(m => m.MatchNumber).ToList();
+            var nextRound = koMatches.Where(m => m.Round == currentMatch.Round + 1).OrderBy(m => m.MatchNumber).ToList();
+            var currentRound = koMatches.Where(m => m.Round == currentMatch.Round).OrderBy(m => m.MatchNumber).ToList();
+            var matchIdx = currentRound.IndexOf(currentMatch);
+            if (matchIdx >= 0 && matchIdx / 2 < nextRound.Count)
+            {
+                var nextMatch = nextRound[matchIdx / 2];
+                var opponentId = matchIdx % 2 == 0 ? nextMatch.AwayParticipantId : nextMatch.HomeParticipantId;
+                var time = nextMatch.PlannedStartUtc?.LocalDateTime.ToString("HH:mm");
+                if (opponentId != Guid.Empty)
+                    return $"{time ?? "?"} gegen {ParticipantName(opponentId)}";
+
+                // Opponent not yet known — show feeder match
+                var feederIdx = matchIdx % 2 == 0 ? matchIdx + 1 : matchIdx - 1;
+                if (feederIdx >= 0 && feederIdx < currentRound.Count)
+                {
+                    var feeder = currentRound[feederIdx];
+                    return $"{time ?? "?"} gegen Gewinner aus {ParticipantName(feeder.HomeParticipantId)} / {ParticipantName(feeder.AwayParticipantId)}";
+                }
+            }
+            return null;
+        }
+
+        // In Group: find next unfinished match for this participant
+        var nextGroupMatch = matches
+            .Where(m => m.Phase == "Group" && m.Id != currentMatch.Id && m.FinishedUtc is null
+                && (m.HomeParticipantId == participantId || m.AwayParticipantId == participantId))
+            .OrderBy(m => m.PlannedStartUtc ?? DateTimeOffset.MaxValue)
+            .ThenBy(m => m.Round)
+            .FirstOrDefault();
+
+        if (nextGroupMatch is not null)
+        {
+            var opponentId = nextGroupMatch.HomeParticipantId == participantId
+                ? nextGroupMatch.AwayParticipantId
+                : nextGroupMatch.HomeParticipantId;
+            var time = nextGroupMatch.PlannedStartUtc?.LocalDateTime.ToString("HH:mm");
+            return $"{time ?? "?"} gegen {ParticipantName(opponentId)}";
+        }
+
+        return null;
+    }
 }

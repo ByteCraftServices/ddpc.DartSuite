@@ -6,7 +6,9 @@
 	],
 	"settings": {
 		"chat.tools.terminal.autoApprove": {
-			"dotnet build": true
+			"dotnet build": true,
+			"sqlite3": true,
+			"dotnet tool": true
 		}
 	}
 }

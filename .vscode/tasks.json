@@ -32,7 +32,7 @@
 			"type": "shell",
 			"command": "dotnet",
 			"args": [
-				"run",
+				"watch",
 				"--project",
 				"src/ddpc.DartSuite.Api"
 			],
@@ -44,7 +44,9 @@
 			"type": "shell",
 			"command": "dotnet",
 			"args": [
-				"run",
+				"watch",
+				"--launch-profile",
+				"https",
 				"--project",
 				"src/ddpc.DartSuite.Web"
 			],

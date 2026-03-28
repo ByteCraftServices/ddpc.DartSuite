@@ -11,5 +11,6 @@
     <Project Path="tests/ddpc.DartSuite.Application.Tests/ddpc.DartSuite.Application.Tests.csproj" />
     <Project Path="tests/ddpc.DartSuite.Domain.Tests/ddpc.DartSuite.Domain.Tests.csproj" />
     <Project Path="tests/ddpc.DartSuite.Infrastructure.Tests/ddpc.DartSuite.Infrastructure.Tests.csproj" />
+    <Project Path="tests/ddpc.DartSuite.Web.Tests/ddpc.DartSuite.Web.Tests.csproj" />
   </Folder>
 </Solution>

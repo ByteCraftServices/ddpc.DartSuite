@@ -14,6 +14,7 @@ public interface ITournamentManagementService
 
     // Participants
     Task<IReadOnlyList<ParticipantDto>> GetParticipantsAsync(Guid tournamentId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ParticipantDto>> SearchParticipantsAsync(string query, CancellationToken cancellationToken = default);
     Task<ParticipantDto> AddParticipantAsync(AddParticipantRequest request, CancellationToken cancellationToken = default);
     Task<ParticipantDto?> UpdateParticipantAsync(UpdateParticipantRequest request, CancellationToken cancellationToken = default);
     Task<bool> RemoveParticipantAsync(Guid tournamentId, Guid participantId, CancellationToken cancellationToken = default);
@@ -25,6 +26,7 @@ public interface ITournamentManagementService
 
     // Status
     Task<TournamentDto?> UpdateStatusAsync(Guid tournamentId, string status, CancellationToken cancellationToken = default);
+    Task<bool> DeleteTournamentAsync(Guid tournamentId, CancellationToken cancellationToken = default);
 
     // Teams
     Task<IReadOnlyList<TeamDto>> GetTeamsAsync(Guid tournamentId, CancellationToken cancellationToken = default);
