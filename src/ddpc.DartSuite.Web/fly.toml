@@ -1,0 +1,4 @@
+[build]
+  dockerfile = "Dockerfile"
+  build-target = "build"
+  context = "./src/ddpc.Web"
