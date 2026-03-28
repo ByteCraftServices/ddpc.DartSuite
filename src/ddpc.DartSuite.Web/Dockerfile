@@ -1,6 +1,6 @@
 # Build stage
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
-WORKDIR /app
+WORKDIR /src
 COPY . .
 RUN dotnet publish -c Release -o out
 
