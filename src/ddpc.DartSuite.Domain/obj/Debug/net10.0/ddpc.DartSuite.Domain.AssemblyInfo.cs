@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ddpc.DartSuite.Domain")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2c1552c81b83dadc0c495191e333747d25a63242")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+dbfa78a0d3366e4b5a8f5f97852a3f3eac0dbe35")]
 [assembly: System.Reflection.AssemblyProductAttribute("ddpc.DartSuite.Domain")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ddpc.DartSuite.Domain")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

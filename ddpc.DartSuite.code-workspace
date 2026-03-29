@@ -11,7 +11,9 @@
 			"dotnet tool": true,
 			"git rm": true,
 			"git add": true,
-			"git commit": true
+			"git commit": true,
+			"git gc": true,
+			"git push": true
 		}
 	}
 }
