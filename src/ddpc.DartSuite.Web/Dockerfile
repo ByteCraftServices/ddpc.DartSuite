@@ -1,8 +1,8 @@
 # Build stage
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
-WORKDIR /src/ddpc.DartSuite.Web
+WORKDIR /src
 COPY . .
-RUN dotnet publish ddpc.DartSuite.Web.csproj -c Release -o /app/out
+RUN dotnet publish /src/ddpc.DartSuite.Wweb/ddpc.DartSuite.Web.csproj -c Release -o /app/out
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
