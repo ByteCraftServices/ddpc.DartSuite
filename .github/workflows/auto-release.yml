@@ -17,16 +17,29 @@ on:
           - minor
           - patch
 
+
 jobs:
   create-release:
     runs-on: ubuntu-latest
     outputs:
       tag_name: ${{ steps.set_tag.outputs.tag }}
     steps:
-      - name: Checkout main branch
+      - name: Check branch and set prerelease
+        id: branch-check
+        run: |
+          echo "Current ref: $GITHUB_REF"
+          branch="${GITHUB_REF#refs/heads/}"
+          if [[ "$branch" == "main" ]]; then
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+          elif [[ "$branch" == "develop" ]]; then
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "::error::Releases dürfen nur aus main (Release) oder develop (Prerelease) erstellt werden!"
+            exit 1
+          fi
+
+      - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          ref: main
 
       - name: Fetch all tags
         run: git fetch --tags
@@ -64,6 +77,7 @@ jobs:
           tag_name: ${{ steps.set_tag.outputs.tag }}
           name: Release ${{ steps.set_tag.outputs.tag }}
           generate_release_notes: true
+          prerelease: ${{ steps.branch-check.outputs.prerelease }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
