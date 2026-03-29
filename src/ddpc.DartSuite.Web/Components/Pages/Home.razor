@@ -1,49 +1,336 @@
 @page "/"
+@using ddpc.DartSuite.Application.Contracts.Boards
+@using ddpc.DartSuite.Application.Contracts.Matches
+@using ddpc.DartSuite.Application.Contracts.Tournaments
 @inject DartSuiteApiService Api
+@inject AppStateService AppState
+@implements IDisposable
 
-<PageTitle>DartSuite</PageTitle>
+<PageTitle>DartSuite Dashboard</PageTitle>
 
-<h1>DartSuite Dashboard</h1>
+<h1 class="mb-3">Dashboard</h1>
 
-<div class="row g-3 mt-1">
-    <div class="col-md-4">
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <h5 class="card-title">Boards</h5>
-                <p class="card-text">@boardsCount active configured boards</p>
-                <a class="btn btn-primary" href="boards">Open Boards</a>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <h5 class="card-title">Tournaments</h5>
-                <p class="card-text">@tournamentsCount tournaments available</p>
-                <a class="btn btn-primary" href="tournaments">Open Tournaments</a>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <h5 class="card-title">Autodarts Login</h5>
-                <p class="card-text">Connect account and monitor board status</p>
-                <a class="btn btn-primary" href="login">Open Login</a>
-            </div>
-        </div>
+@* ─── Tournament selector ─── *@
+<div class="d-flex align-items-center gap-3 mb-4">
+    <select class="form-select w-auto" value="@selectedTournamentId" @onchange="OnTournamentChanged">
+        <option value="">-- Turnier auswählen --</option>
+        @foreach (var t in filteredTournaments)
+        {
+            <option value="@t.Id">@t.Name (@t.Status)</option>
+        }
+    </select>
+    <div class="form-check">
+        <input type="checkbox" class="form-check-input" id="showFinished" @bind="showFinished" />
+        <label class="form-check-label" for="showFinished">Beendete Turniere anzeigen</label>
     </div>
 </div>
 
+@if (selectedTournament is not null)
+{
+    <div class="mb-3">
+        <span class="badge @StatusBadgeClass(selectedTournament.Status) me-2">@selectedTournament.Status</span>
+        <strong>@selectedTournament.Name</strong>
+        <span class="text-muted ms-2">@selectedTournament.StartDate.ToString("dd.MM.yyyy")</span>
+        @if (!string.IsNullOrEmpty(selectedTournament.StartTime))
+        {
+            <span class="text-muted">@selectedTournament.StartTime Uhr</span>
+        }
+    </div>
+
+    @if (boards.Count == 0)
+    {
+        <div class="alert alert-info">Keine Boards konfiguriert. Bitte fügen Sie Boards im <a href="boards">Board-Bereich</a>
+            hinzu.</div>
+        }
+else
+        {
+            <div class="row g-3">
+                @foreach (var board in boards)
+                {
+                    var boardMatches = GetBoardMatches(board.Id);
+                    var runningMatch = boardMatches.FirstOrDefault(m => m.Status == "Aktiv");
+                    var upcoming = boardMatches.Where(m => m.Status != "Aktiv" && m.Status != "Beendet" && m.Status != "WalkOver")
+                    .OrderBy(m => m.PlannedStartUtc).Take(2).ToList();
+                    var delay = CalculateBoardDelay(board.Id);
+
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card shadow-sm h-100">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <strong>@board.Name</strong>
+                                @if (delay.HasValue)
+                                {
+                                    @if (delay.Value == 0)
+                                    {
+                                        <span class="badge bg-success">Im Zeitplan</span>
+                                    }
+                                    else if (delay.Value < 0)
+                                    {
+                                        <span class="badge bg-info">@Math.Abs(delay.Value) Min. voraus</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger">@delay.Value Min. Verzögerung</span>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">@board.Status</span>
+                                }
+                            </div>
+                            <div class="card-body p-0">
+                                <ul class="list-group list-group-flush">
+                                    @* Running match *@
+                                    @if (runningMatch is not null)
+                                    {
+                                        <li class="list-group-item list-group-item-success">
+                                            <div class="d-flex justify-content-between">
+                                                <small class="text-uppercase fw-bold text-success">Laufend</small>
+                                                <small class="text-muted">@FormatScore(runningMatch)</small>
+                                            </div>
+                                            <div>@ParticipantName(runningMatch.HomeParticipantId) vs
+                                                @ParticipantName(runningMatch.AwayParticipantId)</div>
+                                            </li>
+                                        }
+                    else
+                                        {
+                                            <li class="list-group-item text-muted fst-italic">Kein laufendes Match</li>
+                                        }
+
+                                        @* Next matches *@
+                                        @foreach (var match in upcoming)
+                                        {
+                                            <li class="list-group-item">
+                                                <div class="d-flex justify-content-between">
+                                                    <small class="text-uppercase text-muted">Nächstes</small>
+                                                    @if (match.PlannedStartUtc.HasValue)
+                                                    {
+                                                        <small
+                                                        class="text-muted">@match.PlannedStartUtc.Value.ToLocalTime().ToString("HH:mm")</small>
+                                                    }
+                                                </div>
+                                                <div>@ParticipantName(match.HomeParticipantId) vs @ParticipantName(match.AwayParticipantId)
+                                                </div>
+                                            </li>
+                                        }
+                                        @for (var i = upcoming.Count; i < 2; i++)
+                                        {
+                                            <li class="list-group-item text-muted fst-italic">—</li>
+                                        }
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+else
+        {
+            <div class="row g-3 mt-1">
+                <div class="col-md-4">
+                    <div class="card shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">Boards</h5>
+                            <p class="card-text">@boards.Count konfigurierte Boards</p>
+                            <a class="btn btn-primary" href="boards">Boards öffnen</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">Turniere</h5>
+                            <p class="card-text">@tournaments.Count verfügbare Turniere</p>
+                            <a class="btn btn-primary" href="tournaments">Turniere öffnen</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card shadow-sm">
+                        <div class="card-body">
+                            <h5 class="card-title">Autodarts Login</h5>
+                            <p class="card-text">Account verbinden und Board-Status überwachen</p>
+                            <a class="btn btn-primary" href="login">Login öffnen</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
 @code {
-    private int boardsCount;
-    private int tournamentsCount;
+    private List<TournamentDto> tournaments = new();
+    private List<BoardDto> boards = new();
+    private List<MatchDto> matchesForTournament = new();
+    private List<ParticipantDto> participants = new();
+    private List<TournamentRoundDto> rounds = new();
+    private bool showFinished;
+    private string selectedTournamentId = "";
+    private Timer? _autoRefreshTimer;
+
+    private IReadOnlyList<TournamentDto> filteredTournaments => showFinished
+    ? tournaments
+    : tournaments.Where(t => t.Status != "Beendet" && t.Status != "Abgebrochen").ToList();
+
+    private TournamentDto? selectedTournament => string.IsNullOrEmpty(selectedTournamentId)
+    ? null
+    : tournaments.FirstOrDefault(t => t.Id.ToString() == selectedTournamentId);
 
     protected override async Task OnInitializedAsync()
     {
-        var boards = await Api.GetBoardsAsync();
-        var tournaments = await Api.GetTournamentsAsync();
-        boardsCount = boards.Count;
-        tournamentsCount = tournaments.Count;
+        AppState.OnChange += OnAppStateChanged;
+        tournaments = (await Api.GetTournamentsAsync()).ToList();
+        boards = (await Api.GetBoardsAsync()).ToList();
+
+        // Use AppState selection if available, otherwise auto-select
+        if (AppState.SelectedTournament is not null && tournaments.Any(t => t.Id == AppState.SelectedTournament.Id))
+        {
+            selectedTournamentId = AppState.SelectedTournament.Id.ToString();
+        }
+        else
+        {
+            var active = filteredTournaments.FirstOrDefault(t => t.Status == "Gestartet")
+                ?? filteredTournaments.FirstOrDefault();
+            if (active is not null)
+            {
+                selectedTournamentId = active.Id.ToString();
+                AppState.SetSelectedTournament(active);
+            }
+        }
+
+        if (selectedTournament is not null)
+            await LoadTournamentDataAsync();
+
+        _autoRefreshTimer = new Timer(OnAutoRefresh, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+    }
+
+    private async void OnAutoRefresh(object? _)
+    {
+        if (selectedTournament is null) return;
+        try
+        {
+            matchesForTournament = (await Api.GetMatchesAsync(selectedTournament.Id)).ToList();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* ignore refresh errors */ }
+    }
+
+    private async void OnAppStateChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            if (AppState.SelectedTournament is not null)
+                selectedTournamentId = AppState.SelectedTournament.Id.ToString();
+            else
+                selectedTournamentId = "";
+
+            if (selectedTournament is not null)
+                await LoadTournamentDataAsync();
+
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnTournamentChanged(ChangeEventArgs e)
+    {
+        selectedTournamentId = e.Value?.ToString() ?? "";
+        if (selectedTournament is not null)
+        {
+            AppState.SetSelectedTournament(selectedTournament);
+            await LoadTournamentDataAsync();
+        }
+        else
+        {
+            AppState.SetSelectedTournament(null);
+        }
+    }
+
+    private async Task LoadTournamentDataAsync()
+    {
+        if (selectedTournament is null) return;
+        var id = selectedTournament.Id;
+        matchesForTournament = (await Api.GetMatchesAsync(id)).ToList();
+        participants = (await Api.GetParticipantsAsync(id)).ToList();
+        rounds = (await Api.GetRoundsAsync(id)).ToList();
+    }
+
+    private List<MatchDto> GetBoardMatches(Guid boardId)
+    {
+        return matchesForTournament
+        .Where(m => m.BoardId == boardId)
+        .OrderBy(m => m.PlannedStartUtc)
+        .ToList();
+    }
+
+    private int? CalculateBoardDelay(Guid boardId)
+    {
+        var boardMatches = GetBoardMatches(boardId);
+        if (boardMatches.Count == 0) return null;
+
+        // Find the next unfinished match on this board
+        var nextMatch = boardMatches.FirstOrDefault(m => m.Status == "Aktiv")
+        ?? boardMatches.FirstOrDefault(m => m.Status != "Beendet" && m.Status != "WalkOver");
+        if (nextMatch?.PlannedStartUtc is null) return null;
+
+        var now = DateTimeOffset.Now;
+        var planned = nextMatch.PlannedStartUtc.Value;
+
+        if (nextMatch.Status == "Aktiv")
+        {
+            // Match is running — check if it started on time
+            if (nextMatch.StartedUtc.HasValue)
+            {
+                var startDelay = (int)(nextMatch.StartedUtc.Value - planned).TotalMinutes;
+                return startDelay;
+            }
+            return 0;
+        }
+
+        // Match hasn't started yet — expected vs. now
+        // Count how many matches should already be finished at this board
+        var finishedCount = boardMatches.Count(m => m.Status is "Beendet" or "WalkOver");
+        var expectedFinished = boardMatches.Count(m => m.PlannedStartUtc.HasValue && m.PlannedStartUtc.Value <= now);
+        var behindCount = expectedFinished - finishedCount;
+
+        if (behindCount <= 0)
+        {
+            // Ahead or on time
+            var aheadMinutes = (int)(planned - now).TotalMinutes;
+            return aheadMinutes > 0 ? -aheadMinutes : 0;
+        }
+
+        // Behind — estimate delay from round settings
+        var matchRound = rounds.FirstOrDefault(r => r.Phase == nextMatch.Phase && r.RoundNumber == nextMatch.Round);
+        var avgDuration = matchRound?.MatchDurationMinutes ?? 10;
+        var pause = matchRound?.PauseBetweenMatchesMinutes ?? 2;
+        return behindCount * (avgDuration + pause);
+    }
+
+    private string ParticipantName(Guid participantId)
+    {
+        if (participantId == Guid.Empty) return "Freilos";
+        return participants.FirstOrDefault(p => p.Id == participantId)?.DisplayName ?? "TBD";
+    }
+
+    private string FormatScore(MatchDto m)
+    {
+        if (m.HomeSets > 0 || m.AwaySets > 0)
+            return $"{m.HomeSets}:{m.AwaySets} ({m.HomeLegs}:{m.AwayLegs})";
+        return $"{m.HomeLegs}:{m.AwayLegs}";
+    }
+
+    private static string StatusBadgeClass(string status) => status switch
+    {
+        "Erstellt" => "bg-secondary",
+        "Geplant" => "bg-warning text-dark",
+        "Gestartet" => "bg-success",
+        "Beendet" => "bg-primary",
+        "Abgebrochen" => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    public void Dispose()
+    {
+        _autoRefreshTimer?.Dispose();
+        AppState.OnChange -= OnAppStateChanged;
     }
 }

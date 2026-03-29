@@ -1,6 +1,8 @@
 @page "/boards"
-@rendermode InteractiveServer
+@using ddpc.DartSuite.Application.Contracts.Tournaments
 @inject DartSuiteApiService Api
+@inject AppStateService AppState
+@implements IDisposable
 
 <PageTitle>Boards</PageTitle>
 
@@ -31,14 +33,16 @@
     </div>
 </div>
 
+<div class="table-responsive">
 <table class="table table-striped mt-3">
     <thead>
         <tr>
             <th>Name</th>
-            <th>External ID</th>
+            <th class="d-none d-md-table-cell">External ID</th>
             <th>Status</th>
-            <th>Extension</th>
-            <th>IP</th>
+            <th>Aktuelles Match</th>
+            <th class="d-none d-md-table-cell">Extension</th>
+            <th class="d-none d-lg-table-cell">IP</th>
         </tr>
     </thead>
     <tbody>
@@ -46,9 +50,28 @@
         {
             <tr>
                 <td>@board.Name</td>
-                <td>@board.ExternalBoardId</td>
+                <td class="d-none d-md-table-cell">@board.ExternalBoardId</td>
                 <td><span class="badge @StatusBadge(board.Status)">@board.Status</span></td>
                 <td>
+                    @if (!string.IsNullOrEmpty(board.CurrentMatchLabel))
+                    {
+                        @if (board.CurrentMatchId.HasValue)
+                        {
+                            <a href="/matches?matchId=@board.CurrentMatchId.Value"
+                               class="text-primary fw-semibold"
+                               style="text-decoration:underline dotted"><span class="autodarts-icon"></span> @board.CurrentMatchLabel</a>
+                        }
+                        else
+                        {
+                            <span>@board.CurrentMatchLabel</span>
+                        }
+                    }
+                    else
+                    {
+                        <span class="text-muted">—</span>
+                    }
+                </td>
+                <td class="d-none d-md-table-cell">
                     @if (board.IsExtensionConnected)
                     {
                         <span class="badge bg-success">Verbunden</span>
@@ -58,11 +81,12 @@
                         <span class="badge bg-secondary">Getrennt</span>
                     }
                 </td>
-                <td>@board.LocalIpAddress</td>
+                <td class="d-none d-lg-table-cell">@board.LocalIpAddress</td>
             </tr>
         }
     </tbody>
 </table>
+</div>
 
 @code {
     private List<BoardDto> boards = new();
@@ -72,15 +96,23 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadAsync();
+        AppState.OnChange += OnAppStateChanged;
+        boards = (await Api.GetBoardsAsync()).ToList();
+    }
+
+    private async void OnAppStateChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            boards = (await Api.GetBoardsAsync()).ToList();
+            StateHasChanged();
+        });
     }
 
     private async Task CreateBoardAsync()
     {
         if (string.IsNullOrWhiteSpace(newBoardExternalId) || string.IsNullOrWhiteSpace(newBoardName))
-        {
             return;
-        }
 
         try
         {
@@ -88,7 +120,7 @@
             await Api.AddBoardAsync(new CreateBoardRequest(newBoardExternalId, newBoardName, null, null));
             newBoardExternalId = string.Empty;
             newBoardName = string.Empty;
-            await LoadAsync();
+            boards = (await Api.GetBoardsAsync()).ToList();
         }
         catch (InvalidOperationException ex)
         {
@@ -100,11 +132,6 @@
         }
     }
 
-    private async Task LoadAsync()
-    {
-        boards = (await Api.GetBoardsAsync()).ToList();
-    }
-
     private static string StatusBadge(string status) => status switch
     {
         "Running" => "bg-success",
@@ -113,4 +140,9 @@
         "Error" => "bg-danger",
         _ => "bg-secondary"
     };
+
+    public void Dispose()
+    {
+        AppState.OnChange -= OnAppStateChanged;
+    }
 }

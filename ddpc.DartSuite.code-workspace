@@ -6,7 +6,16 @@
 	],
 	"settings": {
 		"chat.tools.terminal.autoApprove": {
-			"dotnet build": true
+			"dotnet build": true,
+			"sqlite3": true,
+			"dotnet tool": true,
+			"git rm": true,
+			"git add": true,
+			"git commit": true,
+			"git gc": true,
+			"git push": true,
+			"git pull": true,
+			"git ls-tree": true
 		}
 	}
 }

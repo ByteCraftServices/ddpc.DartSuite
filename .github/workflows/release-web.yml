@@ -1,0 +1,21 @@
+name: Release Web
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release-web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout publish-web branch
+        uses: actions/checkout@v4
+        with:
+          ref: publish-web
+
+      - name: Pull main into publish-web
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git fetch origin main
+          git merge origin/main --no-edit
+          git push origin publish-web

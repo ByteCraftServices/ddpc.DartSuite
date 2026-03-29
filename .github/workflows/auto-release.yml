@@ -1,0 +1,90 @@
+name: Auto Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (leave empty for auto-increment)'
+        required: false
+        default: ''
+      release_type:
+        description: 'Release type (major, minor, patch) if auto-increment'
+        required: false
+        default: 'patch'
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.set_tag.outputs.tag }}
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Fetch all tags
+        run: git fetch --tags
+
+      - name: Get latest tag
+        id: get_tag
+        run: |
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "latest_tag=$latest_tag" >> $GITHUB_OUTPUT
+
+      - name: Calculate next version
+        id: set_tag
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            tag=${{ github.event.inputs.version }}
+          else
+            latest=${{ steps.get_tag.outputs.latest_tag }}
+            version=${latest#v}
+            IFS='.' read -r major minor patch <<< "$version"
+            case "${{ github.event.inputs.release_type }}" in
+              major)
+                major=$((major+1)); minor=0; patch=0;;
+              minor)
+                minor=$((minor+1)); patch=0;;
+              patch|*)
+                patch=$((patch+1));;
+            esac
+            tag="v$major.$minor.$patch"
+          fi
+          echo "tag=$tag" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.set_tag.outputs.tag }}
+          name: Release ${{ steps.set_tag.outputs.tag }}
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  trigger-publish-api:
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Release API workflow
+        uses: peter-evans/workflow-dispatch@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          workflow: release-api.yml
+
+  trigger-publish-web:
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Release Web workflow
+        uses: peter-evans/workflow-dispatch@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          workflow: release-web.yml

@@ -32,7 +32,7 @@
 			"type": "shell",
 			"command": "dotnet",
 			"args": [
-				"run",
+				"watch",
 				"--project",
 				"src/ddpc.DartSuite.Api"
 			],
@@ -44,12 +44,39 @@
 			"type": "shell",
 			"command": "dotnet",
 			"args": [
-				"run",
+				"watch",
+				"--launch-profile",
+				"https",
 				"--project",
 				"src/ddpc.DartSuite.Web"
 			],
 			"isBackground": true,
 			"problemMatcher": []
+		},
+		{
+			"label": "run-web-live-api",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"run",
+				"-c",
+				"Release",
+				"--environment",
+				"Production",
+				"--project",
+				"src/ddpc.DartSuite.Web"
+			],
+			"options": {
+				"env": {
+					"ASPNETCORE_ENVIRONMENT": "Production",
+					"DOTNET_ENVIRONMENT": "Production"
+				}
+			},
+			"isBackground": true,
+			"problemMatcher": [],
+			"dependsOn": [
+				"build-web-clean"
+			]
 		},
 		{
 			"label": "build-web-clean",
@@ -64,6 +91,41 @@
 				"$msCompile"
 			],
 			"group": "build"
+		},
+		{
+			"label": "web release",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"publish",
+				"-c",
+				"Release",
+				"src/ddpc.DartSuite.Web"
+			],
+			"problemMatcher": [
+				"$msCompile"
+			],
+			"group": "build"
+		},
+		{
+			"label": "run-web-published",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"ddpc.DartSuite.Web.dll"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}/src/ddpc.DartSuite.Web/bin/Release/net10.0/publish",
+				"env": {
+					"ASPNETCORE_ENVIRONMENT": "Production",
+					"DOTNET_ENVIRONMENT": "Production"
+				}
+			},
+			"isBackground": true,
+			"problemMatcher": [],
+			"dependsOn": [
+				"web release"
+			]
 		}
 	]
 }

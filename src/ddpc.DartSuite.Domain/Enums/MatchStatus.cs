@@ -1,10 +1,11 @@
 namespace ddpc.DartSuite.Domain.Enums;
 
-public enum TournamentStatus
+public enum MatchStatus
 {
     Erstellt = 0,
     Geplant = 1,
-    Gestartet = 2,
+    Aktiv = 2,
     Beendet = 3,
-    Abgebrochen = 4
+    WalkOver = 4,
+    Inaktiv = 5
 }

@@ -383,4 +383,71 @@ public sealed class MatchesController(
         var result = await matchService.ResetMatchAsync(matchId, cancellationToken);
         return result is null ? NotFound() : Ok(result);
     }
+
+    [HttpPut("{matchId:guid}")]
+    public async Task<ActionResult<MatchDto>> UpdateMatch(Guid matchId, [FromBody] UpdateMatchRequest request, CancellationToken cancellationToken)
+    {
+        if (matchId != request.MatchId) return BadRequest();
+        var result = await matchService.UpdateMatchAsync(request, cancellationToken);
+        return result is null ? NotFound() : Ok(result);
+    }
+
+    [HttpPost("batch-reset")]
+    public async Task<ActionResult<IReadOnlyList<MatchDto>>> BatchReset([FromBody] IReadOnlyList<Guid> matchIds, CancellationToken cancellationToken)
+    {
+        foreach (var id in matchIds)
+            listenerService.StopListener(id);
+
+        var result = await matchService.BatchResetMatchesAsync(matchIds, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("{tournamentId:guid}/cleanup")]
+    public async Task<ActionResult<IReadOnlyList<MatchDto>>> CleanupStale(Guid tournamentId, [FromQuery] int staleMinutes = 120, CancellationToken cancellationToken = default)
+    {
+        var result = await matchService.CleanupStaleMatchesAsync(tournamentId, staleMinutes, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("{tournamentId:guid}/check-external")]
+    public async Task<ActionResult<IReadOnlyList<MatchDto>>> CheckExternalMatches(Guid tournamentId, CancellationToken cancellationToken)
+    {
+        var accessToken = await GetActiveAccessTokenAsync(cancellationToken);
+        if (accessToken is null)
+            return Unauthorized(new { message = "Not connected to Autodarts." });
+
+        var matches = await matchService.GetMatchesAsync(tournamentId, cancellationToken);
+        var withExternal = matches.Where(m => !string.IsNullOrEmpty(m.ExternalMatchId) && m.Status != "Beendet" && m.Status != "WalkOver").ToList();
+        var invalidIds = new List<Guid>();
+
+        foreach (var m in withExternal)
+        {
+            try
+            {
+                await autodartsClient.GetMatchAsync(accessToken, m.ExternalMatchId!, cancellationToken);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                invalidIds.Add(m.Id);
+            }
+            catch
+            {
+                // Other errors (timeout, 500 etc.) — skip, don't mark as inactive
+            }
+        }
+
+        var updated = new List<MatchDto>();
+        foreach (var id in invalidIds)
+        {
+            var existing = withExternal.First(m => m.Id == id);
+            var result = await matchService.UpdateMatchAsync(
+                new UpdateMatchRequest(id, existing.BoardId, existing.HomeLegs, existing.AwayLegs,
+                    existing.HomeSets, existing.AwaySets, "Inaktiv",
+                    existing.IsStartTimeLocked, existing.IsBoardLocked, existing.WinnerParticipantId),
+                cancellationToken);
+            if (result is not null) updated.Add(result);
+        }
+
+        return Ok(updated);
+    }
 }

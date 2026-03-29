@@ -25,7 +25,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<AutodartsMatchList
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() && builder.Configuration.GetValue<bool>("EnableSwagger"))
 {
     app.UseSwagger();
     app.UseSwaggerUI();
@@ -77,6 +77,34 @@ using (var scope = app.Services.CreateScope())
     {
         await using var alter = conn.CreateCommand();
         alter.CommandText = "ALTER TABLE Tournaments ADD COLUMN Status INTEGER NOT NULL DEFAULT 0";
+        await alter.ExecuteNonQueryAsync();
+    }
+
+    // Add Status column to Matches if missing
+    if (!columns.Contains("Status"))
+    {
+        await using var alter = conn.CreateCommand();
+        alter.CommandText = "ALTER TABLE Matches ADD COLUMN Status INTEGER NOT NULL DEFAULT 0";
+        await alter.ExecuteNonQueryAsync();
+    }
+
+    // Add Registration columns to Tournaments if missing
+    if (!tournamentColumns.Contains("IsRegistrationOpen"))
+    {
+        await using var alter = conn.CreateCommand();
+        alter.CommandText = "ALTER TABLE Tournaments ADD COLUMN IsRegistrationOpen INTEGER NOT NULL DEFAULT 0";
+        await alter.ExecuteNonQueryAsync();
+    }
+    if (!tournamentColumns.Contains("RegistrationStartUtc"))
+    {
+        await using var alter = conn.CreateCommand();
+        alter.CommandText = "ALTER TABLE Tournaments ADD COLUMN RegistrationStartUtc TEXT";
+        await alter.ExecuteNonQueryAsync();
+    }
+    if (!tournamentColumns.Contains("RegistrationEndUtc"))
+    {
+        await using var alter = conn.CreateCommand();
+        alter.CommandText = "ALTER TABLE Tournaments ADD COLUMN RegistrationEndUtc TEXT";
         await alter.ExecuteNonQueryAsync();
     }
 

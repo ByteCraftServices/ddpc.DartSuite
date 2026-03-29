@@ -40,6 +40,11 @@ public sealed class Tournament
     public int WinPoints { get; set; } = 2;
     public int LegFactor { get; set; } = 1;
 
+    // Registration settings
+    public bool IsRegistrationOpen { get; set; }
+    public DateTimeOffset? RegistrationStartUtc { get; set; }
+    public DateTimeOffset? RegistrationEndUtc { get; set; }
+
     public IReadOnlyCollection<Participant> Participants => _participants.AsReadOnly();
 
     public void AddParticipant(Participant participant)

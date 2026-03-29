@@ -5,12 +5,16 @@ using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+Console.WriteLine("Api:BaseUrl: " + builder.Configuration["Api:BaseUrl"]);
+Console.WriteLine("ENVIRONMENT: " + builder.Environment.EnvironmentName);
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddLocalization();
+builder.Services.AddScoped<AppStateService>();
 builder.Services.AddHttpClient<DartSuiteApiService>(client =>
 {
-    client.BaseAddress = new Uri(builder.Configuration["Api:BaseUrl"] ?? "http://localhost:5290/");
+     client.BaseAddress = new Uri(builder?.Configuration["Api:BaseUrl"] ?? throw new NullReferenceException("Api:BaseUrl configuration is missing"));
 });
 
 var supportedCultures = new[] { "de", "en-US" };
@@ -24,7 +28,7 @@ builder.Services.Configure<RequestLocalizationOptions>(options =>
 
 var app = builder.Build();
 
-if (!app.Environment.IsDevelopment())
+if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Test"))
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
     app.UseHsts();
