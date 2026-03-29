@@ -1,0 +1,19 @@
+name: Block PRs from publish branches
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+jobs:
+  block-publish-prs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close PR if from forbidden branch
+        if: |
+          github.base_ref == 'main' &&
+          (github.head_ref == 'publish-api' || github.head_ref == 'publish-web')
+        run: |
+          echo "Closing PR from forbidden branch: ${{ github.head_ref }}"
+          gh pr close "$GITHUB_REF" --comment "PRs von publish-api oder publish-web nach main sind laut Workflow nicht erlaubt."
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
