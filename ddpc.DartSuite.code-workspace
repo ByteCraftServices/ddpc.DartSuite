@@ -15,7 +15,8 @@
 			"git gc": true,
 			"git push": true,
 			"git pull": true,
-			"git ls-tree": true
+			"git ls-tree": true,
+			"dotnet ef": true
 		}
 	}
 }

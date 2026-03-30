@@ -23,4 +23,8 @@
     <ProjectReference Include="..\..\src\ddpc.DartSuite.Web\ddpc.DartSuite.Web.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.4" />
+  </ItemGroup>
+
 </Project>
