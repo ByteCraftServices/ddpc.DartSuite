@@ -3,3 +3,8 @@ ai/
 # Ignore all bin and obj folders
 **/bin/
 **/obj/
+.vs/
+.vscode/
+.idea/
+
+src/ddpc.DartSuite.Api/dartsuite.dev.db*
