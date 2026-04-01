@@ -7,4 +7,31 @@ src/ddpc.DartSuite.Api/dartsuite.dev.db*
 .vs/
 .vscode/
 .idea/
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider/JetBrains
+.idea/
+.Rider*
+.resharper/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test results
+TestResults/
+
+# Publish/Release output
+**/publish/
+**/Release/
+
+# Logs
+*.log
+
+# Sensitive config (untracked secrets, falls vorhanden)
+appsettings.*.Secrets.json
 
