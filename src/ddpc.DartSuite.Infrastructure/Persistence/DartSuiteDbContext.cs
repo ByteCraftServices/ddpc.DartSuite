@@ -26,7 +26,16 @@ public sealed class DartSuiteDbContext(DbContextOptions<DartSuiteDbContext> opti
         {
             entity.Property(x => x.Name).HasMaxLength(128);
             entity.Property(x => x.JoinCode).HasMaxLength(3);
-            entity.HasIndex(x => x.JoinCode).IsUnique().HasFilter("[JoinCode] IS NOT NULL");
+            // Provider-aware index filter for JoinCode
+            var provider = Database.ProviderName;
+            if (provider != null && provider.ToLower().Contains("npgsql"))
+            {
+                entity.HasIndex(x => x.JoinCode).IsUnique().HasFilter("\"JoinCode\" IS NOT NULL");
+            }
+            else
+            {
+                entity.HasIndex(x => x.JoinCode).IsUnique().HasFilter("[JoinCode] IS NOT NULL");
+            }
             entity.Ignore(x => x.Participants);
         });
 

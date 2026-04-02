@@ -26,6 +26,12 @@ public static class DependencyInjection
             {
                 dbOptions.UseSqlite(options.ConnectionString);
             }
+            else if (string.Equals(options.Provider, "Postgre", StringComparison.OrdinalIgnoreCase)
+                  || string.Equals(options.Provider, "Postgres", StringComparison.OrdinalIgnoreCase)
+                  || string.Equals(options.Provider, "PostgreSQL", StringComparison.OrdinalIgnoreCase))
+            {
+                dbOptions.UseNpgsql(options.ConnectionString);
+            }
             else
             {
                 dbOptions.UseInMemoryDatabase("DartSuiteDb");
