@@ -3,7 +3,6 @@ ai/
 # Ignore all bin and obj folders
 **/bin/
 **/obj/
-src/ddpc.DartSuite.Api/dartsuite.dev.db*
 .vs/
 .vscode/
 .idea/
@@ -35,3 +34,4 @@ TestResults/
 # Sensitive config (untracked secrets, falls vorhanden)
 appsettings.*.Secrets.json
 
+src/ddpc.DartSuite.Api/dartsuite.dev.db*
