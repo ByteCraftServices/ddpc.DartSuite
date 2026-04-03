@@ -21,6 +21,7 @@ builder.Services.AddDartSuiteInfrastructure(builder.Configuration);
 builder.Services.AddDartSuiteApiClient(builder.Configuration);
 builder.Services.AddSingleton<AutodartsSessionStore>();
 builder.Services.AddSingleton<AutodartsMatchListenerService>();
+builder.Services.AddSingleton<BoardExtensionSyncRequestStore>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<AutodartsMatchListenerService>());
 
 var app = builder.Build();
@@ -34,6 +35,7 @@ if (app.Environment.IsDevelopment() && builder.Configuration.GetValue<bool>("Ena
 app.UseCors("Default");
 app.MapControllers();
 app.MapHub<BoardStatusHub>("/hubs/boards");
+app.MapHub<TournamentHub>("/hubs/tournaments");
 
 using (var scope = app.Services.CreateScope())
 {

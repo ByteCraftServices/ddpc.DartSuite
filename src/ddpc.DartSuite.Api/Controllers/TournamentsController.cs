@@ -1,12 +1,21 @@
 using ddpc.DartSuite.Application.Abstractions;
+using ddpc.DartSuite.Application.Contracts.Notifications;
 using ddpc.DartSuite.Application.Contracts.Tournaments;
+using ddpc.DartSuite.Api.Hubs;
+using ddpc.DartSuite.Infrastructure.Configuration;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Options;
 
 namespace ddpc.DartSuite.Api.Controllers;
 
 [ApiController]
 [Route("api/tournaments")]
-public sealed class TournamentsController(ITournamentManagementService tournamentService) : ControllerBase
+public sealed class TournamentsController(
+    ITournamentManagementService tournamentService,
+    IDiscordWebhookService discordWebhookService,
+    IHubContext<TournamentHub> tournamentHub,
+    IOptions<VapidOptions> vapidOptions) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<TournamentDto>>> Get([FromQuery] string? host, CancellationToken cancellationToken)
@@ -50,6 +59,8 @@ public sealed class TournamentsController(ITournamentManagementService tournamen
         try
         {
             var tournament = await tournamentService.UpdateTournamentAsync(request, cancellationToken);
+            if (tournament is not null)
+                await NotifyTournamentAsync(tournamentId, "TournamentUpdated");
             return tournament is null ? NotFound() : Ok(tournament);
         }
         catch (InvalidOperationException ex)
@@ -90,6 +101,7 @@ public sealed class TournamentsController(ITournamentManagementService tournamen
         try
         {
             var participant = await tournamentService.AddParticipantAsync(request, cancellationToken);
+            await NotifyTournamentAsync(tournamentId, "ParticipantsUpdated");
             return Ok(participant);
         }
         catch (InvalidOperationException ex)
@@ -127,6 +139,12 @@ public sealed class TournamentsController(ITournamentManagementService tournamen
         {
             return Conflict(new { message = ex.Message });
         }
+    }
+
+    [HttpPost("{tournamentId:guid}/participants/assign-seed-pots")]
+    public async Task<ActionResult<IReadOnlyList<ParticipantDto>>> AssignSeedPots(Guid tournamentId, CancellationToken cancellationToken)
+    {
+        return Ok(await tournamentService.AssignSeedPotsAsync(tournamentId, cancellationToken));
     }
 
     // ─── Rounds ───
@@ -222,5 +240,72 @@ public sealed class TournamentsController(ITournamentManagementService tournamen
             return BadRequest("Tournament id mismatch.");
 
         return Ok(await tournamentService.SaveScoringCriteriaAsync(request, cancellationToken));
+    }
+
+    // ─── Notifications (#14) ───
+
+    [HttpGet("{tournamentId:guid}/notifications/{userAccountName}")]
+    public async Task<ActionResult<IReadOnlyList<NotificationSubscriptionDto>>> GetNotifications(Guid tournamentId, string userAccountName, CancellationToken cancellationToken)
+    {
+        return Ok(await tournamentService.GetNotificationSubscriptionsAsync(tournamentId, userAccountName, cancellationToken));
+    }
+
+    [HttpPost("{tournamentId:guid}/notifications")]
+    public async Task<ActionResult<NotificationSubscriptionDto>> SubscribeNotifications(Guid tournamentId, [FromBody] CreateNotificationSubscriptionRequest request, CancellationToken cancellationToken)
+    {
+        if (request.TournamentId != tournamentId)
+            return BadRequest("Tournament id mismatch.");
+
+        return Ok(await tournamentService.SubscribeNotificationsAsync(request, cancellationToken));
+    }
+
+    [HttpDelete("notifications/{subscriptionId:guid}")]
+    public async Task<IActionResult> UnsubscribeNotifications(Guid subscriptionId, CancellationToken cancellationToken)
+    {
+        var result = await tournamentService.UnsubscribeNotificationsAsync(subscriptionId, cancellationToken);
+        return result ? NoContent() : NotFound();
+    }
+
+    // ─── Discord Webhook (#14) ───
+
+    [HttpPost("{tournamentId:guid}/webhook/test")]
+    public async Task<IActionResult> TestWebhook(Guid tournamentId, CancellationToken cancellationToken)
+    {
+        var tournament = await tournamentService.GetTournamentAsync(tournamentId, cancellationToken);
+        if (tournament is null) return NotFound();
+        if (string.IsNullOrEmpty(tournament.DiscordWebhookUrl))
+            return BadRequest(new { message = "No Discord webhook URL configured for this tournament." });
+
+        var success = await discordWebhookService.TestWebhookAsync(tournament.DiscordWebhookUrl, cancellationToken);
+        return success ? Ok(new { message = "Webhook-Test erfolgreich!" }) : BadRequest(new { message = "Webhook-Test fehlgeschlagen." });
+    }
+
+    // ─── View Preferences (#15) ───
+
+    [HttpGet("preferences/{userAccountName}/{viewContext}")]
+    public async Task<ActionResult<UserViewPreferenceDto>> GetViewPreference(string userAccountName, string viewContext, CancellationToken cancellationToken)
+    {
+        var pref = await tournamentService.GetUserViewPreferenceAsync(userAccountName, viewContext, cancellationToken);
+        return pref is null ? NotFound() : Ok(pref);
+    }
+
+    [HttpPut("preferences/{userAccountName}/{viewContext}")]
+    public async Task<ActionResult<UserViewPreferenceDto>> SaveViewPreference(string userAccountName, string viewContext, [FromBody] string settingsJson, CancellationToken cancellationToken)
+    {
+        return Ok(await tournamentService.SaveUserViewPreferenceAsync(userAccountName, viewContext, settingsJson, cancellationToken));
+    }
+
+    // ─── VAPID Public Key ───
+
+    [HttpGet("vapid-public-key")]
+    public ActionResult<string> GetVapidPublicKey()
+    {
+        var key = vapidOptions.Value.PublicKey;
+        return string.IsNullOrEmpty(key) ? NotFound() : Ok(key);
+    }
+
+    private Task NotifyTournamentAsync(Guid tournamentId, string method)
+    {
+        return tournamentHub.Clients.Group($"tournament-{tournamentId}").SendAsync(method, tournamentId.ToString());
     }
 }

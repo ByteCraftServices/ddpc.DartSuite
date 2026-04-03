@@ -17,6 +17,7 @@ public sealed class AutodartsMatchListenerService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly IHubContext<BoardStatusHub> _hubContext;
+    private readonly IHubContext<TournamentHub> _tournamentHubContext;
     private readonly AutodartsSessionStore _sessionStore;
     private readonly ILogger<AutodartsMatchListenerService> _logger;
 
@@ -30,11 +31,13 @@ public sealed class AutodartsMatchListenerService : BackgroundService
     public AutodartsMatchListenerService(
         IServiceProvider serviceProvider,
         IHubContext<BoardStatusHub> hubContext,
+        IHubContext<TournamentHub> tournamentHubContext,
         AutodartsSessionStore sessionStore,
         ILogger<AutodartsMatchListenerService> logger)
     {
         _serviceProvider = serviceProvider;
         _hubContext = hubContext;
+        _tournamentHubContext = tournamentHubContext;
         _sessionStore = sessionStore;
         _logger = logger;
     }
@@ -59,6 +62,12 @@ public sealed class AutodartsMatchListenerService : BackgroundService
     /// <summary>Ensures a listener exists for the given match. Creates one if missing.</summary>
     public void EnsureListener(Guid matchId, string externalMatchId, Guid? boardId)
     {
+        if (string.IsNullOrWhiteSpace(externalMatchId))
+        {
+            _logger.LogWarning("Listener not created for match {MatchId}: external match id is empty", matchId);
+            return;
+        }
+
         if (_listeners.ContainsKey(matchId)) return;
 
         var cts = new CancellationTokenSource();
@@ -236,6 +245,7 @@ public sealed class AutodartsMatchListenerService : BackgroundService
 
                     // Parse legs and update DB
                     var rawJson = adMatch.RawJson;
+                    var rawJsonText = SafeGetRawJsonText(rawJson);
                     var (homeLegs, awayLegs, homeSets, awaySets) = ParseScoresFromAutodartsMatch(adMatch);
                     var scoreKey = $"{homeSets}:{homeLegs}:{awaySets}:{awayLegs}:{adMatch.Finished}";
                     var isFirstPoll = listener.LastScoreKey is null;
@@ -257,7 +267,7 @@ public sealed class AutodartsMatchListenerService : BackgroundService
                             Directory.CreateDirectory(logDir);
                             var fileName = $"match-{matchId:N}-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.json";
                             var filePath = Path.Combine(logDir, fileName);
-                            await File.WriteAllTextAsync(filePath, rawJson.ToString(), ct);
+                            await File.WriteAllTextAsync(filePath, rawJsonText, ct);
                             _logger.LogInformation("[Listener] Match {MatchId} — API response written to {FilePath}", matchId, filePath);
                         }
                         catch (Exception ex)
@@ -271,24 +281,9 @@ public sealed class AutodartsMatchListenerService : BackgroundService
 
                     if (result is not null)
                     {
-                        // Push update via SignalR to all connected Blazor clients
-                        await _hubContext.Clients.All.SendAsync("MatchUpdated", result, ct);
-                        _logger.LogInformation("[Listener] Match {MatchId} — SignalR push: MatchUpdated ({Home}:{Away})", matchId, result.HomeLegs, result.AwayLegs);
-
-                        // Also send raw match data for detailed board view
-                        await _hubContext.Clients.All.SendAsync("MatchDataReceived", new
-                        {
-                            matchId,
-                            externalMatchId = listener.ExternalMatchId,
-                            boardId = listener.BoardId,
-                            homeLegs,
-                            awayLegs,
-                            homeSets,
-                            awaySets,
-                            finished = adMatch.Finished,
-                            rawJson = adMatch.RawJson.ToString(),
-                            timestamp = DateTimeOffset.UtcNow
-                        }, ct);
+                        // Broadcast errors should not kill the polling loop.
+                        await TryBroadcastMatchUpdatedAsync(matchId, result, ct);
+                        await TryBroadcastRawMatchDataAsync(matchId, listener, homeLegs, awayLegs, homeSets, awaySets, adMatch.Finished, rawJsonText, ct);
                     }
 
                     // If match is finished, stop the listener
@@ -300,7 +295,7 @@ public sealed class AutodartsMatchListenerService : BackgroundService
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    listener.LastError = ex.Message;
+                    listener.LastError = $"{ex.GetType().Name}: {ex.Message}";
                     _logger.LogWarning(ex, "[Listener] Poll error for match {MatchId} (ext: {ExternalMatchId})", matchId, listener.ExternalMatchId);
                 }
 
@@ -446,6 +441,11 @@ public sealed class AutodartsMatchListenerService : BackgroundService
     private static (int HomeLegs, int AwayLegs, int HomeSets, int AwaySets) ParseScoresFromAutodartsMatch(AutodartsMatchDetail match)
     {
         var rawJson = match.RawJson;
+        if (rawJson.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        {
+            return (0, 0, 0, 0);
+        }
+
         int p1 = 0, p2 = 0, s1 = 0, s2 = 0;
 
         if (rawJson.TryGetProperty("legs", out var legsEl) && legsEl.ValueKind == JsonValueKind.Array)
@@ -499,6 +499,78 @@ public sealed class AutodartsMatchListenerService : BackgroundService
         }
 
         return (p1, p2, s1, s2);
+    }
+
+    private async Task TryBroadcastMatchUpdatedAsync(Guid matchId, Application.Contracts.Matches.MatchDto result, CancellationToken ct)
+    {
+        try
+        {
+            await _tournamentHubContext.Clients
+                .Group($"tournament-{result.TournamentId}")
+                .SendAsync("MatchUpdated", result.TournamentId.ToString(), ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "[Listener] Match {MatchId} — TournamentHub broadcast failed", matchId);
+        }
+
+        try
+        {
+            await _hubContext.Clients.All.SendAsync("MatchUpdated", result, ct);
+            _logger.LogInformation("[Listener] Match {MatchId} — SignalR push: MatchUpdated ({Home}:{Away})", matchId, result.HomeLegs, result.AwayLegs);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "[Listener] Match {MatchId} — BoardStatusHub MatchUpdated broadcast failed", matchId);
+        }
+    }
+
+    private async Task TryBroadcastRawMatchDataAsync(
+        Guid matchId,
+        ActiveMatchListener listener,
+        int homeLegs,
+        int awayLegs,
+        int homeSets,
+        int awaySets,
+        bool finished,
+        string rawJsonText,
+        CancellationToken ct)
+    {
+        try
+        {
+            await _hubContext.Clients.All.SendAsync("MatchDataReceived", new
+            {
+                matchId,
+                externalMatchId = listener.ExternalMatchId,
+                boardId = listener.BoardId,
+                homeLegs,
+                awayLegs,
+                homeSets,
+                awaySets,
+                finished,
+                rawJson = rawJsonText,
+                timestamp = DateTimeOffset.UtcNow
+            }, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "[Listener] Match {MatchId} — MatchDataReceived broadcast failed", matchId);
+        }
+    }
+
+    private static string SafeGetRawJsonText(JsonElement rawJson)
+    {
+        try
+        {
+            if (rawJson.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+                return "{}";
+
+            return rawJson.GetRawText();
+        }
+        catch
+        {
+            return "{}";
+        }
     }
 
     private static void CountWinner(JsonElement leg, ref int p1, ref int p2)

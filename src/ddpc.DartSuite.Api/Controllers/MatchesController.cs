@@ -3,8 +3,10 @@ using ddpc.DartSuite.Application.Contracts.Matches;
 using ddpc.DartSuite.Application.Contracts.Tournaments;
 using ddpc.DartSuite.ApiClient;
 using ddpc.DartSuite.ApiClient.Contracts;
+using ddpc.DartSuite.Api.Hubs;
 using ddpc.DartSuite.Api.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using System.Text.Json;
 
 namespace ddpc.DartSuite.Api.Controllers;
@@ -16,6 +18,7 @@ public sealed class MatchesController(
     IAutodartsClient autodartsClient,
     AutodartsSessionStore sessionStore,
     AutodartsMatchListenerService listenerService,
+    IHubContext<TournamentHub> tournamentHub,
     ILogger<MatchesController> logger) : ControllerBase
 {
     [HttpGet("{tournamentId:guid}")]
@@ -27,13 +30,17 @@ public sealed class MatchesController(
     [HttpPost("{tournamentId:guid}/generate")]
     public async Task<ActionResult<IReadOnlyList<MatchDto>>> Generate(Guid tournamentId, CancellationToken cancellationToken)
     {
-        return Ok(await matchService.GenerateKnockoutPlanAsync(tournamentId, cancellationToken));
+        var result = await matchService.GenerateKnockoutPlanAsync(tournamentId, cancellationToken);
+        await NotifyTournamentAsync(tournamentId, "MatchUpdated");
+        return Ok(result);
     }
 
     [HttpPost("{tournamentId:guid}/generate-groups")]
     public async Task<ActionResult<IReadOnlyList<MatchDto>>> GenerateGroups(Guid tournamentId, CancellationToken cancellationToken)
     {
-        return Ok(await matchService.GenerateGroupPhaseAsync(tournamentId, cancellationToken));
+        var result = await matchService.GenerateGroupPhaseAsync(tournamentId, cancellationToken);
+        await NotifyTournamentAsync(tournamentId, "MatchUpdated");
+        return Ok(result);
     }
 
     [HttpGet("{tournamentId:guid}/group-standings")]
@@ -45,7 +52,9 @@ public sealed class MatchesController(
     [HttpPost("{tournamentId:guid}/generate-schedule")]
     public async Task<ActionResult<IReadOnlyList<MatchDto>>> GenerateSchedule(Guid tournamentId, CancellationToken cancellationToken)
     {
-        return Ok(await matchService.GenerateScheduleAsync(tournamentId, cancellationToken));
+        var result = await matchService.GenerateScheduleAsync(tournamentId, cancellationToken);
+        await NotifyTournamentAsync(tournamentId, "ScheduleUpdated");
+        return Ok(result);
     }
 
     [HttpPatch("{matchId:guid}/swap")]
@@ -93,6 +102,8 @@ public sealed class MatchesController(
     public async Task<ActionResult<MatchDto>> ReportResult([FromBody] ReportMatchResultRequest request, CancellationToken cancellationToken)
     {
         var match = await matchService.ReportResultAsync(request, cancellationToken);
+        if (match is not null)
+            await NotifyTournamentAsync(match.TournamentId, "MatchUpdated");
         return match is null ? NotFound() : Ok(match);
     }
 
@@ -154,6 +165,8 @@ public sealed class MatchesController(
         }
 
         var result = await matchService.SyncMatchFromExternalAsync(matchId, homeLegs, awayLegs, homeSets, awaySets, adMatch.Finished, cancellationToken);
+        if (result is not null)
+            await NotifyTournamentAsync(result.TournamentId, "MatchUpdated");
         return result is null ? NotFound() : Ok(result);
     }
 
@@ -381,6 +394,11 @@ public sealed class MatchesController(
         listenerService.StopListener(matchId);
 
         var result = await matchService.ResetMatchAsync(matchId, cancellationToken);
+        if (result is not null)
+        {
+            await NotifyTournamentAsync(result.TournamentId, "MatchUpdated");
+            await NotifyTournamentAsync(result.TournamentId, "BoardsUpdated");
+        }
         return result is null ? NotFound() : Ok(result);
     }
 
@@ -399,6 +417,11 @@ public sealed class MatchesController(
             listenerService.StopListener(id);
 
         var result = await matchService.BatchResetMatchesAsync(matchIds, cancellationToken);
+        foreach (var tournamentId in result.Select(r => r.TournamentId).Distinct())
+        {
+            await NotifyTournamentAsync(tournamentId, "MatchUpdated");
+            await NotifyTournamentAsync(tournamentId, "BoardsUpdated");
+        }
         return Ok(result);
     }
 
@@ -406,6 +429,8 @@ public sealed class MatchesController(
     public async Task<ActionResult<IReadOnlyList<MatchDto>>> CleanupStale(Guid tournamentId, [FromQuery] int staleMinutes = 120, CancellationToken cancellationToken = default)
     {
         var result = await matchService.CleanupStaleMatchesAsync(tournamentId, staleMinutes, cancellationToken);
+        await NotifyTournamentAsync(tournamentId, "MatchUpdated");
+        await NotifyTournamentAsync(tournamentId, "BoardsUpdated");
         return Ok(result);
     }
 
@@ -449,5 +474,65 @@ public sealed class MatchesController(
         }
 
         return Ok(updated);
+    }
+
+    // ─── Statistics (#18) ───
+
+    [HttpGet("{matchId:guid}/statistics")]
+    public async Task<ActionResult<IReadOnlyList<MatchPlayerStatisticDto>>> GetMatchStatistics(Guid matchId, CancellationToken cancellationToken)
+    {
+        return Ok(await matchService.GetMatchStatisticsAsync(matchId, cancellationToken));
+    }
+
+    [HttpPost("{matchId:guid}/statistics")]
+    public async Task<ActionResult<MatchPlayerStatisticDto>> SaveStatistic(Guid matchId, [FromBody] MatchPlayerStatisticDto statistic, CancellationToken cancellationToken)
+    {
+        if (statistic.MatchId != matchId) return BadRequest("Match id mismatch.");
+        var result = await matchService.SaveMatchPlayerStatisticAsync(statistic, cancellationToken);
+        return Ok(result);
+    }
+
+    [HttpPost("{matchId:guid}/statistics/sync")]
+    public async Task<ActionResult<IReadOnlyList<MatchPlayerStatisticDto>>> SyncStatistics(Guid matchId, CancellationToken cancellationToken)
+    {
+        return Ok(await matchService.SyncStatisticsFromExternalAsync(matchId, cancellationToken));
+    }
+
+    // ─── Followers (#14) ───
+
+    [HttpGet("{matchId:guid}/followers")]
+    public async Task<ActionResult<IReadOnlyList<MatchFollowerDto>>> GetFollowers(Guid matchId, CancellationToken cancellationToken)
+    {
+        return Ok(await matchService.GetMatchFollowersAsync(matchId, cancellationToken));
+    }
+
+    [HttpPost("{matchId:guid}/follow")]
+    public async Task<ActionResult<MatchFollowerDto>> FollowMatch(Guid matchId, [FromQuery] string userAccountName, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(userAccountName)) return BadRequest("userAccountName is required.");
+        return Ok(await matchService.FollowMatchAsync(matchId, userAccountName, cancellationToken));
+    }
+
+    [HttpDelete("{matchId:guid}/follow")]
+    public async Task<IActionResult> UnfollowMatch(Guid matchId, [FromQuery] string userAccountName, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(userAccountName)) return BadRequest("userAccountName is required.");
+        var result = await matchService.UnfollowMatchAsync(matchId, userAccountName, cancellationToken);
+        return result ? NoContent() : NotFound();
+    }
+
+    // ─── Scheduling (#12) ───
+
+    [HttpPost("{tournamentId:guid}/recalculate-schedule")]
+    public async Task<ActionResult<IReadOnlyList<MatchDto>>> RecalculateSchedule(Guid tournamentId, CancellationToken cancellationToken)
+    {
+        var result = await matchService.RecalculateScheduleAsync(tournamentId, cancellationToken);
+        await NotifyTournamentAsync(tournamentId, "ScheduleUpdated");
+        return Ok(result);
+    }
+
+    private Task NotifyTournamentAsync(Guid tournamentId, string method)
+    {
+        return tournamentHub.Clients.Group($"tournament-{tournamentId}").SendAsync(method, tournamentId.ToString());
     }
 }
