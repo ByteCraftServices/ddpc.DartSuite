@@ -37,11 +37,14 @@
 <table class="table table-striped mt-3">
     <thead>
         <tr>
+            <th></th>
             <th>Name</th>
             <th class="d-none d-md-table-cell">External ID</th>
             <th>Status</th>
+            <th class="d-none d-sm-table-cell">Verbindung</th>
             <th>Aktuelles Match</th>
             <th class="d-none d-md-table-cell">Extension</th>
+            <th class="d-none d-md-table-cell">Zeitplan</th>
             <th class="d-none d-lg-table-cell">IP</th>
         </tr>
     </thead>
@@ -49,9 +52,17 @@
         @foreach (var board in boards)
         {
             <tr>
-                <td>@board.Name</td>
-                <td class="d-none d-md-table-cell">@board.ExternalBoardId</td>
+                <td><BoardStatusIndicator Board="@board" ShowLabel="true" /></td>
+                <td>
+                    <a href="/tournaments?boardId=@board.Id"
+                       class="text-primary fw-semibold"
+                       style="text-decoration:underline dotted">@board.Name</a>
+                </td>
+                <td class="d-none d-md-table-cell"><code class="small">@board.ExternalBoardId</code></td>
                 <td><span class="badge @StatusBadge(board.Status)">@board.Status</span></td>
+                <td class="d-none d-sm-table-cell">
+                    <span class="badge @ConnectionBadge(board.ConnectionState)">@board.ConnectionState</span>
+                </td>
                 <td>
                     @if (!string.IsNullOrEmpty(board.CurrentMatchLabel))
                     {
@@ -80,6 +91,9 @@
                     {
                         <span class="badge bg-secondary">Getrennt</span>
                     }
+                </td>
+                <td class="d-none d-md-table-cell">
+                    <span class="badge @SchedulingBadge(board.SchedulingStatus)">@board.SchedulingStatus</span>
                 </td>
                 <td class="d-none d-lg-table-cell">@board.LocalIpAddress</td>
             </tr>
@@ -138,6 +152,21 @@
         "Online" => "bg-info text-dark",
         "Starting" => "bg-warning text-dark",
         "Error" => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private static string ConnectionBadge(string state) => state switch
+    {
+        "Online" => "bg-success",
+        "Offline" => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private static string SchedulingBadge(string status) => status switch
+    {
+        "InTime" => "bg-success",
+        "Ahead" => "bg-info text-dark",
+        "Delayed" => "bg-danger",
         _ => "bg-secondary"
     };
 

@@ -1,6 +1,7 @@
 using ddpc.DartSuite.Application.Contracts.Autodarts;
 using ddpc.DartSuite.Application.Contracts.Boards;
 using ddpc.DartSuite.Application.Contracts.Matches;
+using ddpc.DartSuite.Application.Contracts.Notifications;
 using ddpc.DartSuite.Application.Contracts.Tournaments;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -72,6 +73,23 @@ public sealed class DartSuiteApiService
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
     }
 
+    public async Task<BoardExtensionSyncRequestAcceptedDto> RequestBoardExtensionSyncAsync(Guid boardId, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsync($"api/boards/{boardId}/extension-sync/request", null, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<BoardExtensionSyncRequestAcceptedDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task<BoardExtensionSyncDebugDto?> GetLastBoardExtensionSyncDebugAsync(Guid boardId, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.GetAsync($"api/boards/{boardId}/extension-sync/last", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<BoardExtensionSyncDebugDto>(cancellationToken: cancellationToken);
+    }
+
     public async Task<IReadOnlyList<TournamentDto>> GetTournamentsAsync(CancellationToken cancellationToken = default)
         => await _httpClient.GetFromJsonAsync<IReadOnlyList<TournamentDto>>("api/tournaments", cancellationToken) ?? Array.Empty<TournamentDto>();
 
@@ -120,6 +138,13 @@ public sealed class DartSuiteApiService
         var response = await _httpClient.PutAsJsonAsync($"api/tournaments/{tournamentId}/participants/{request.ParticipantId}", request, cancellationToken);
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<ParticipantDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task<IReadOnlyList<ParticipantDto>> AssignSeedPotsAsync(Guid tournamentId, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsync($"api/tournaments/{tournamentId}/participants/assign-seed-pots", null, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<IReadOnlyList<ParticipantDto>>(cancellationToken: cancellationToken)) ?? Array.Empty<ParticipantDto>();
     }
 
     public async Task<IReadOnlyList<TournamentRoundDto>> GetRoundsAsync(Guid tournamentId, CancellationToken cancellationToken = default)
@@ -355,4 +380,142 @@ public sealed class DartSuiteApiService
         var response = await _httpClient.PostAsync($"api/matches/{matchId}/listener", null, cancellationToken);
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
     }
+
+    // ─── Board Status (#10) ───
+
+    public async Task<BoardDto?> GetBoardAsync(Guid id, CancellationToken cancellationToken = default)
+        => await _httpClient.GetFromJsonAsync<BoardDto>($"api/boards/{id}", cancellationToken);
+
+    public async Task<BoardDto> UpdateBoardConnectionStateAsync(Guid id, string state, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PatchAsync($"api/boards/{id}/connection-state?state={Uri.EscapeDataString(state)}", null, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<BoardDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task<BoardDto> UpdateBoardExtensionStatusAsync(Guid id, string status, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PatchAsync($"api/boards/{id}/extension-status?status={Uri.EscapeDataString(status)}", null, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<BoardDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task<IReadOnlyList<BoardDto>> GetBoardsByTournamentAsync(Guid tournamentId, CancellationToken cancellationToken = default)
+        => await _httpClient.GetFromJsonAsync<IReadOnlyList<BoardDto>>($"api/boards/tournament/{tournamentId}", cancellationToken) ?? Array.Empty<BoardDto>();
+
+    // ─── Match Statistics (#18) ───
+
+    public async Task<IReadOnlyList<MatchPlayerStatisticDto>> GetMatchStatisticsAsync(Guid matchId, CancellationToken cancellationToken = default)
+        => await _httpClient.GetFromJsonAsync<IReadOnlyList<MatchPlayerStatisticDto>>($"api/matches/{matchId}/statistics", cancellationToken) ?? Array.Empty<MatchPlayerStatisticDto>();
+
+    public async Task<IReadOnlyList<MatchPlayerStatisticDto>> SyncMatchStatisticsAsync(Guid matchId, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsync($"api/matches/{matchId}/statistics/sync", null, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<IReadOnlyList<MatchPlayerStatisticDto>>(cancellationToken: cancellationToken))
+            ?? Array.Empty<MatchPlayerStatisticDto>();
+    }
+
+    // ─── Match Followers (#14) ───
+
+    public async Task<IReadOnlyList<MatchFollowerDto>> GetMatchFollowersAsync(Guid matchId, CancellationToken cancellationToken = default)
+        => await _httpClient.GetFromJsonAsync<IReadOnlyList<MatchFollowerDto>>($"api/matches/{matchId}/followers", cancellationToken) ?? Array.Empty<MatchFollowerDto>();
+
+    public async Task<MatchFollowerDto> FollowMatchAsync(Guid matchId, string userAccountName, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsync($"api/matches/{matchId}/follow?userAccountName={Uri.EscapeDataString(userAccountName)}", null, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<MatchFollowerDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task UnfollowMatchAsync(Guid matchId, string userAccountName, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.DeleteAsync($"api/matches/{matchId}/follow?userAccountName={Uri.EscapeDataString(userAccountName)}", cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+    }
+
+    // ─── Scheduling (#12) ───
+
+    public async Task<IReadOnlyList<MatchDto>> RecalculateScheduleAsync(Guid tournamentId, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsync($"api/matches/{tournamentId}/recalculate-schedule", null, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<IReadOnlyList<MatchDto>>(cancellationToken: cancellationToken))
+            ?? Array.Empty<MatchDto>();
+    }
+
+    // ─── Notifications (#14) ───
+
+    public async Task<IReadOnlyList<NotificationSubscriptionDto>> GetNotificationSubscriptionsAsync(Guid tournamentId, string userAccountName, CancellationToken cancellationToken = default)
+        => await _httpClient.GetFromJsonAsync<IReadOnlyList<NotificationSubscriptionDto>>($"api/tournaments/{tournamentId}/notifications/{Uri.EscapeDataString(userAccountName)}", cancellationToken)
+            ?? Array.Empty<NotificationSubscriptionDto>();
+
+    public async Task<NotificationSubscriptionDto> SubscribeNotificationsAsync(CreateNotificationSubscriptionRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsJsonAsync($"api/tournaments/{request.TournamentId}/notifications", request, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<NotificationSubscriptionDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task UnsubscribeNotificationsAsync(Guid subscriptionId, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.DeleteAsync($"api/tournaments/notifications/{subscriptionId}", cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+    }
+
+    // ─── Discord Webhook (#14) ───
+
+    public async Task<bool> TestDiscordWebhookAsync(Guid tournamentId, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsync($"api/tournaments/{tournamentId}/webhook/test", null, cancellationToken);
+        return response.IsSuccessStatusCode;
+    }
+
+    // ─── VAPID Public Key ───
+
+    public async Task<string?> GetVapidPublicKeyAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.GetAsync("api/tournaments/vapid-public-key", cancellationToken);
+        if (!response.IsSuccessStatusCode) return null;
+        return await response.Content.ReadAsStringAsync(cancellationToken);
+    }
+
+    // ─── View Preferences (#15) ───
+
+    public async Task<UserViewPreferenceDto?> GetViewPreferenceAsync(string userAccountName, string viewContext, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.GetAsync($"api/tournaments/preferences/{Uri.EscapeDataString(userAccountName)}/{Uri.EscapeDataString(viewContext)}", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<UserViewPreferenceDto>(cancellationToken: cancellationToken);
+    }
+
+    public async Task<UserViewPreferenceDto> SaveViewPreferenceAsync(string userAccountName, string viewContext, string settingsJson, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PutAsJsonAsync($"api/tournaments/preferences/{Uri.EscapeDataString(userAccountName)}/{Uri.EscapeDataString(viewContext)}", settingsJson, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<UserViewPreferenceDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public sealed record BoardExtensionSyncRequestAcceptedDto(bool Requested, Guid RequestId, DateTimeOffset RequestedAtUtc);
+
+    public sealed record BoardExtensionSyncDebugDto(
+        Guid BoardId,
+        Guid? RequestId,
+        DateTimeOffset? RequestedAtUtc,
+        DateTimeOffset? ConsumedAtUtc,
+        bool? ShouldSync,
+        DateTimeOffset? ReportedAtUtc,
+        bool? Matched,
+        Guid? MatchId,
+        string? MatchedBy,
+        string? DerivedStatus,
+        Guid? BoardCurrentMatchId,
+        string? BoardCurrentMatchLabel,
+        string? ExternalMatchId,
+        string? Player1,
+        string? Player2,
+        string? MatchStatus,
+        string? SourceUrl,
+        Guid? TournamentId);
 }

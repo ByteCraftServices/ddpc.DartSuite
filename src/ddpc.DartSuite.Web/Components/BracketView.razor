@@ -1,0 +1,183 @@
+@using ddpc.DartSuite.Application.Contracts.Matches
+
+<div class="bracket-view">
+    @if (Matches is null || Matches.Count == 0)
+    {
+        <p class="text-muted fst-italic">Kein Bracket verfügbar.</p>
+    }
+    else
+    {
+        var maxRound = Matches.Max(m => m.Round);
+        var rounds = Enumerable.Range(1, maxRound).ToList();
+        <div class="bracket-scroll-container">
+            <div class="bracket-wrapper d-flex">
+                @foreach (var round in rounds)
+                {
+                    var roundMatches = Matches.Where(m => m.Round == round).OrderBy(m => m.MatchNumber).ToList();
+                    <div class="bracket-round" style="min-width: 220px;">
+                        <div class="bracket-round-header text-center small fw-semibold text-muted mb-2">
+                            @RoundLabel(round, maxRound)
+                        </div>
+                        <div class="bracket-round-matches d-flex flex-column justify-content-around" style="height: 100%;">
+                            @foreach (var match in roundMatches)
+                            {
+                                var isFinished = match.FinishedUtc is not null;
+                                var isRunning = match.StartedUtc is not null && !isFinished;
+                                var isBye = match.Status == "WalkOver";
+                                <div class="bracket-match mb-2 @(isRunning ? "bracket-match-live" : "") @(isBye ? "bracket-match-bye" : "")"
+                                     style="cursor:pointer" @onclick="() => OnMatchClick.InvokeAsync(match)">
+                                    <div class="bracket-slot @(match.WinnerParticipantId == match.HomeParticipantId ? "bracket-slot-winner" : "")">
+                                        <span class="bracket-player">@GetPlayerName(match.HomeParticipantId, match, true)</span>
+                                        <span class="bracket-score">@GetScore(match, true)</span>
+                                    </div>
+                                    <div class="bracket-slot @(match.WinnerParticipantId == match.AwayParticipantId ? "bracket-slot-winner" : "")">
+                                        <span class="bracket-player">@GetPlayerName(match.AwayParticipantId, match, false)</span>
+                                        <span class="bracket-score">@GetScore(match, false)</span>
+                                    </div>
+                                    @if (match.BoardName is not null)
+                                    {
+                                        <div class="bracket-board-label">@match.BoardName</div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .bracket-scroll-container {
+        overflow-x: auto;
+        padding-bottom: 1rem;
+    }
+
+    .bracket-wrapper {
+        min-width: max-content;
+        gap: 0;
+    }
+
+    .bracket-round {
+        padding: 0 0.5rem;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .bracket-round-matches {
+        flex: 1;
+    }
+
+    .bracket-match {
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        background: #fff;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .bracket-match:hover {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 1px rgba(13, 110, 253, 0.2);
+    }
+
+    .bracket-match-live {
+        border-color: #0dcaf0;
+        border-width: 2px;
+        animation: bracket-pulse 2s ease-in-out infinite;
+    }
+
+    .bracket-match-bye {
+        opacity: 0.5;
+    }
+
+    @@keyframes bracket-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(13, 202, 240, 0.3); }
+        50% { box-shadow: 0 0 0 4px rgba(13, 202, 240, 0.15); }
+    }
+
+    .bracket-slot {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.85rem;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .bracket-slot:last-of-type {
+        border-bottom: none;
+    }
+
+    .bracket-slot-winner {
+        background: #d1e7dd;
+        font-weight: 600;
+    }
+
+    .bracket-player {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 140px;
+    }
+
+    .bracket-score {
+        font-weight: 600;
+        min-width: 1.5rem;
+        text-align: right;
+    }
+
+    .bracket-board-label {
+        font-size: 0.65rem;
+        color: #6c757d;
+        text-align: center;
+        padding: 0 0.25rem 0.15rem;
+        background: #f8f9fa;
+    }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<MatchDto> Matches { get; set; } = [];
+    [Parameter] public Func<Guid, string>? ResolvePlayerName { get; set; }
+    [Parameter] public EventCallback<MatchDto> OnMatchClick { get; set; }
+
+    private string GetPlayerName(Guid participantId, MatchDto match, bool isHome)
+    {
+        if (participantId != Guid.Empty && ResolvePlayerName is not null)
+            return ResolvePlayerName(participantId);
+
+        if (participantId != Guid.Empty)
+            return isHome ? (match.HomeParticipantName ?? "?") : (match.AwayParticipantName ?? "?");
+
+        // Placeholder for unresolved slots
+        if (match.Status == "WalkOver")
+            return "Freilos";
+
+        var slot = isHome ? match.HomeSlotOrigin : match.AwaySlotOrigin;
+        return slot ?? "TBD";
+    }
+
+    private string GetScore(MatchDto match, bool isHome)
+    {
+        if (match.FinishedUtc is null && match.StartedUtc is null)
+            return "";
+
+        return isHome
+            ? (match.HomeSets > 0 ? $"{match.HomeSets}({match.HomeLegs})" : match.HomeLegs.ToString())
+            : (match.AwaySets > 0 ? $"{match.AwaySets}({match.AwayLegs})" : match.AwayLegs.ToString());
+    }
+
+    private static string RoundLabel(int round, int maxRound)
+    {
+        var fromEnd = maxRound - round;
+        return fromEnd switch
+        {
+            0 => "Finale",
+            1 => "Halbfinale",
+            2 => "Viertelfinale",
+            3 => "Achtelfinale",
+            4 => "Sechzehntelfinale",
+            _ => $"Runde {round}"
+        };
+    }
+}

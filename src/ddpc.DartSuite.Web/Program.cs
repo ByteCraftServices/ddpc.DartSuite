@@ -12,6 +12,7 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddLocalization();
 builder.Services.AddScoped<AppStateService>();
+builder.Services.AddScoped<TournamentHubService>();
 builder.Services.AddHttpClient<DartSuiteApiService>(client =>
 {
      client.BaseAddress = new Uri(builder?.Configuration["Api:BaseUrl"] ?? throw new NullReferenceException("Api:BaseUrl configuration is missing"));
@@ -47,3 +48,5 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+

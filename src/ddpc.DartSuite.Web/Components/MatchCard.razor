@@ -1,0 +1,209 @@
+@using ddpc.DartSuite.Application.Contracts.Matches
+
+@if (Variant == "detailed")
+{
+    <!-- Detailed variant: vertical layout with all info -->
+    <div class="card match-card match-card-detailed shadow mb-2 @CardBorderClass" style="cursor:pointer" @onclick="OnClick">
+        <div class="card-header py-1 px-3 d-flex justify-content-between align-items-center">
+            @if (!string.IsNullOrEmpty(Label))
+            {
+                <span class="badge text-bg-secondary" style="font-size:.75em">@Label</span>
+            }
+            <div class="d-flex align-items-center gap-1 ms-auto">
+                @if (Match.PlannedStartUtc is not null)
+                {
+                    <span class="badge text-bg-light text-muted border" style="font-size:.7em">
+                        @Match.PlannedStartUtc.Value.LocalDateTime.ToString("HH:mm")
+                    </span>
+                }
+                @if (!string.IsNullOrEmpty(BoardName))
+                {
+                    <span class="badge text-bg-dark" style="font-size:.7em">@BoardName</span>
+                }
+                @StatusBadge
+            </div>
+        </div>
+        <div class="card-body py-2 px-3">
+            <div class="d-flex flex-column gap-1">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="@(Match.WinnerParticipantId == Match.HomeParticipantId ? "fw-bold text-success" : "")">
+                        @(HomeName ?? "?")
+                    </span>
+                    <span class="fw-bold">@(IsRunning || Match.FinishedUtc is not null ? Score : "")</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="@(Match.WinnerParticipantId == Match.AwayParticipantId ? "fw-bold text-success" : "")">
+                        @(AwayName ?? "?")
+                    </span>
+                </div>
+                @if (!string.IsNullOrEmpty(SlotOrigin))
+                {
+                    <small class="text-muted" style="font-size:.7em">@SlotOrigin</small>
+                }
+            </div>
+        </div>
+        @if (Match.SchedulingStatus is "Delayed" && Match.DelayMinutes > 0)
+        {
+            <div class="card-footer py-1 px-3 text-danger" style="font-size:.75em">
+                <i class="bi bi-exclamation-triangle"></i> +@(Match.DelayMinutes) Min. Verspätung
+            </div>
+        }
+    </div>
+}
+else if (Variant == "board")
+{
+    <!-- Board variant: minimal for board assignment views -->
+    <div class="card match-card match-card-board shadow-sm mb-1 @CardBorderClass" style="cursor:pointer" @onclick="OnClick">
+        <div class="card-body py-1 px-2">
+            <div class="d-flex align-items-center gap-1">
+                <span style="font-size:.8em" class="@(IsRunning ? "fw-semibold" : "text-muted")">
+                    @(HomeName ?? "?") vs @(AwayName ?? "?")
+                </span>
+                @if (IsRunning)
+                {
+                    <span class="badge text-bg-info ms-auto" style="font-size:.65em">Live</span>
+                }
+                else if (Match.FinishedUtc is not null)
+                {
+                    <span class="ms-auto" style="font-size:.75em">@Score</span>
+                }
+            </div>
+        </div>
+    </div>
+}
+else if (Variant == "live")
+{
+    <!-- Live variant: prominent scores, highlighted animation -->
+    <div class="card match-card match-card-live shadow border-info border-2 mb-2 @(IsRunning ? "match-live-pulse" : "")" style="cursor:pointer" @onclick="OnClick">
+        <div class="card-body py-2 px-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex flex-column flex-grow-1">
+                    <div class="d-flex justify-content-between">
+                        <span class="fw-bold @(Match.WinnerParticipantId == Match.HomeParticipantId ? "text-success" : "")">
+                            @(HomeName ?? "?")
+                        </span>
+                        <span class="fw-bold fs-5">@(Match.HomeLegs)</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span class="fw-bold @(Match.WinnerParticipantId == Match.AwayParticipantId ? "text-success" : "")">
+                            @(AwayName ?? "?")
+                        </span>
+                        <span class="fw-bold fs-5">@(Match.AwayLegs)</span>
+                    </div>
+                </div>
+                <div class="d-flex flex-column align-items-center ms-3 gap-1">
+                    @if (!string.IsNullOrEmpty(BoardName))
+                    {
+                        <span class="badge text-bg-dark" style="font-size:.65em">@BoardName</span>
+                    }
+                    @if (IsRunning)
+                    {
+                        <span class="badge text-bg-info" style="font-size:.7em">Live</span>
+                    }
+                    else if (Match.FinishedUtc is not null)
+                    {
+                        <span style="font-size:.85em">🏆</span>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <!-- Compact variant (default): single-row display -->
+    <div class="card match-card shadow-sm mb-2 @CardBorderClass" style="cursor:pointer" @onclick="OnClick">
+        <div class="card-body py-2 px-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center gap-2 flex-grow-1">
+                    @if (!string.IsNullOrEmpty(Label))
+                    {
+                        <span class="badge text-bg-secondary" style="font-size:.75em">@Label</span>
+                    }
+                    <div class="d-flex align-items-center gap-1 flex-grow-1">
+                        <span class="@(Match.WinnerParticipantId == Match.HomeParticipantId ? "fw-bold text-success" : "")">
+                            @(HomeName ?? "?")
+                        </span>
+                        @if (Match.FinishedUtc is not null)
+                        {
+                            <span class="text-muted mx-1 small">@Score</span>
+                        }
+                        else if (IsRunning)
+                        {
+                            <span class="text-info mx-1 small fw-semibold">@Score</span>
+                        }
+                        else
+                        {
+                            <span class="text-muted mx-1 small">vs</span>
+                        }
+                        <span class="@(Match.WinnerParticipantId == Match.AwayParticipantId ? "fw-bold text-success" : "")">
+                            @(AwayName ?? "?")
+                        </span>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                    @if (!string.IsNullOrEmpty(BoardName))
+                    {
+                        <span class="badge text-bg-dark" style="font-size:.7em">@BoardName</span>
+                    }
+                    @if (Match.PlannedStartUtc is not null)
+                    {
+                        <span class="badge text-bg-light text-muted border" style="font-size:.7em">
+                            @Match.PlannedStartUtc.Value.LocalDateTime.ToString("HH:mm")
+                        </span>
+                    }
+                    @StatusBadge
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public MatchDto Match { get; set; } = default!;
+    [Parameter] public string Variant { get; set; } = "compact"; // compact | detailed | board | live
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? HomeName { get; set; }
+    [Parameter] public string? AwayName { get; set; }
+    [Parameter] public string? BoardName { get; set; }
+    [Parameter] public string? Score { get; set; }
+    [Parameter] public string? SlotOrigin { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    private bool IsRunning => Match.StartedUtc is not null && Match.FinishedUtc is null;
+
+    private string CardBorderClass => Match.FinishedUtc is not null
+        ? "border-success border-opacity-25"
+        : IsRunning
+            ? "border-info border-2"
+            : Match.Status == "WalkOver"
+                ? "border-secondary border-opacity-25"
+                : "";
+
+    private RenderFragment StatusBadge => builder =>
+    {
+        if (Match.SchedulingStatus is "Delayed")
+        {
+            builder.OpenElement(0, "span");
+            builder.AddAttribute(1, "class", "badge text-bg-danger");
+            builder.AddAttribute(2, "style", "font-size:.7em");
+            builder.AddContent(3, $"+{Match.DelayMinutes}m");
+            builder.CloseElement();
+        }
+        if (Match.WinnerParticipantId.HasValue)
+        {
+            builder.OpenElement(10, "span");
+            builder.AddAttribute(11, "style", "font-size:.85em");
+            builder.AddContent(12, "🏆");
+            builder.CloseElement();
+        }
+        else if (IsRunning)
+        {
+            builder.OpenElement(20, "span");
+            builder.AddAttribute(21, "class", "badge text-bg-info");
+            builder.AddAttribute(22, "style", "font-size:.7em");
+            builder.AddContent(23, "Live");
+            builder.CloseElement();
+        }
+    };
+}
