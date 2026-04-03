@@ -16,7 +16,8 @@
 			"git push": true,
 			"git pull": true,
 			"git ls-tree": true,
-			"dotnet ef": true
+			"dotnet ef": true,
+			"netstat": true
 		}
 	}
 }
