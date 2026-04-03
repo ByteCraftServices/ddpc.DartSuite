@@ -1,5 +1,6 @@
-// DartSuite Tournaments — Popup v0.3.0
+// DartSuite Tournaments — Popup v0.4.0
 // Tournament selection, board management, friends import, settings.
+// Verified transfers: only show success after API confirmation.
 
 const DEFAULT_API_BASE_URL = "http://localhost:5290";
 const SETTINGS_KEYS = {
@@ -8,7 +9,9 @@ const SETTINGS_KEYS = {
     hostInput: "",
     tournamentId: "",
     autoManaged: true,
-    fullscreen: false
+    fullscreen: false,
+    statusPollSeconds: 30,
+    statusBarMode: "always"
 };
 
 let currentTournament = null;
@@ -19,9 +22,46 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadSettings();
     setupTabs();
     setupEventListeners();
+    await updateHeaderStatus();
     await checkApiStatus();
+    await updateApiErrorDisplay();
     await loadTournamentState();
 });
+
+// ─── Header Status Display ───
+
+async function updateHeaderStatus() {
+    try {
+        const status = await chrome.runtime.sendMessage({ action: "getStatus" });
+        if (status) {
+            const trophy = document.getElementById("headerTrophy");
+            const statusEl = document.getElementById("headerDstStatus");
+            const colors = { connected: "#4caf50", ready: "#ff9800", offline: "#f44336" };
+            const labels = { connected: "Verbunden", ready: "Bereit", offline: "Offline" };
+            const matchLabels = {
+                available: "", idle: "Idle", scheduled: "Geplant",
+                waitForPlayer: "Warte auf Spieler", waitForMatch: "Warte auf Match",
+                playing: "Spiel läuft", listening: "Listener", disconnected: "Getrennt", ended: "Beendet"
+            };
+            if (trophy) {
+                trophy.style.filter = status.dstStatus === "connected"
+                    ? "hue-rotate(80deg) brightness(1.2)"
+                    : status.dstStatus === "offline"
+                        ? "hue-rotate(-40deg) brightness(0.8)"
+                        : "";
+            }
+            if (statusEl) {
+                const matchLabel = matchLabels[status.matchStatus] || "";
+                statusEl.textContent = labels[status.dstStatus] || "";
+                statusEl.style.color = colors[status.dstStatus] || "#888";
+                if (matchLabel) {
+                    statusEl.textContent += ` | ${matchLabel}`;
+                }
+            }
+            showPopupStatusToast(status.dstStatus, status.matchStatus);
+        }
+    } catch { /* background not ready */ }
+}
 
 // ─── Tab Navigation ───
 
@@ -68,6 +108,9 @@ function setupEventListeners() {
 
     // Settings
     document.getElementById("saveSettings")?.addEventListener("click", saveSettings);
+    document.getElementById("connectApiBtn")?.addEventListener("click", async () => {
+        await checkApiStatus();
+    });
 
     // Boards: transfer button
     document.getElementById("transferBoards")?.addEventListener("click", transferSelectedBoards);
@@ -83,21 +126,32 @@ function setupEventListeners() {
 
 async function checkApiStatus() {
     const apiBaseUrl = getApiBaseUrl();
+    setConnectState("connecting");
     try {
         const response = await fetch(`${apiBaseUrl}/api/boards`, { signal: AbortSignal.timeout(3000) });
         if (response.ok) {
             setDot("apiDot", "online");
             document.getElementById("apiStatus").textContent = "DartSuite API: online";
-            chrome.runtime.sendMessage({ action: "setIconStatus", status: "configured" });
+            chrome.runtime.sendMessage({ action: "setDstStatus", status: "ready" });
+            setConnectState("connected");
+            await updateApiErrorDisplay();
         } else {
             setDot("apiDot", "offline");
             document.getElementById("apiStatus").textContent = `API: Fehler (${response.status})`;
-            chrome.runtime.sendMessage({ action: "setIconStatus", status: "error" });
+            chrome.runtime.sendMessage({ action: "setDstStatus", status: "offline" });
+            setConnectState("offline");
+            openTab("settings");
+            focusApiUrl();
+            await updateApiErrorDisplay();
         }
     } catch {
         setDot("apiDot", "offline");
         document.getElementById("apiStatus").textContent = "DartSuite API: nicht erreichbar";
-        chrome.runtime.sendMessage({ action: "setIconStatus", status: "error" });
+        chrome.runtime.sendMessage({ action: "setDstStatus", status: "offline" });
+        setConnectState("offline");
+        openTab("settings");
+        focusApiUrl();
+        await updateApiErrorDisplay();
     }
 
     // Check Autodarts tab
@@ -178,12 +232,12 @@ async function lookupTournamentByCode() {
 
             await saveTournamentSelection(tournament);
             showActiveTournament(tournament);
-            chrome.runtime.sendMessage({ action: "setIconStatus", status: "connected" });
+            chrome.runtime.sendMessage({ action: "setDstStatus", status: "connected" });
             chrome.runtime.sendMessage({ action: "tournamentSelected", tournament });
         } else if (response.status === 404) {
             errEl.textContent = "Kein Turnier mit diesem Code gefunden.";
             errEl.style.display = "block";
-            chrome.runtime.sendMessage({ action: "setIconStatus", status: "warning" });
+            chrome.runtime.sendMessage({ action: "setDstStatus", status: "ready" });
         } else {
             errEl.textContent = `Fehler: ${response.status}`;
             errEl.style.display = "block";
@@ -205,7 +259,7 @@ async function selectTournamentById(id) {
         document.getElementById("codeInput").value = tournament.joinCode || "";
         await saveTournamentSelection(tournament);
         showActiveTournament(tournament);
-        chrome.runtime.sendMessage({ action: "setIconStatus", status: "connected" });
+        chrome.runtime.sendMessage({ action: "setDstStatus", status: "connected" });
         chrome.runtime.sendMessage({ action: "tournamentSelected", tournament });
     } catch {
         setMessage("Fehler beim Laden des Turniers.");
@@ -403,6 +457,9 @@ async function transferSelectedBoards() {
 
     const apiBaseUrl = getApiBaseUrl();
     let transferred = 0;
+    let failed = 0;
+    const results = [];
+
     for (const cb of checked) {
         const extId = cb.dataset.boardExtId;
         const name = cb.dataset.boardName;
@@ -418,11 +475,50 @@ async function transferSelectedBoards() {
                     boardManagerUrl: null
                 })
             });
-            if (response.ok || response.status === 409) transferred++;
-        } catch { /* skip */ }
+            if (response.ok) {
+                const board = await response.json();
+                // Verify: re-read from API to confirm the board is persisted
+                const verifyResp = await fetch(`${apiBaseUrl}/api/boards/${board.id}`);
+                if (verifyResp.ok) {
+                    transferred++;
+                    results.push({ extId, name, ok: true });
+                } else {
+                    failed++;
+                    results.push({ extId, name, ok: false });
+                }
+            } else if (response.status === 409) {
+                // Already exists — verify it's actually there
+                const allResp = await fetch(`${apiBaseUrl}/api/boards`);
+                if (allResp.ok) {
+                    const allBoards = await allResp.json();
+                    const existing = allBoards.find(b => b.externalBoardId === extId);
+                    if (existing) {
+                        transferred++;
+                        results.push({ extId, name, ok: true });
+                    } else {
+                        failed++;
+                        results.push({ extId, name, ok: false });
+                    }
+                } else {
+                    failed++;
+                    results.push({ extId, name, ok: false });
+                }
+            } else {
+                failed++;
+                results.push({ extId, name, ok: false });
+            }
+        } catch {
+            failed++;
+            results.push({ extId, name, ok: false });
+        }
     }
-    setMessage(`${transferred} Board(s) an DartSuite übergeben.`);
-    await loadBoards(); // Refresh
+
+    if (failed > 0) {
+        setMessage(`${transferred} Board(s) übertragen, ${failed} fehlgeschlagen.`, "error");
+    } else {
+        setMessage(`${transferred} Board(s) verifiziert übertragen. ✓`);
+    }
+    await loadBoards(); // Refresh to show verified status
 }
 
 async function setManagedMode(boardId, mode) {
@@ -559,6 +655,8 @@ async function importSelectedFriends() {
 
     const apiBaseUrl = getApiBaseUrl();
     let imported = 0;
+    let failed = 0;
+
     for (const cb of checked) {
         const name = cb.dataset.friendName;
         try {
@@ -574,10 +672,45 @@ async function importSelectedFriends() {
                     seed: 0
                 })
             });
-            if (response.ok || response.status === 409) imported++;
-        } catch { /* skip */ }
+            if (response.ok) {
+                const participant = await response.json();
+                if (participant?.id) {
+                    imported++;
+                } else {
+                    failed++;
+                }
+            } else if (response.status === 409) {
+                // Already exists — verify by checking participant list
+                const verifyResp = await fetch(`${apiBaseUrl}/api/tournaments/${currentTournament.id}/participants`);
+                if (verifyResp.ok) {
+                    const participants = await verifyResp.json();
+                    const exists = participants.some(p =>
+                        (p.accountName || "").toLowerCase() === name.toLowerCase() ||
+                        (p.displayName || "").toLowerCase() === name.toLowerCase()
+                    );
+                    if (exists) {
+                        imported++;
+                    } else {
+                        failed++;
+                    }
+                } else {
+                    failed++;
+                }
+            } else {
+                failed++;
+            }
+        } catch {
+            failed++;
+        }
     }
-    setMessage(`${imported} Freunde importiert.`);
+
+    if (failed > 0) {
+        setMessage(`${imported} Freunde importiert, ${failed} fehlgeschlagen.`, "error");
+    } else {
+        setMessage(`${imported} Freunde verifiziert importiert. ✓`);
+    }
+    // Refresh friends list to show verified checkmarks
+    await loadFriends();
 }
 
 // ─── Active Board Selection (shown in tournament tab when tournament is live) ───
@@ -725,6 +858,8 @@ async function loadSettings() {
     document.getElementById("defaultHost").value = stored.defaultHost || "";
     document.getElementById("autoManaged").checked = stored.autoManaged !== false;
     document.getElementById("fullscreen").checked = !!stored.fullscreen;
+    document.getElementById("statusPollSeconds").value = stored.statusPollSeconds || 30;
+    document.getElementById("statusBarMode").value = stored.statusBarMode || "always";
 
     // Apply defaults
     if (stored.defaultHost && !stored.hostInput) {
@@ -737,9 +872,12 @@ async function saveSettings() {
         apiBaseUrl: document.getElementById("apiBaseUrl").value.trim() || DEFAULT_API_BASE_URL,
         defaultHost: document.getElementById("defaultHost").value.trim(),
         autoManaged: document.getElementById("autoManaged").checked,
-        fullscreen: document.getElementById("fullscreen").checked
+        fullscreen: document.getElementById("fullscreen").checked,
+        statusPollSeconds: Number(document.getElementById("statusPollSeconds").value || 30),
+        statusBarMode: document.getElementById("statusBarMode").value || "always"
     };
     await chrome.storage.sync.set(settings);
+    chrome.runtime.sendMessage({ action: "updateStatusPolling" });
     setMessage("Einstellungen gespeichert.");
     await checkApiStatus();
 }
@@ -779,11 +917,22 @@ function setDot(id, status) {
     if (el) el.className = `dot ${status}`;
 }
 
-function setMessage(text) {
+function setMessage(text, type) {
     const el = document.getElementById("statusMessage");
     if (el) {
         el.textContent = text;
-        setTimeout(() => { el.textContent = ""; }, 5000);
+        const isError = type === "error";
+        el.style.color = isError ? "#ffebee" : "#e8f5e9";
+        el.style.background = isError ? "#b71c1c" : "#1b5e20";
+        el.style.borderRadius = "4px";
+        el.style.padding = "6px 10px";
+        setTimeout(() => {
+            el.textContent = "";
+            el.style.color = "";
+            el.style.background = "";
+            el.style.borderRadius = "";
+            el.style.padding = "";
+        }, 5000);
     }
 }
 
@@ -792,4 +941,84 @@ function escapeHtml(str) {
     const div = document.createElement("div");
     div.textContent = str;
     return div.innerHTML;
+}
+
+function openTab(tabId) {
+    const btn = document.querySelector(`.tabs button[data-tab="${tabId}"]`);
+    if (!btn) return;
+    btn.click();
+}
+
+function focusApiUrl() {
+    const input = document.getElementById("apiBaseUrl");
+    if (!input) return;
+    input.focus();
+    input.select();
+}
+
+async function updateApiErrorDisplay() {
+    const el = document.getElementById("apiLastError");
+    if (!el) return;
+    try {
+        const stored = await chrome.storage.local.get({ apiLastError: "", apiLastErrorUtc: "" });
+        if (stored.apiLastError) {
+            const ts = stored.apiLastErrorUtc ? ` (${stored.apiLastErrorUtc})` : "";
+            el.textContent = `Letzter Fehler: ${stored.apiLastError}${ts}`;
+        } else {
+            el.textContent = "";
+        }
+    } catch {
+        el.textContent = "";
+    }
+}
+
+function setConnectState(state) {
+    const btn = document.getElementById("connectApiBtn");
+    const label = document.getElementById("connectApiState");
+    if (!btn || !label) return;
+    btn.disabled = state === "connecting";
+    if (state === "connecting") {
+        btn.textContent = "Verbinde...";
+        btn.style.background = "#ff9800";
+        btn.style.borderColor = "#ff9800";
+        label.textContent = "Prüfe";
+        label.style.color = "#ffcc80";
+    } else if (state === "connected") {
+        btn.textContent = "Verbunden";
+        btn.style.background = "#2e7d32";
+        btn.style.borderColor = "#2e7d32";
+        label.textContent = "Online";
+        label.style.color = "#4caf50";
+    } else {
+        btn.textContent = "Verbinden";
+        btn.style.background = "#0f3460";
+        btn.style.borderColor = "#333";
+        label.textContent = "Offline";
+        label.style.color = "#f44336";
+    }
+}
+
+function showPopupStatusToast(dstStatus, matchStatus) {
+    const el = document.getElementById("statusMessage");
+    if (!el) return;
+    if (el.textContent && el.textContent.length > 0) return;
+    const colors = {
+        connected: "#1b5e20",
+        ready: "#e65100",
+        offline: "#b71c1c"
+    };
+    const label = dstStatus === "connected" ? "Verbunden" : dstStatus === "ready" ? "Bereit" : "Offline";
+    const matchLabel = matchStatus && matchStatus !== "available" ? ` | ${matchStatus}` : "";
+    el.textContent = `Status: ${label}${matchLabel}`;
+    el.style.color = "#fff";
+    el.style.background = colors[dstStatus] || "#333";
+    el.style.borderRadius = "4px";
+    el.style.padding = "6px 10px";
+    setTimeout(() => {
+        el.textContent = "";
+        el.style.color = "";
+        el.style.background = "";
+        el.style.borderRadius = "";
+        el.style.padding = "";
+    }, 3000);
 }

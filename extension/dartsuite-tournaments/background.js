@@ -1,14 +1,26 @@
-// DartSuite Tournaments — Background Service Worker v0.3.0
+// DartSuite Tournaments — Background Service Worker v0.4.0
 // Icon badge management, SignalR WebSocket relay, proxy fetch.
+// Dynamic trophy icon with DST status + match status overlays.
+
+importScripts("icon-generator.js");
 
 const DEFAULT_API_BASE_URL = "http://localhost:5290";
 
-// Icon status tracking
-let currentIconStatus = "default";
+// ─── Status Model ───
+// DST Status (Tournament Status): "connected" | "ready" | "offline"
+// Match Status: "available" | "idle" | "scheduled" | "waitForPlayer" | "waitForMatch" | "playing" | "listening" | "disconnected" | "ended"
+
+let dstStatus = "offline";   // current DST status
+let matchStatus = "available"; // current match status
 
 chrome.runtime.onInstalled.addListener(() => {
-    console.log("DartSuite Tournaments extension installed v0.3.0");
-    updateIconBadge("default");
+    console.log("DartSuite Tournaments extension installed v0.4.0");
+    updateIcon();
+    scheduleStatusPolling();
+});
+
+chrome.runtime.onStartup.addListener(() => {
+    scheduleStatusPolling();
 });
 
 // When a play.autodarts.io tab finishes loading, notify content script
@@ -38,8 +50,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 .catch(err => sendResponse({ ok: false, error: err?.message }));
             return true;
 
+        case "setDstStatus":
+            setDstStatus(message.status);
+            sendResponse({ ok: true });
+            break;
+
+        case "setMatchStatus":
+            setMatchStatus(message.status);
+            sendResponse({ ok: true });
+            break;
+
+        // Legacy: map old setIconStatus to new DST status
         case "setIconStatus":
-            updateIconBadge(message.status);
+            {
+                const map = {
+                    "connected": "connected",
+                    "active": "connected",
+                    "configured": "ready",
+                    "warning": "ready",
+                    "error": "offline",
+                    "default": "offline"
+                };
+                setDstStatus(map[message.status] || "offline");
+            }
             sendResponse({ ok: true });
             break;
 
@@ -58,42 +91,129 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             sendResponse({ ok: true });
             break;
 
+        case "getStatus":
+            sendResponse({ dstStatus, matchStatus });
+            break;
+
+        case "updateStatusPolling":
+            scheduleStatusPolling();
+            sendResponse({ ok: true });
+            break;
+
         default:
             break;
     }
 });
 
-// ─── Icon Badge Management ───
+// ─── Dynamic Icon Management ───
 
-function updateIconBadge(status) {
-    currentIconStatus = status;
+function setDstStatus(newStatus) {
+    if (dstStatus === newStatus) return;
+    dstStatus = newStatus;
+    updateIcon();
+}
 
-    const badges = {
-        default: { text: "", color: "#888" },
-        error: { text: "!", color: "#f44336" },
-        warning: { text: "?", color: "#ff9800" },
-        configured: { text: "", color: "#888" },
-        connected: { text: "✓", color: "#4caf50" },
-        active: { text: "▶", color: "#4caf50" }
-    };
+function setMatchStatus(newStatus) {
+    if (matchStatus === newStatus) return;
+    matchStatus = newStatus;
+    updateIcon();
+}
 
-    const badge = badges[status] || badges.default;
-    chrome.action.setBadgeText({ text: badge.text });
-    chrome.action.setBadgeBackgroundColor({ color: badge.color });
+function updateIcon() {
+    try {
+        const imageData = generateIconImageData(dstStatus, matchStatus);
+        chrome.action.setIcon({ imageData });
+
+        // Also set tooltip
+        const dstLabel = { connected: "Verbunden", ready: "Bereit", offline: "Offline" }[dstStatus] || "Unbekannt";
+        const matchLabel = {
+            available: "", idle: "Idle", scheduled: "Geplant", waitForPlayer: "Warte auf Spieler",
+            waitForMatch: "Warte auf Match", playing: "Spiel läuft", listening: "Listener aktiv",
+            disconnected: "Getrennt", ended: "Beendet"
+        }[matchStatus] || "";
+        const title = `DartSuite Tournaments — ${dstLabel}${matchLabel ? ` | ${matchLabel}` : ""}`;
+        chrome.action.setTitle({ title });
+        broadcastStatus();
+    } catch (err) {
+        console.warn("DartSuite BG: Icon update failed, using fallback badge", err);
+        // Fallback to badge text
+        const badges = {
+            connected: { text: "✓", color: "#4caf50" },
+            ready: { text: "?", color: "#ff9800" },
+            offline: { text: "!", color: "#f44336" }
+        };
+        const badge = badges[dstStatus] || { text: "", color: "#888" };
+        chrome.action.setBadgeText({ text: badge.text });
+        chrome.action.setBadgeBackgroundColor({ color: badge.color });
+        broadcastStatus();
+    }
+}
+
+async function broadcastStatus() {
+    const tabs = await chrome.tabs.query({ url: "https://play.autodarts.io/*" });
+    for (const tab of tabs) {
+        chrome.tabs.sendMessage(tab.id, {
+            action: "dstStatusUpdate",
+            dstStatus,
+            matchStatus
+        }).catch(() => { });
+    }
+}
+
+// ─── Periodic Status Polling ───
+
+const STATUS_ALARM_NAME = "dsStatusCheck";
+
+async function scheduleStatusPolling() {
+    const { statusPollSeconds = 30 } = await chrome.storage.sync.get({ statusPollSeconds: 30 });
+    const seconds = Math.max(10, Number(statusPollSeconds) || 30);
+    const minutes = Math.max(seconds / 60, 0.5);
+    chrome.alarms.create(STATUS_ALARM_NAME, { periodInMinutes: minutes });
+    await checkApiHealth();
+}
+
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name === STATUS_ALARM_NAME) {
+        await checkApiHealth();
+    }
+});
+
+async function checkApiHealth() {
+    const apiBaseUrl = await getApiBaseUrl();
+    try {
+        const response = await fetch(`${apiBaseUrl}/api/boards`, { signal: AbortSignal.timeout(3000) });
+        if (!response.ok) {
+            await chrome.storage.local.set({
+                apiLastError: `HTTP ${response.status}`,
+                apiLastErrorUtc: new Date().toISOString()
+            });
+            setDstStatus("offline");
+            return;
+        }
+        const { tournamentId } = await chrome.storage.sync.get({ tournamentId: "" });
+        await chrome.storage.local.remove(["apiLastError", "apiLastErrorUtc"]);
+        setDstStatus(tournamentId ? "connected" : "ready");
+    } catch {
+        await chrome.storage.local.set({
+            apiLastError: "API nicht erreichbar",
+            apiLastErrorUtc: new Date().toISOString()
+        });
+        setDstStatus("offline");
+    }
 }
 
 // ─── Tournament Events ───
 
 function handleTournamentSelected(tournament) {
     if (!tournament) {
-        updateIconBadge("warning");
+        setDstStatus("ready");
         return;
     }
 
     // Check if tournament is currently running
     const today = new Date().toISOString().split("T")[0];
     const isActive = tournament.startDate <= today && tournament.endDate >= today;
-    updateIconBadge(isActive ? "active" : "connected");
+    setDstStatus("connected");
 
     console.log("DartSuite BG: Tournament selected", tournament.name, tournament.joinCode);
 }
@@ -102,7 +222,8 @@ async function handleManagedModeChanged(message) {
     const { boardId, mode, tournamentId, tournamentName, host, boardName } = message;
 
     if (mode === "Auto") {
-        updateIconBadge("active");
+        setDstStatus("connected");
+        setMatchStatus("idle");
         // Notify all play.autodarts.io tabs about managed mode
         const tabs = await chrome.tabs.query({ url: "https://play.autodarts.io/*" });
         for (const tab of tabs) {
@@ -123,7 +244,8 @@ async function handleManagedModeChanged(message) {
         // Start polling for this board
         await startSignalRConnection(boardId);
     } else {
-        updateIconBadge("connected");
+        setDstStatus("ready");
+        setMatchStatus("available");
         const tabs = await chrome.tabs.query({ url: "https://play.autodarts.io/*" });
         for (const tab of tabs) {
             chrome.tabs.sendMessage(tab.id, {
@@ -190,7 +312,12 @@ async function doPollCycle(boardId) {
     try {
         const apiBaseUrl = await getApiBaseUrl();
         const response = await fetch(`${apiBaseUrl}/api/boards`);
-        if (!response.ok) return;
+        if (!response.ok) {
+            setDstStatus("offline");
+            return;
+        }
+        // API reachable — ensure DST status reflects connected
+        if (dstStatus === "offline") setDstStatus("ready");
         const boards = await response.json();
         const board = boards.find(b => b.id === boardId);
 
@@ -213,6 +340,12 @@ async function doPollCycle(boardId) {
         // Sync Autodarts board status to DartSuite
         await syncBoardStatuses(apiBaseUrl, boards, tabs);
 
+        // Update match status based on board state
+        if (board) {
+            await updateMatchStatusFromBoard(apiBaseUrl, board, tabs);
+            await handleManualBoardSyncRequest(apiBaseUrl, board, tabs);
+        }
+
         // Live match sync is handled server-side by AutodartsMatchListenerService
 
         if (board && board.currentMatchId && board.currentMatchId !== lastHandledCurrentMatchId) {
@@ -222,21 +355,183 @@ async function doPollCycle(boardId) {
         } else if (board && !board.currentMatchId) {
             lastHandledCurrentMatchId = null;
         }
-    } catch { /* API may be offline */ }
+    } catch {
+        // API may be offline
+        setDstStatus("offline");
+    }
 }
 
-async function syncBoardStatuses(apiBaseUrl, dsBoards, tabs) {
-    // Request captured Autodarts boards from content script
-    let adBoards = [];
+async function fetchAutodartsBoards(tabs) {
     for (const tab of tabs) {
         try {
             const result = await chrome.tabs.sendMessage(tab.id, { action: "getLocalBoards" });
             if (result?.ok && Array.isArray(result.boards) && result.boards.length > 0) {
-                adBoards = result.boards;
-                break;
+                return result.boards;
             }
         } catch { /* tab may not have content script */ }
     }
+
+    return [];
+}
+
+async function fetchFirstPageState(tabs) {
+    for (const tab of tabs) {
+        try {
+            const state = await chrome.tabs.sendMessage(tab.id, { action: "getPageState" });
+            if (state?.url) {
+                return state;
+            }
+        } catch { /* silent */ }
+    }
+
+    return null;
+}
+
+function extractPlayerNames(rawPlayers) {
+    if (!Array.isArray(rawPlayers)) return [];
+
+    return rawPlayers
+        .map(player => {
+            if (typeof player === "string") return player;
+            if (player && typeof player === "object") return player.name || player.displayName || player.accountName || "";
+            return "";
+        })
+        .map(name => (name || "").trim())
+        .filter(Boolean);
+}
+
+async function resolvePlayersForSync(apiBaseUrl, board, pageState) {
+    const pagePlayers = extractPlayerNames(pageState?.currentMatchPlayers || []);
+    if (pagePlayers.length >= 2) {
+        return [pagePlayers[0], pagePlayers[1]];
+    }
+
+    if (!board?.tournamentId || !board?.currentMatchId) {
+        return [pagePlayers[0] || null, pagePlayers[1] || null];
+    }
+
+    try {
+        const [matchesResp, participantsResp] = await Promise.all([
+            fetch(`${apiBaseUrl}/api/matches/${board.tournamentId}`),
+            fetch(`${apiBaseUrl}/api/tournaments/${board.tournamentId}/participants`)
+        ]);
+        if (!matchesResp.ok || !participantsResp.ok) {
+            return [pagePlayers[0] || null, pagePlayers[1] || null];
+        }
+
+        const [matches, participants] = await Promise.all([matchesResp.json(), participantsResp.json()]);
+        const currentMatch = Array.isArray(matches) ? matches.find(m => m.id === board.currentMatchId) : null;
+        if (!currentMatch) {
+            return [pagePlayers[0] || null, pagePlayers[1] || null];
+        }
+
+        const home = Array.isArray(participants)
+            ? participants.find(p => p.id === currentMatch.homeParticipantId)
+            : null;
+        const away = Array.isArray(participants)
+            ? participants.find(p => p.id === currentMatch.awayParticipantId)
+            : null;
+
+        const player1 = home?.displayName || home?.accountName || pagePlayers[0] || null;
+        const player2 = away?.displayName || away?.accountName || pagePlayers[1] || null;
+        return [player1, player2];
+    } catch {
+        return [pagePlayers[0] || null, pagePlayers[1] || null];
+    }
+}
+
+async function handleManualBoardSyncRequest(apiBaseUrl, board, tabs) {
+    try {
+        const consumeResp = await fetch(`${apiBaseUrl}/api/boards/${board.id}/extension-sync/consume`, {
+            method: "POST"
+        });
+        if (!consumeResp.ok) return;
+
+        const consume = await consumeResp.json();
+        console.log("DartSuite BG: Manual board sync consume response", consume);
+        if (!consume?.shouldSync) return;
+
+        const [pageState, adBoards] = await Promise.all([
+            fetchFirstPageState(tabs),
+            fetchAutodartsBoards(tabs)
+        ]);
+
+        const adBoard = Array.isArray(adBoards)
+            ? adBoards.find(x => x.id === board.externalBoardId)
+            : null;
+        const [player1, player2] = await resolvePlayersForSync(apiBaseUrl, board, pageState);
+
+        const payload = {
+            requestId: consume.requestId || null,
+            tournamentId: board.tournamentId || pageState?.tournamentId || null,
+            sourceUrl: pageState?.url || null,
+            externalMatchId: adBoard?.matchId || pageState?.matchId || null,
+            player1,
+            player2,
+            matchStatus
+        };
+
+        console.log("DartSuite BG: Manual board sync payload", payload);
+
+        const reportResp = await fetch(`${apiBaseUrl}/api/boards/${board.id}/extension-sync/report`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        const responseText = await reportResp.text();
+        console.log(`DartSuite BG: Manual board sync response (${reportResp.status})`, responseText);
+    } catch { /* silent */ }
+}
+
+// Derive match status from board and Autodarts state
+async function updateMatchStatusFromBoard(apiBaseUrl, board, tabs) {
+    // Check if there's a running match on the Autodarts side
+    const adBoards = await fetchAutodartsBoards(tabs);
+
+    const adBoard = adBoards.find(b => b.id === board.externalBoardId);
+
+    // Check if there's a match running on Autodarts
+    if (adBoard?.matchId) {
+        setMatchStatus("playing");
+        return;
+    }
+
+    // Check the page URL for lobby/match states via content script
+    const pageState = await fetchFirstPageState(tabs);
+    if (pageState?.url) {
+        if (pageState.url.includes("/lobbies/") && !pageState.url.includes("/lobbies/new")) {
+            setMatchStatus("waitForMatch");
+            return;
+        }
+
+        if (pageState.matchId) {
+            // On a match page but no local board match id yet
+            setMatchStatus("ended");
+            return;
+        }
+    }
+
+    // Check if the board has a scheduled match in DartSuite
+    if (board.currentMatchId) {
+        // A match is assigned but not running on Autodarts yet
+        setMatchStatus("scheduled");
+        return;
+    }
+
+    // Check if there's a next scheduled match at this board
+    if (board.schedulingStatus === "Scheduled" || board.schedulingStatus === "Geplant") {
+        setMatchStatus("scheduled");
+        return;
+    }
+
+    // Default: idle in managed mode
+    setMatchStatus("idle");
+}
+
+async function syncBoardStatuses(apiBaseUrl, dsBoards, tabs) {
+    // Request captured Autodarts boards from content script
+    const adBoards = await fetchAutodartsBoards(tabs);
     if (adBoards.length === 0) return;
 
     for (const dsBoard of dsBoards) {

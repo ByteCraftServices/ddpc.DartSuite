@@ -1,7 +1,8 @@
-// DartSuite Tournaments — Content Script v0.3.0
+// DartSuite Tournaments — Content Script v0.4.0
 // Runs on play.autodarts.io pages.
 // Role: Menu injection, managed mode (lobby automation, gameshot/matchshot reporting),
 //       board capture via MAIN world bridge, info bar display.
+// Lobby flow: ALWAYS navigates via homescreen before creating a new lobby.
 
 console.log("DartSuite content script loaded", location.href);
 
@@ -16,6 +17,9 @@ let cachedParticipants = [];
 let participantsCacheTime = 0;
 let externalBoardId = null;
 let lobbyPrepareActive = false;
+let currentDstStatus = "offline";
+let currentMatchStatus = "available";
+let statusBarMode = "always";
 
 // Proxy fetch through background script to bypass mixed-content (HTTPS→HTTP)
 async function apiFetch(url, options) {
@@ -26,6 +30,15 @@ async function apiFetch(url, options) {
 
 reportCurrentUrl("initial");
 loadManagedState();
+loadStatusBarSettings();
+
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "sync") return;
+    if (changes.statusBarMode) {
+        statusBarMode = changes.statusBarMode.newValue || "always";
+        refreshInfoBarVisibility();
+    }
+});
 
 // Listen for boards data from MAIN world bridge
 window.addEventListener("message", (event) => {
@@ -145,6 +158,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             sendResponse({ ok: true });
             break;
 
+        case "dstStatusUpdate":
+            currentDstStatus = message.dstStatus || currentDstStatus;
+            currentMatchStatus = message.matchStatus || currentMatchStatus;
+            updateInfoBarStatusTag();
+            refreshInfoBarVisibility();
+            showStatusToast(currentDstStatus, currentMatchStatus);
+            sendResponse({ ok: true });
+            break;
+
         case "setManagedMode":
             setManagedMode(message.payload);
             sendResponse({ ok: true });
@@ -194,7 +216,7 @@ function setManagedMode(payload) {
         });
         // Resolve externalBoardId from DartSuite API so isBoardFree() works
         resolveExternalBoardId(payload.boardId);
-        injectInfoBar();
+        refreshInfoBarVisibility();
     } else {
         managedState = { active: false, boardId: null, tournamentId: null, tournamentName: "", host: "", boardName: "" };
         externalBoardId = null;
@@ -389,9 +411,11 @@ async function toggleDartSuitePanel() {
 
 function injectInfoBar() {
     if (!managedState.active) return;
+    if (!shouldShowInfoBar()) return;
     if (document.getElementById("dartsuite-info-bar")) {
         updateInfoBarBoardName();
         updateInfoBarSchedule();
+        updateInfoBarStatusTag();
         return;
     }
 
@@ -413,6 +437,7 @@ function injectInfoBar() {
             <span style="color:#4caf50">●</span>
             <strong>DartSuite</strong> — ${escapeHtml(managedState.tournamentName)}
             <span style="color:#aaa;font-size:11px">| Host: ${escapeHtml(managedState.host)}${boardLabel}</span>
+            <span id="dartsuite-status-tag" style="padding:2px 6px;border-radius:999px;font-size:10px;font-weight:bold;background:#333;color:#fff">STATUS</span>
             <span class="dartsuite-schedule-info" style="margin-left:8px;color:#ff9800;font-size:12px"></span>
         </div>
         <button id="dartsuite-leave-btn" style="background:#c62828;border:none;color:#fff;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px">
@@ -429,6 +454,7 @@ function injectInfoBar() {
 
     // Start schedule polling
     startSchedulePolling();
+    updateInfoBarStatusTag();
 }
 
 function removeInfoBar() {
@@ -438,6 +464,72 @@ function removeInfoBar() {
         document.body.style.paddingBottom = "";
     }
     stopSchedulePolling();
+}
+
+function updateInfoBarStatusTag() {
+    const tag = document.getElementById("dartsuite-status-tag");
+    if (!tag) return;
+    const dstLabel = currentDstStatus === "connected"
+        ? "VERBUNDEN"
+        : currentDstStatus === "ready"
+            ? "BEREIT"
+            : "OFFLINE";
+    const colors = {
+        connected: "#2e7d32",
+        ready: "#ff9800",
+        offline: "#c62828"
+    };
+    tag.textContent = dstLabel;
+    tag.style.background = colors[currentDstStatus] || "#333";
+    tag.style.color = "#fff";
+}
+
+function shouldShowInfoBar() {
+    if (statusBarMode === "off") return false;
+    if (statusBarMode === "hideDuringMatch" && isMatchActive()) return false;
+    return true;
+}
+
+function refreshInfoBarVisibility() {
+    if (!managedState.active) return;
+    if (shouldShowInfoBar()) {
+        injectInfoBar();
+    } else {
+        removeInfoBar();
+    }
+}
+
+function isMatchActive() {
+    return ["playing", "waitForPlayer", "waitForMatch"].includes(currentMatchStatus);
+}
+
+async function loadStatusBarSettings() {
+    try {
+        const stored = await chrome.storage.sync.get({ statusBarMode: "always" });
+        statusBarMode = stored.statusBarMode || "always";
+    } catch { /* silent */ }
+}
+
+function showStatusToast(dst, match) {
+    const colors = {
+        connected: "#1b5e20",
+        ready: "#e65100",
+        offline: "#b71c1c"
+    };
+    const label = dst === "connected" ? "Verbunden" : dst === "ready" ? "Bereit" : "Offline";
+    const matchLabel = match && match !== "available" ? ` | ${match}` : "";
+    let toast = document.getElementById("dartsuite-status-toast");
+    if (!toast) {
+        toast = document.createElement("div");
+        toast.id = "dartsuite-status-toast";
+        toast.style.cssText = "position:fixed;right:16px;bottom:70px;z-index:10000;padding:8px 10px;border-radius:6px;color:#fff;font-size:12px;font-family:'Segoe UI',Arial,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,0.4);opacity:0;transition:opacity 0.2s";
+        document.body.appendChild(toast);
+    }
+    toast.textContent = `Status: ${label}${matchLabel}`;
+    toast.style.background = colors[dst] || "#333";
+    toast.style.opacity = "1";
+    clearTimeout(toast._hideTimer);
+    toast._hideTimer = setTimeout(() => { toast.style.opacity = "0"; }, 3000);
 }
 
 function updateInfoBarBoardName() {
@@ -581,12 +673,26 @@ async function handlePrepareMatch(payload) {
     currentMatchPlayers = payload.players || [];
 
     try {
-        // Step 1: Navigate to new X01 lobby page
-        if (!location.pathname.startsWith("/lobbies/new") && !location.pathname.match(/^\/lobbies\/[\w-]+$/)) {
-            location.href = "https://play.autodarts.io/lobbies/new/x01";
+        // Step 0: ALWAYS navigate via homescreen first.
+        // This ensures the board is in a clean state, even if still on match stats from a previous game.
+        const homescreenUrl = "https://play.autodarts.io/";
+        if (location.pathname !== "/" && !location.pathname.startsWith("/lobbies/new")) {
+            console.log("DartSuite: Navigating to homescreen first");
+            location.href = homescreenUrl;
             await chrome.storage.sync.set({ pendingPrepareMatch: JSON.stringify(payload) });
             return; // lobbyPrepareActive stays true — will be reset on next page load
         }
+
+        // If we're on the homescreen, navigate to lobby creation
+        if (location.pathname === "/" || location.pathname === "") {
+            console.log("DartSuite: On homescreen, navigating to lobby creation");
+            location.href = "https://play.autodarts.io/lobbies/new/x01";
+            await chrome.storage.sync.set({ pendingPrepareMatch: JSON.stringify(payload) });
+            return;
+        }
+
+        // Notify background about match status transition
+        chrome.runtime.sendMessage({ action: "setMatchStatus", status: "waitForPlayer" });
 
         // If we're on the lobby creation page (/lobbies/new/...), configure and open
         if (location.pathname.startsWith("/lobbies/new")) {
@@ -624,6 +730,8 @@ async function handlePrepareMatch(payload) {
         if (autodartsPlayers.length > 0) {
             await sleep(500);
             await clickButtonByAriaLabel("Show QR code");
+            // Lobby created, waiting for players to join
+            chrome.runtime.sendMessage({ action: "setMatchStatus", status: "waitForPlayer" });
         }
 
         // Step 8: Inject match info into QR dialog & monitor for players
@@ -836,6 +944,8 @@ function startLobbyPlayerMonitor(payload, preExistingPlayers) {
         if (result.allJoined) {
             console.log("DartSuite: All players joined, closing QR dialog");
             stopLobbyPlayerMonitor();
+            // All players in lobby, waiting for match to start
+            chrome.runtime.sendMessage({ action: "setMatchStatus", status: "waitForMatch" });
             // Close the QR modal
             const closeBtn = document.querySelector('.chakra-modal__close-btn, button[aria-label="Close"]');
             if (closeBtn) closeBtn.click();
@@ -1134,6 +1244,9 @@ function handleUpcomingMatch(payload) {
 function showNextMatchButton() {
     if (document.getElementById("dartsuite-next-match-btn")) return;
 
+    // Match ended — update status
+    chrome.runtime.sendMessage({ action: "setMatchStatus", status: "ended" });
+
     // The next match button triggers prepareMatch for the next game
     const btn = document.createElement("button");
     btn.id = "dartsuite-next-match-btn";
@@ -1172,12 +1285,24 @@ function reportCurrentUrl(reason) {
 
 function getPageState() {
     const url = location.href;
+    const players = Array.isArray(currentMatchPlayers)
+        ? currentMatchPlayers
+            .map(p => {
+                if (typeof p === "string") return p;
+                if (p && typeof p === "object") return p.name || p.displayName || p.accountName || "";
+                return "";
+            })
+            .map(name => name.trim())
+            .filter(Boolean)
+        : [];
+
     return {
         url,
         matchId: extractId(url, /\/matches\/([\w-]+)/i),
         lobbyId: extractId(url, /\/lobbies\/([\w-]+)/i),
         managed: managedState.active,
-        tournamentId: managedState.tournamentId
+        tournamentId: managedState.tournamentId,
+        currentMatchPlayers: players
     };
 }
 

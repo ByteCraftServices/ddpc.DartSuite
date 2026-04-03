@@ -317,8 +317,9 @@
 
 <body>
     <div class="header">
-        <span class="trophy">🏆</span>
+        <span class="trophy" id="headerTrophy">🏆</span>
         <h3>DartSuite Tournaments</h3>
+        <span id="headerDstStatus" style="font-size:10px;color:#888;margin-right:4px"></span>
         <a class="manage-link" id="manageLink" title="Erweiterung verwalten">⚙</a>
     </div>
 
@@ -421,6 +422,13 @@
                 <label for="apiBaseUrl">API URL</label>
                 <input id="apiBaseUrl" placeholder="http://localhost:5290" />
             </div>
+            <div class="row" style="display:flex;gap:6px;align-items:center">
+                <button class="btn btn-secondary" id="connectApiBtn" style="flex:0 0 auto;width:auto;padding:6px 10px">Verbinden</button>
+                <span id="connectApiState" class="info" style="margin:0">Offline</span>
+            </div>
+            <div class="row">
+                <div id="apiLastError" class="info" style="color:#ffcc80"></div>
+            </div>
             <div class="row">
                 <label for="defaultHost">Standard Host</label>
                 <input id="defaultHost" placeholder="Wird als Vorauswahl für Turnier Host verwendet" />
@@ -435,6 +443,21 @@
             <div class="checkbox-row">
                 <input type="checkbox" id="fullscreen" />
                 <label for="fullscreen">Vollbild bei Teilnahme</label>
+            </div>
+        </div>
+        <div class="section">
+            <div class="section-title">Status</div>
+            <div class="row">
+                <label for="statusPollSeconds">Status-Check Intervall (Sekunden)</label>
+                <input id="statusPollSeconds" type="number" min="10" max="300" step="5" placeholder="30" />
+            </div>
+            <div class="row">
+                <label for="statusBarMode">Statusleiste anzeigen</label>
+                <select id="statusBarMode">
+                    <option value="always">Immer</option>
+                    <option value="off">Aus</option>
+                    <option value="hideDuringMatch">Im Match ausblenden</option>
+                </select>
             </div>
         </div>
         <div class="row" style="padding:0 14px 8px">
