@@ -21,4 +21,14 @@ public sealed record MatchDto(
     DateTimeOffset? StartedUtc,
     DateTimeOffset? FinishedUtc,
     string Status = "Erstellt",
-    string? ExternalMatchId = null);
+    string? ExternalMatchId = null,
+    DateTimeOffset? PlannedEndUtc = null,
+    DateTimeOffset? ExpectedEndUtc = null,
+    int DelayMinutes = 0,
+    string SchedulingStatus = "None",
+    string? HomeSlotOrigin = null,
+    string? AwaySlotOrigin = null,
+    string? NextMatchInfo = null,
+    string? HomeParticipantName = null,
+    string? AwayParticipantName = null,
+    string? BoardName = null);

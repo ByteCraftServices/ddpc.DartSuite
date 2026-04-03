@@ -1,3 +1,4 @@
+using ddpc.DartSuite.Application.Contracts.Notifications;
 using ddpc.DartSuite.Application.Contracts.Tournaments;
 
 namespace ddpc.DartSuite.Application.Abstractions;
@@ -18,6 +19,7 @@ public interface ITournamentManagementService
     Task<ParticipantDto> AddParticipantAsync(AddParticipantRequest request, CancellationToken cancellationToken = default);
     Task<ParticipantDto?> UpdateParticipantAsync(UpdateParticipantRequest request, CancellationToken cancellationToken = default);
     Task<bool> RemoveParticipantAsync(Guid tournamentId, Guid participantId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ParticipantDto>> AssignSeedPotsAsync(Guid tournamentId, CancellationToken cancellationToken = default);
 
     // Rounds
     Task<IReadOnlyList<TournamentRoundDto>> GetRoundsAsync(Guid tournamentId, CancellationToken cancellationToken = default);
@@ -36,4 +38,13 @@ public interface ITournamentManagementService
     // Scoring
     Task<IReadOnlyList<ScoringCriterionDto>> GetScoringCriteriaAsync(Guid tournamentId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ScoringCriterionDto>> SaveScoringCriteriaAsync(SaveScoringCriteriaRequest request, CancellationToken cancellationToken = default);
+
+    // Notifications (#14)
+    Task<IReadOnlyList<NotificationSubscriptionDto>> GetNotificationSubscriptionsAsync(Guid tournamentId, string userAccountName, CancellationToken cancellationToken = default);
+    Task<NotificationSubscriptionDto> SubscribeNotificationsAsync(CreateNotificationSubscriptionRequest request, CancellationToken cancellationToken = default);
+    Task<bool> UnsubscribeNotificationsAsync(Guid subscriptionId, CancellationToken cancellationToken = default);
+
+    // View Preferences (#15)
+    Task<UserViewPreferenceDto?> GetUserViewPreferenceAsync(string userAccountName, string viewContext, CancellationToken cancellationToken = default);
+    Task<UserViewPreferenceDto> SaveUserViewPreferenceAsync(string userAccountName, string viewContext, string settingsJson, CancellationToken cancellationToken = default);
 }

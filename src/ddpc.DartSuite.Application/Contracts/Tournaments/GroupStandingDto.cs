@@ -10,4 +10,12 @@ public sealed record GroupStandingDto(
     int Points,
     int LegsWon,
     int LegsLost,
-    int LegDifference);
+    int LegDifference,
+    double Average = 0,
+    double HighestAverage = 0,
+    int HighestCheckout = 0,
+    double AverageDartsPerLeg = 0,
+    double CheckoutPercent = 0,
+    int Breaks = 0,
+    int Rank = 0,
+    string? TiebreakerApplied = null);

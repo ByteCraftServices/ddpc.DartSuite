@@ -25,4 +25,8 @@ public sealed record UpdateTournamentRequest(
     bool AreGameModesLocked = false,
     bool IsRegistrationOpen = false,
     DateTimeOffset? RegistrationStartUtc = null,
-    DateTimeOffset? RegistrationEndUtc = null);
+    DateTimeOffset? RegistrationEndUtc = null,
+    string? DiscordWebhookUrl = null,
+    string? DiscordWebhookDisplayText = null,
+    bool SeedingEnabled = false,
+    int SeedTopCount = 0);

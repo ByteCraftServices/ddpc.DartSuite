@@ -23,4 +23,18 @@ public interface IMatchManagementService
     Task<IReadOnlyList<MatchDto>> BatchResetMatchesAsync(IReadOnlyList<Guid> matchIds, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<MatchDto>> CleanupStaleMatchesAsync(Guid tournamentId, int staleMinutes, CancellationToken cancellationToken = default);
     MatchPredictionDto GetPrediction(int targetLegs, int homeLegs, int awayLegs, int homeScore, int awayScore, TimeSpan elapsed);
+
+    // Statistics (#18)
+    Task<IReadOnlyList<MatchPlayerStatisticDto>> GetMatchStatisticsAsync(Guid matchId, CancellationToken cancellationToken = default);
+    Task<MatchPlayerStatisticDto> SaveMatchPlayerStatisticAsync(MatchPlayerStatisticDto statistic, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<MatchPlayerStatisticDto>> SyncStatisticsFromExternalAsync(Guid matchId, CancellationToken cancellationToken = default);
+
+    // Followers (#14)
+    Task<IReadOnlyList<MatchFollowerDto>> GetMatchFollowersAsync(Guid matchId, CancellationToken cancellationToken = default);
+    Task<MatchFollowerDto> FollowMatchAsync(Guid matchId, string userAccountName, CancellationToken cancellationToken = default);
+    Task<bool> UnfollowMatchAsync(Guid matchId, string userAccountName, CancellationToken cancellationToken = default);
+
+    // Scheduling (#12)
+    Task<IReadOnlyList<MatchDto>> RecalculateScheduleAsync(Guid tournamentId, CancellationToken cancellationToken = default);
+    Task<MatchDto?> UpdateMatchTimingAsync(Guid matchId, DateTimeOffset? actualStart, DateTimeOffset? actualEnd, CancellationToken cancellationToken = default);
 }
