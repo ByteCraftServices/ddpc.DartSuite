@@ -42,6 +42,14 @@ public static class DependencyInjection
         services.AddScoped<IBoardManagementService, BoardManagementService>();
         services.AddScoped<ITournamentManagementService, TournamentManagementService>();
         services.AddScoped<IMatchManagementService, MatchManagementService>();
+        services.AddScoped<IDiscordWebhookService, DiscordWebhookService>();
+        services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<ISchedulingService, SchedulingService>();
+        services.AddScoped<IStatisticsService, StatisticsService>();
+
+        services.Configure<VapidOptions>(configuration.GetSection(VapidOptions.SectionName));
+
+        services.AddHttpClient("DiscordWebhook");
 
         return services;
     }

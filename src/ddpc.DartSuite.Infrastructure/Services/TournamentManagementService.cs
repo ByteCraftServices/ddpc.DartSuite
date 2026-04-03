@@ -1,4 +1,5 @@
 using ddpc.DartSuite.Application.Abstractions;
+using ddpc.DartSuite.Application.Contracts.Notifications;
 using ddpc.DartSuite.Application.Contracts.Tournaments;
 using ddpc.DartSuite.Domain.Entities;
 using ddpc.DartSuite.Domain.Enums;
@@ -20,7 +21,8 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         x.GroupCount, x.PlayoffAdvancers, x.KnockoutsPerRound, x.MatchesPerOpponent,
         x.GroupMode.ToString(), x.GroupDrawMode.ToString(), x.PlanningVariant.ToString(),
         x.GroupOrderMode.ToString(), x.ThirdPlaceMatch, x.PlayersPerTeam, x.WinPoints, x.LegFactor,
-        x.IsRegistrationOpen, x.RegistrationStartUtc, x.RegistrationEndUtc);
+        x.IsRegistrationOpen, x.RegistrationStartUtc, x.RegistrationEndUtc,
+        x.DiscordWebhookUrl, x.DiscordWebhookDisplayText, x.SeedingEnabled, x.SeedTopCount);
 
     /// <summary>Evaluates time-based registration and auto-toggles IsRegistrationOpen.</summary>
     private static bool EvaluateRegistrationState(Tournament t)
@@ -165,8 +167,14 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
 
         // Registration settings
         tournament.IsRegistrationOpen = request.IsRegistrationOpen;
-        tournament.RegistrationStartUtc = request.RegistrationStartUtc;
-        tournament.RegistrationEndUtc = request.RegistrationEndUtc;
+        tournament.RegistrationStartUtc = request.RegistrationStartUtc?.ToUniversalTime();
+        tournament.RegistrationEndUtc = request.RegistrationEndUtc?.ToUniversalTime();
+
+        // Discord webhook & seeding
+        tournament.DiscordWebhookUrl = request.DiscordWebhookUrl;
+        tournament.DiscordWebhookDisplayText = request.DiscordWebhookDisplayText;
+        tournament.SeedingEnabled = request.SeedingEnabled;
+        tournament.SeedTopCount = request.SeedTopCount;
 
         await dbContext.SaveChangesAsync(cancellationToken);
         var count = await dbContext.Participants.CountAsync(x => x.TournamentId == tournament.Id, cancellationToken);
@@ -191,7 +199,7 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         return await dbContext.Participants.AsNoTracking()
             .Where(x => x.TournamentId == tournamentId)
             .OrderBy(x => x.Seed)
-            .Select(x => new ParticipantDto(x.Id, x.DisplayName, x.AccountName, x.IsAutodartsAccount, x.IsManager, x.Seed, x.GroupNumber, x.TeamId))
+            .Select(x => new ParticipantDto(x.Id, x.DisplayName, x.AccountName, x.IsAutodartsAccount, x.IsManager, x.Seed, x.SeedPot, x.GroupNumber, x.TeamId, x.NotificationPreference.ToString()))
             .ToListAsync(cancellationToken);
     }
 
@@ -206,7 +214,7 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         return results
             .GroupBy(x => x.AccountName.ToLowerInvariant())
             .Select(g => g.First())
-            .Select(x => new ParticipantDto(x.Id, x.DisplayName, x.AccountName, x.IsAutodartsAccount, x.IsManager, x.Seed, x.GroupNumber, x.TeamId))
+            .Select(x => new ParticipantDto(x.Id, x.DisplayName, x.AccountName, x.IsAutodartsAccount, x.IsManager, x.Seed, x.SeedPot, x.GroupNumber, x.TeamId, x.NotificationPreference.ToString()))
             .Take(20)
             .ToList();
     }
@@ -230,7 +238,7 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
 
         dbContext.Participants.Add(participant);
         await dbContext.SaveChangesAsync(cancellationToken);
-        return new ParticipantDto(participant.Id, participant.DisplayName, participant.AccountName, participant.IsAutodartsAccount, participant.IsManager, participant.Seed, participant.GroupNumber, participant.TeamId);
+        return new ParticipantDto(participant.Id, participant.DisplayName, participant.AccountName, participant.IsAutodartsAccount, participant.IsManager, participant.Seed, participant.SeedPot, participant.GroupNumber, participant.TeamId, participant.NotificationPreference.ToString());
     }
 
     public async Task<ParticipantDto?> UpdateParticipantAsync(UpdateParticipantRequest request, CancellationToken cancellationToken = default)
@@ -253,9 +261,11 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         participant.IsAutodartsAccount = request.IsAutodartsAccount;
         participant.IsManager = request.IsManager;
         participant.Seed = request.Seed;
+        participant.SeedPot = request.SeedPot;
+        participant.GroupNumber = request.GroupNumber;
 
         await dbContext.SaveChangesAsync(cancellationToken);
-        return new ParticipantDto(participant.Id, participant.DisplayName, participant.AccountName, participant.IsAutodartsAccount, participant.IsManager, participant.Seed, participant.GroupNumber, participant.TeamId);
+        return new ParticipantDto(participant.Id, participant.DisplayName, participant.AccountName, participant.IsAutodartsAccount, participant.IsManager, participant.Seed, participant.SeedPot, participant.GroupNumber, participant.TeamId, participant.NotificationPreference.ToString());
     }
 
     public async Task<bool> RemoveParticipantAsync(Guid tournamentId, Guid participantId, CancellationToken cancellationToken = default)
@@ -276,6 +286,48 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         dbContext.Participants.Remove(participant);
         await dbContext.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    public async Task<IReadOnlyList<ParticipantDto>> AssignSeedPotsAsync(Guid tournamentId, CancellationToken cancellationToken = default)
+    {
+        var tournament = await dbContext.Tournaments.FindAsync([tournamentId], cancellationToken);
+        if (tournament is null) return [];
+
+        var participants = await dbContext.Participants
+            .Where(x => x.TournamentId == tournamentId)
+            .ToListAsync(cancellationToken);
+
+        if (participants.Count == 0 || tournament.GroupCount < 1) return [];
+
+        // Determine order for pot filling:
+        // 1) ranked players by seed
+        // 2) unranked players randomized
+        var ranked = participants
+            .Where(x => tournament.SeedingEnabled && tournament.SeedTopCount > 0 && x.Seed > 0 && x.Seed <= tournament.SeedTopCount)
+            .OrderBy(x => x.Seed)
+            .ToList();
+
+        var unranked = participants
+            .Except(ranked)
+            .OrderBy(_ => Random.Shared.Next())
+            .ToList();
+
+        var ordered = ranked.Concat(unranked).ToList();
+
+        // Determine pot size = number of groups (each pot fills one slot per group)
+        var potSize = tournament.GroupCount;
+        var potNumber = 1;
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            if (i > 0 && i % potSize == 0) potNumber++;
+            ordered[i].SeedPot = potNumber;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return participants
+            .Select(x => new ParticipantDto(x.Id, x.DisplayName, x.AccountName, x.IsAutodartsAccount, x.IsManager, x.Seed, x.SeedPot, x.GroupNumber, x.TeamId, x.NotificationPreference.ToString()))
+            .ToList();
     }
 
     // ─── Rounds ───
@@ -456,7 +508,7 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         return teams.Select(t =>
         {
             var teamMembers = members.Where(m => m.TeamId == t.Id)
-                .Select(m => new ParticipantDto(m.Id, m.DisplayName, m.AccountName, m.IsAutodartsAccount, m.IsManager, m.Seed, m.GroupNumber, m.TeamId))
+                .Select(m => new ParticipantDto(m.Id, m.DisplayName, m.AccountName, m.IsAutodartsAccount, m.IsManager, m.Seed, m.SeedPot, m.GroupNumber, m.TeamId, m.NotificationPreference.ToString()))
                 .ToList();
             return new TeamDto(t.Id, t.TournamentId, t.Name, t.GroupNumber, teamMembers);
         }).ToList();
@@ -481,7 +533,7 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         await dbContext.SaveChangesAsync(cancellationToken);
 
         var memberDtos = participants
-            .Select(m => new ParticipantDto(m.Id, m.DisplayName, m.AccountName, m.IsAutodartsAccount, m.IsManager, m.Seed, m.GroupNumber, m.TeamId))
+            .Select(m => new ParticipantDto(m.Id, m.DisplayName, m.AccountName, m.IsAutodartsAccount, m.IsManager, m.Seed, m.SeedPot, m.GroupNumber, m.TeamId, m.NotificationPreference.ToString()))
             .ToList();
         return new TeamDto(team.Id, team.TournamentId, team.Name, team.GroupNumber, memberDtos);
     }
@@ -544,5 +596,88 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
             if (!exists) return code;
         }
         throw new InvalidOperationException("Could not generate a unique join code. Too many active tournaments.");
+    }
+
+    // ─── Notifications (#14) ───
+
+    public async Task<IReadOnlyList<NotificationSubscriptionDto>> GetNotificationSubscriptionsAsync(Guid tournamentId, string userAccountName, CancellationToken cancellationToken = default)
+    {
+        return await dbContext.NotificationSubscriptions.AsNoTracking()
+            .Where(x => x.TournamentId == tournamentId && x.UserAccountName == userAccountName)
+            .Select(x => new NotificationSubscriptionDto(x.Id, x.TournamentId, x.UserAccountName, x.Endpoint, x.P256dh, x.Auth, x.NotificationPreference.ToString(), x.CreatedUtc))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<NotificationSubscriptionDto> SubscribeNotificationsAsync(CreateNotificationSubscriptionRequest request, CancellationToken cancellationToken = default)
+    {
+        var existing = await dbContext.NotificationSubscriptions
+            .FirstOrDefaultAsync(x => x.TournamentId == request.TournamentId && x.UserAccountName == request.UserAccountName && x.Endpoint == request.Endpoint, cancellationToken);
+
+        if (existing is not null)
+        {
+            existing.P256dh = request.P256dh;
+            existing.Auth = request.Auth;
+            existing.NotificationPreference = Enum.TryParse<NotificationPreference>(request.NotificationPreference, true, out var np) ? np : NotificationPreference.OwnMatches;
+        }
+        else
+        {
+            existing = new NotificationSubscription
+            {
+                TournamentId = request.TournamentId,
+                UserAccountName = request.UserAccountName,
+                Endpoint = request.Endpoint,
+                P256dh = request.P256dh,
+                Auth = request.Auth,
+                NotificationPreference = Enum.TryParse<NotificationPreference>(request.NotificationPreference, true, out var np) ? np : NotificationPreference.OwnMatches,
+                CreatedUtc = DateTimeOffset.UtcNow
+            };
+            dbContext.NotificationSubscriptions.Add(existing);
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new NotificationSubscriptionDto(existing.Id, existing.TournamentId, existing.UserAccountName, existing.Endpoint, existing.P256dh, existing.Auth, existing.NotificationPreference.ToString(), existing.CreatedUtc);
+    }
+
+    public async Task<bool> UnsubscribeNotificationsAsync(Guid subscriptionId, CancellationToken cancellationToken = default)
+    {
+        var sub = await dbContext.NotificationSubscriptions.FirstOrDefaultAsync(x => x.Id == subscriptionId, cancellationToken);
+        if (sub is null) return false;
+
+        dbContext.NotificationSubscriptions.Remove(sub);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    // ─── View Preferences (#15) ───
+
+    public async Task<UserViewPreferenceDto?> GetUserViewPreferenceAsync(string userAccountName, string viewContext, CancellationToken cancellationToken = default)
+    {
+        var pref = await dbContext.UserViewPreferences.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.UserAccountName == userAccountName && x.ViewContext == viewContext, cancellationToken);
+        return pref is null ? null : new UserViewPreferenceDto(pref.Id, pref.UserAccountName, pref.ViewContext, pref.SettingsJson);
+    }
+
+    public async Task<UserViewPreferenceDto> SaveUserViewPreferenceAsync(string userAccountName, string viewContext, string settingsJson, CancellationToken cancellationToken = default)
+    {
+        var pref = await dbContext.UserViewPreferences
+            .FirstOrDefaultAsync(x => x.UserAccountName == userAccountName && x.ViewContext == viewContext, cancellationToken);
+
+        if (pref is null)
+        {
+            pref = new UserViewPreference
+            {
+                UserAccountName = userAccountName,
+                ViewContext = viewContext,
+                SettingsJson = settingsJson
+            };
+            dbContext.UserViewPreferences.Add(pref);
+        }
+        else
+        {
+            pref.SettingsJson = settingsJson;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new UserViewPreferenceDto(pref.Id, pref.UserAccountName, pref.ViewContext, pref.SettingsJson);
     }
 }

@@ -14,19 +14,17 @@ public sealed class BoardManagementService(DartSuiteDbContext dbContext) : IBoar
         (DateTimeOffset.UtcNow - b.LastExtensionPollUtc.Value).TotalSeconds < 30;
 
     private static BoardDto ToDto(Board b) => new(b.Id, b.ExternalBoardId, b.Name, b.Status.ToString(),
+        b.ConnectionState.ToString(), b.ExtensionStatus.ToString(), b.SchedulingStatus.ToString(),
+        b.ComputeOverallStatus().ToString(),
         b.LocalIpAddress, b.BoardManagerUrl, b.CurrentMatchId, b.CurrentMatchLabel,
         b.ManagedMode.ToString(), b.TournamentId, b.UpdatedUtc, IsExtensionConnected(b));
 
     public async Task<IReadOnlyList<BoardDto>> GetBoardsAsync(CancellationToken cancellationToken = default)
     {
-        var now = DateTimeOffset.UtcNow;
-        return await dbContext.Boards.AsNoTracking()
+        var boards = await dbContext.Boards.AsNoTracking()
             .OrderBy(x => x.Name)
-            .Select(x => new BoardDto(x.Id, x.ExternalBoardId, x.Name, x.Status.ToString(),
-                x.LocalIpAddress, x.BoardManagerUrl, x.CurrentMatchId, x.CurrentMatchLabel,
-                x.ManagedMode.ToString(), x.TournamentId, x.UpdatedUtc,
-                x.LastExtensionPollUtc.HasValue && (now - x.LastExtensionPollUtc.Value).TotalSeconds < 30))
             .ToListAsync(cancellationToken);
+        return boards.Select(ToDto).ToList();
     }
 
     public async Task<BoardDto> CreateBoardAsync(CreateBoardRequest request, CancellationToken cancellationToken = default)
@@ -165,5 +163,42 @@ public sealed class BoardManagementService(DartSuiteDbContext dbContext) : IBoar
         board.LastExtensionPollUtc = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    public async Task<BoardDto?> GetBoardAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var board = await dbContext.Boards.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        return board is null ? null : ToDto(board);
+    }
+
+    public async Task<BoardDto?> UpdateConnectionStateAsync(Guid id, string connectionState, CancellationToken cancellationToken = default)
+    {
+        var board = await dbContext.Boards.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (board is null) return null;
+
+        board.ConnectionState = Enum.TryParse<ConnectionState>(connectionState, true, out var cs) ? cs : ConnectionState.Offline;
+        board.UpdatedUtc = DateTimeOffset.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return ToDto(board);
+    }
+
+    public async Task<BoardDto?> UpdateExtensionStatusAsync(Guid id, string extensionStatus, CancellationToken cancellationToken = default)
+    {
+        var board = await dbContext.Boards.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (board is null) return null;
+
+        board.ExtensionStatus = Enum.TryParse<ExtensionConnectionStatus>(extensionStatus, true, out var es) ? es : ExtensionConnectionStatus.Offline;
+        board.UpdatedUtc = DateTimeOffset.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return ToDto(board);
+    }
+
+    public async Task<IReadOnlyList<BoardDto>> GetBoardsByTournamentAsync(Guid tournamentId, CancellationToken cancellationToken = default)
+    {
+        var boards = await dbContext.Boards.AsNoTracking()
+            .Where(x => x.TournamentId == tournamentId)
+            .OrderBy(x => x.Name)
+            .ToListAsync(cancellationToken);
+        return boards.Select(ToDto).ToList();
     }
 }

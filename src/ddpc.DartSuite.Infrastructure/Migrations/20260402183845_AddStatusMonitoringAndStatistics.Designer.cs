@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ddpc.DartSuite.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using ddpc.DartSuite.Infrastructure.Persistence;
 namespace ddpc.DartSuite.Infrastructure.Migrations
 {
     [DbContext(typeof(DartSuiteDbContext))]
-    partial class DartSuiteDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260402183845_AddStatusMonitoringAndStatistics")]
+    partial class AddStatusMonitoringAndStatistics
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -366,9 +369,6 @@ namespace ddpc.DartSuite.Infrastructure.Migrations
                         .HasColumnType("integer");
 
                     b.Property<int>("Seed")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("SeedPot")
                         .HasColumnType("integer");
 
                     b.Property<Guid?>("TeamId")
