@@ -400,10 +400,46 @@ function extractPlayerNames(rawPlayers) {
         .filter(Boolean);
 }
 
+function extractPlayersFromAutodartsMatch(rawMatch) {
+    if (!rawMatch || !Array.isArray(rawMatch.players)) return [];
+
+    return rawMatch.players
+        .map(player => {
+            if (typeof player === "string") return player;
+            if (!player || typeof player !== "object") return "";
+            if (typeof player.name === "string") return player.name;
+            if (typeof player.displayName === "string") return player.displayName;
+            if (typeof player.accountName === "string") return player.accountName;
+
+            const user = player.user;
+            if (user && typeof user === "object") {
+                return user.name || user.displayName || user.accountName || user.username || "";
+            }
+
+            return "";
+        })
+        .map(name => (name || "").trim())
+        .filter(Boolean);
+}
+
 async function resolvePlayersForSync(apiBaseUrl, board, pageState) {
     const pagePlayers = extractPlayerNames(pageState?.currentMatchPlayers || []);
     if (pagePlayers.length >= 2) {
         return [pagePlayers[0], pagePlayers[1]];
+    }
+
+    const externalMatchId = pageState?.matchId || null;
+    if (externalMatchId) {
+        try {
+            const matchResp = await fetch(`${apiBaseUrl}/api/autodarts/matches/${externalMatchId}`);
+            if (matchResp.ok) {
+                const rawMatch = await matchResp.json();
+                const externalPlayers = extractPlayersFromAutodartsMatch(rawMatch);
+                if (externalPlayers.length >= 2) {
+                    return [externalPlayers[0], externalPlayers[1]];
+                }
+            }
+        } catch { /* silent */ }
     }
 
     if (!board?.tournamentId || !board?.currentMatchId) {

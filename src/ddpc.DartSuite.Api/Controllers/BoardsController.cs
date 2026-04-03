@@ -2,6 +2,8 @@ using ddpc.DartSuite.Application.Abstractions;
 using ddpc.DartSuite.Application.Contracts.Boards;
 using ddpc.DartSuite.Api.Hubs;
 using ddpc.DartSuite.Api.Services;
+using ddpc.DartSuite.ApiClient;
+using ddpc.DartSuite.ApiClient.Contracts;
 using ddpc.DartSuite.Domain.Entities;
 using ddpc.DartSuite.Domain.Enums;
 using ddpc.DartSuite.Infrastructure.Persistence;
@@ -9,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace ddpc.DartSuite.Api.Controllers;
 
@@ -17,6 +20,8 @@ namespace ddpc.DartSuite.Api.Controllers;
 public sealed class BoardsController(
     IBoardManagementService boardService,
     IMatchManagementService matchService,
+    IAutodartsClient autodartsClient,
+    AutodartsSessionStore sessionStore,
     AutodartsMatchListenerService listenerService,
     BoardExtensionSyncRequestStore syncRequestStore,
     DartSuiteDbContext dbContext,
@@ -205,6 +210,28 @@ public sealed class BoardsController(
             board.TournamentId = request.TournamentId;
 
         var tournamentId = request.TournamentId ?? board.TournamentId;
+        var resolvedPlayer1 = request.Player1;
+        var resolvedPlayer2 = request.Player2;
+
+        if ((string.IsNullOrWhiteSpace(resolvedPlayer1) || string.IsNullOrWhiteSpace(resolvedPlayer2))
+            && !string.IsNullOrWhiteSpace(request.ExternalMatchId))
+        {
+            var externalPlayers = await TryResolvePlayersFromExternalMatchAsync(request.ExternalMatchId.Trim(), cancellationToken);
+            if (externalPlayers is not null)
+            {
+                resolvedPlayer1 ??= externalPlayers.Value.Player1;
+                resolvedPlayer2 ??= externalPlayers.Value.Player2;
+
+                logger.LogInformation(
+                    "Extension sync player fallback board={BoardId} requestId={RequestId} externalMatchId={ExternalMatchId} player1={Player1} player2={Player2}",
+                    id,
+                    request.RequestId,
+                    request.ExternalMatchId,
+                    resolvedPlayer1,
+                    resolvedPlayer2);
+            }
+        }
+
         var derivedStatus = DeriveStatusFromExtension(request.SourceUrl, request.MatchStatus);
 
         Match? match = null;
@@ -225,8 +252,8 @@ public sealed class BoardsController(
             {
                 match = await FindOpenMatchByPlayersAsync(
                     tournamentId.Value,
-                    request.Player1,
-                    request.Player2,
+                    resolvedPlayer1,
+                    resolvedPlayer2,
                     board.Id,
                     board.CurrentMatchId,
                     cancellationToken);
@@ -317,7 +344,8 @@ public sealed class BoardsController(
             TournamentId: tournamentId,
             ExternalMatchId: request.ExternalMatchId,
             Player1: request.Player1,
-            Player2: request.Player2,
+            Player1: resolvedPlayer1,
+            Player2: resolvedPlayer2,
             MatchStatus: request.MatchStatus,
             SourceUrl: request.SourceUrl);
 
@@ -429,6 +457,96 @@ public sealed class BoardsController(
         var participant = await dbContext.Participants.FirstOrDefaultAsync(x => x.Id == participantId, cancellationToken);
         if (participant is null) return "?";
         return !string.IsNullOrWhiteSpace(participant.DisplayName) ? participant.DisplayName : participant.AccountName;
+    }
+
+    private async Task<(string? Player1, string? Player2)?> TryResolvePlayersFromExternalMatchAsync(string externalMatchId, CancellationToken cancellationToken)
+    {
+        var accessToken = await GetActiveAccessTokenAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(accessToken))
+            return null;
+
+        try
+        {
+            var match = await autodartsClient.GetMatchAsync(accessToken, externalMatchId, cancellationToken);
+            if (match is null)
+                return null;
+
+            var players = ExtractPlayerNames(match);
+            return players.Length >= 2 ? (players[0], players[1]) : null;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException)
+        {
+            logger.LogWarning(ex, "Failed to resolve external match players for {ExternalMatchId}", externalMatchId);
+            return null;
+        }
+    }
+
+    private async Task<string?> GetActiveAccessTokenAsync(CancellationToken cancellationToken)
+    {
+        var session = sessionStore.GetActive();
+        if (session is null || string.IsNullOrWhiteSpace(session.AccessToken))
+            return null;
+
+        if (!sessionStore.IsTokenExpired(session.SessionId))
+            return session.AccessToken;
+
+        if (!string.IsNullOrWhiteSpace(session.RefreshToken))
+        {
+            try
+            {
+                var newToken = await autodartsClient.RefreshAccessTokenAsync(session.RefreshToken!, cancellationToken);
+                var expiresAt = DateTimeOffset.UtcNow.AddSeconds(newToken.ExpiresIn > 0 ? newToken.ExpiresIn : 3600);
+                sessionStore.UpdateTokens(session.SessionId, newToken.AccessToken, newToken.RefreshToken, expiresAt);
+                return newToken.AccessToken;
+            }
+            catch (InvalidOperationException ex)
+            {
+                logger.LogWarning("Token refresh failed while resolving board sync players: {Message}", ex.Message);
+            }
+        }
+
+        return session.AccessToken;
+    }
+
+    private static string[] ExtractPlayerNames(AutodartsMatchDetail match)
+    {
+        if (match.RawJson.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+            return [];
+
+        if (!match.RawJson.TryGetProperty("players", out var playersElement) || playersElement.ValueKind != JsonValueKind.Array)
+            return [];
+
+        return playersElement.EnumerateArray()
+            .Select(ExtractPlayerName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name!.Trim())
+            .ToArray();
+    }
+
+    private static string? ExtractPlayerName(JsonElement player)
+    {
+        if (player.ValueKind == JsonValueKind.String)
+            return player.GetString();
+
+        if (player.ValueKind != JsonValueKind.Object)
+            return null;
+
+        foreach (var candidate in new[] { "name", "displayName", "accountName", "username" })
+        {
+            if (player.TryGetProperty(candidate, out var property) && property.ValueKind == JsonValueKind.String)
+                return property.GetString();
+        }
+
+        if (player.TryGetProperty("user", out var user) && user.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var candidate in new[] { "name", "displayName", "accountName", "username" })
+            {
+                if (user.TryGetProperty(candidate, out var property) && property.ValueKind == JsonValueKind.String)
+                    return property.GetString();
+            }
+        }
+
+        return null;
     }
 
     private static Guid? ResolveParticipantId(IEnumerable<Participant> participants, string normalizedName)

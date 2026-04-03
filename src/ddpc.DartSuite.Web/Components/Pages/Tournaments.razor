@@ -2309,14 +2309,17 @@
                     }
                     @if (IsDevelopmentEnvironment)
                     {
-                        <div class="card border-warning-subtle mb-3">
-                            <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                        <details class="card border-warning-subtle mb-3">
+                            <summary class="card-header py-2 d-flex justify-content-between align-items-center" style="cursor:pointer">
                                 <span class="small fw-semibold">Dev: Board Sync Debug</span>
-                                <button class="btn btn-outline-secondary btn-sm" @onclick="RefreshBoardSyncDebugAsync" disabled="@isBoardSyncDebugLoading">
-                                    @(isBoardSyncDebugLoading ? "Lade..." : "Aktualisieren")
-                                </button>
-                            </div>
+                                <span class="small text-muted">@(boardSyncDebug?.Matched is true ? "gematcht" : boardSyncDebug?.ReportedAtUtc is not null ? "reportet" : "eingeklappt")</span>
+                            </summary>
                             <div class="card-body py-2">
+                                <div class="d-flex justify-content-end mb-2">
+                                    <button class="btn btn-outline-secondary btn-sm" @onclick="RefreshBoardSyncDebugAsync" disabled="@isBoardSyncDebugLoading">
+                                        @(isBoardSyncDebugLoading ? "Lade..." : "Aktualisieren")
+                                    </button>
+                                </div>
                                 @if (boardSyncDebug is null)
                                 {
                                     <div class="small text-muted">Noch keine Sync-Daten vorhanden.</div>
@@ -2330,18 +2333,18 @@
                                         <div class="col-md-6"><strong>Consumed:</strong> @(boardSyncDebug.ConsumedAtUtc?.LocalDateTime.ToString("HH:mm:ss") ?? "—")</div>
                                         <div class="col-md-6"><strong>Reported:</strong> @(boardSyncDebug.ReportedAtUtc?.LocalDateTime.ToString("HH:mm:ss") ?? "—")</div>
                                         <div class="col-md-6"><strong>Matched:</strong> @boardSyncDebug.Matched</div>
-                                        <div class="col-md-6"><strong>MatchedBy:</strong> @boardSyncDebug.MatchedBy</div>
-                                        <div class="col-md-6"><strong>MatchId:</strong> @boardSyncDebug.MatchId</div>
+                                        <div class="col-md-6"><strong>MatchedBy:</strong> @(string.IsNullOrWhiteSpace(boardSyncDebug.MatchedBy) ? "—" : boardSyncDebug.MatchedBy)</div>
+                                        <div class="col-md-6"><strong>MatchId:</strong> @(boardSyncDebug.MatchId?.ToString() ?? "—")</div>
                                         <div class="col-md-6"><strong>DerivedStatus:</strong> @boardSyncDebug.DerivedStatus</div>
                                         <div class="col-md-6"><strong>ExternalMatchId:</strong> @boardSyncDebug.ExternalMatchId</div>
-                                        <div class="col-md-6"><strong>TournamentId:</strong> @boardSyncDebug.TournamentId</div>
-                                        <div class="col-md-6"><strong>Player1:</strong> @boardSyncDebug.Player1</div>
-                                        <div class="col-md-6"><strong>Player2:</strong> @boardSyncDebug.Player2</div>
-                                        <div class="col-12"><strong>SourceUrl:</strong> @boardSyncDebug.SourceUrl</div>
+                                        <div class="col-md-6"><strong>TournamentId:</strong> @(boardSyncDebug.TournamentId?.ToString() ?? "—")</div>
+                                        <div class="col-md-6"><strong>Player1:</strong> @(string.IsNullOrWhiteSpace(boardSyncDebug.Player1) ? "—" : boardSyncDebug.Player1)</div>
+                                        <div class="col-md-6"><strong>Player2:</strong> @(string.IsNullOrWhiteSpace(boardSyncDebug.Player2) ? "—" : boardSyncDebug.Player2)</div>
+                                        <div class="col-12"><strong>SourceUrl:</strong> @(string.IsNullOrWhiteSpace(boardSyncDebug.SourceUrl) ? "—" : boardSyncDebug.SourceUrl)</div>
                                     </div>
                                 }
                             </div>
-                        </div>
+                        </details>
                     }
                     @if (currentMatch is not null)
                     {
