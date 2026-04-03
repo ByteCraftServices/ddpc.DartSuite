@@ -9,6 +9,8 @@ public sealed class Participant
     public bool IsAutodartsAccount { get; set; } = true;
     public bool IsManager { get; set; }
     public int Seed { get; set; }
+    public int SeedPot { get; set; }
     public int? GroupNumber { get; set; }
     public Guid? TeamId { get; set; }
+    public Enums.NotificationPreference NotificationPreference { get; set; } = Enums.NotificationPreference.OwnMatches;
 }

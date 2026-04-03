@@ -45,6 +45,14 @@ public sealed class Tournament
     public DateTimeOffset? RegistrationStartUtc { get; set; }
     public DateTimeOffset? RegistrationEndUtc { get; set; }
 
+    // Discord Webhook (Issue #14)
+    public string? DiscordWebhookUrl { get; set; }
+    public string? DiscordWebhookDisplayText { get; set; }
+
+    // Seeding (Issue #13)
+    public bool SeedingEnabled { get; set; }
+    public int SeedTopCount { get; set; }
+
     public IReadOnlyCollection<Participant> Participants => _participants.AsReadOnly();
 
     public void AddParticipant(Participant participant)
