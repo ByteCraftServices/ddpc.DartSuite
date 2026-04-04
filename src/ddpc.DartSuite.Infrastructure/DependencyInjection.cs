@@ -49,7 +49,11 @@ public static class DependencyInjection
 
         services.Configure<VapidOptions>(configuration.GetSection(VapidOptions.SectionName));
 
-        services.AddHttpClient("DiscordWebhook");
+        var webhookTimeoutSeconds = configuration.GetValue<int?>("DiscordWebhook:TimeoutSeconds") ?? 10;
+        services.AddHttpClient("DiscordWebhook", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(Math.Max(1, webhookTimeoutSeconds));
+        });
 
         return services;
     }
