@@ -17,26 +17,44 @@ public static class AutodartsMatchStatisticsSyncService
         CancellationToken cancellationToken)
     {
         var mapped = AutodartsMatchStatisticsMapper.Map(rawJson);
-        if (mapped.Count == 0)
-            return new StatisticsSyncResult(0, false);
-
         var changed = false;
         var now = DateTimeOffset.UtcNow;
+        var trackedParticipantIds = new[] { homeParticipantId, awayParticipantId };
 
-        foreach (var item in mapped)
-        {
-            var participantId = item.Slot switch
+        var existingStatistics = await dbContext.MatchPlayerStatistics
+            .Where(x => x.MatchId == matchId && trackedParticipantIds.Contains(x.ParticipantId))
+            .ToDictionaryAsync(x => x.ParticipantId, cancellationToken);
+
+        var incomingByParticipant = mapped
+            .Select(item => new
             {
-                0 => homeParticipantId,
-                1 => awayParticipantId,
-                _ => Guid.Empty
-            };
+                ParticipantId = item.Slot switch
+                {
+                    0 => homeParticipantId,
+                    1 => awayParticipantId,
+                    _ => Guid.Empty
+                },
+                Item = item
+            })
+            .Where(x => x.ParticipantId != Guid.Empty)
+            .ToDictionary(x => x.ParticipantId, x => x.Item);
 
-            if (participantId == Guid.Empty)
-                continue;
+        if (incomingByParticipant.Count == 0)
+        {
+            if (existingStatistics.Count == 0)
+                return new StatisticsSyncResult(0, false);
 
-            var existing = await dbContext.MatchPlayerStatistics
-                .FirstOrDefaultAsync(x => x.MatchId == matchId && x.ParticipantId == participantId, cancellationToken);
+            dbContext.MatchPlayerStatistics.RemoveRange(existingStatistics.Values);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return new StatisticsSyncResult(0, true);
+        }
+
+        foreach (var incoming in incomingByParticipant)
+        {
+            var participantId = incoming.Key;
+            var item = incoming.Value;
+
+            existingStatistics.TryGetValue(participantId, out var existing);
 
             if (existing is null)
             {
@@ -53,10 +71,20 @@ public static class AutodartsMatchStatisticsSyncService
             changed |= Apply(existing, item);
         }
 
+        var staleStatistics = existingStatistics
+            .Where(x => !incomingByParticipant.ContainsKey(x.Key))
+            .Select(x => x.Value)
+            .ToList();
+        if (staleStatistics.Count > 0)
+        {
+            dbContext.MatchPlayerStatistics.RemoveRange(staleStatistics);
+            changed = true;
+        }
+
         if (changed)
             await dbContext.SaveChangesAsync(cancellationToken);
 
-        return new StatisticsSyncResult(mapped.Count, changed);
+        return new StatisticsSyncResult(incomingByParticipant.Count, changed);
     }
 
     private static bool Apply(MatchPlayerStatistic target, MappedMatchPlayerStatistic source)
