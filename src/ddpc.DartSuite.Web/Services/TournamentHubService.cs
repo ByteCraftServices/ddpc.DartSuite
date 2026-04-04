@@ -15,6 +15,7 @@ public sealed class TournamentHubService : IAsyncDisposable
     public event Func<string, Task>? OnScheduleUpdated;
     public event Func<MatchDataReceivedDto, Task>? OnMatchDataReceived;
     public event Func<MatchStatisticsUpdatedDto, Task>? OnMatchStatisticsUpdated;
+    public event Func<bool, Task>? OnConnectionChanged;
     public event Func<Task>? OnReconnected;
 
     public bool IsConnected => _connection?.State == HubConnectionState.Connected;
@@ -71,10 +72,22 @@ public sealed class TournamentHubService : IAsyncDisposable
 
         _connection.Reconnected += async _ =>
         {
+            if (OnConnectionChanged is not null) await OnConnectionChanged.Invoke(true);
             if (OnReconnected is not null) await OnReconnected.Invoke();
         };
 
+        _connection.Reconnecting += async _ =>
+        {
+            if (OnConnectionChanged is not null) await OnConnectionChanged.Invoke(false);
+        };
+
+        _connection.Closed += async _ =>
+        {
+            if (OnConnectionChanged is not null) await OnConnectionChanged.Invoke(false);
+        };
+
         await _connection.StartAsync();
+        if (OnConnectionChanged is not null) await OnConnectionChanged.Invoke(true);
     }
 
     public sealed record MatchDataReceivedDto(

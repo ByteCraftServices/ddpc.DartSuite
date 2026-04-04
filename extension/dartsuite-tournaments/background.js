@@ -391,6 +391,13 @@ function extractPlayerNames(rawPlayers) {
     if (!Array.isArray(rawPlayers)) return [];
 
     return rawPlayers
+        .map((player, arrayIndex) => {
+            if (!player || typeof player !== "object") return { player, sortIndex: arrayIndex };
+            const explicitIndex = Number.isInteger(player.index) ? player.index : arrayIndex;
+            return { player, sortIndex: explicitIndex };
+        })
+        .sort((left, right) => left.sortIndex - right.sortIndex)
+        .map(entry => entry.player)
         .map(player => {
             if (typeof player === "string") return player;
             if (player && typeof player === "object") return player.name || player.displayName || player.accountName || "";
@@ -404,6 +411,13 @@ function extractPlayersFromAutodartsMatch(rawMatch) {
     if (!rawMatch || !Array.isArray(rawMatch.players)) return [];
 
     return rawMatch.players
+        .map((player, arrayIndex) => {
+            if (!player || typeof player !== "object") return { player, sortIndex: arrayIndex };
+            const explicitIndex = Number.isInteger(player.index) ? player.index : arrayIndex;
+            return { player, sortIndex: explicitIndex };
+        })
+        .sort((left, right) => left.sortIndex - right.sortIndex)
+        .map(entry => entry.player)
         .map(player => {
             if (typeof player === "string") return player;
             if (!player || typeof player !== "object") return "";

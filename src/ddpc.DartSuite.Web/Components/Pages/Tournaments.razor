@@ -18,6 +18,15 @@
     }
 </div>
 
+@if (IsRealtimeFallbackActive)
+{
+    <div class="alert alert-warning py-2 mb-3">Echtzeit eingeschraenkt: @RealtimeFallbackReason. 10s-Fallback-Polling ist aktiv.</div>
+}
+else
+{
+    <div class="alert alert-success py-2 mb-3">Echtzeit aktiv: Turnier- und Board-Updates laufen ueber SignalR.</div>
+}
+
 @* ─── Create Wizard ─── *@
 @if (isCreating)
 {

@@ -12,6 +12,7 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddLocalization();
 builder.Services.AddScoped<AppStateService>();
+builder.Services.AddScoped<BoardHubService>();
 builder.Services.AddScoped<TournamentHubService>();
 builder.Services.AddHttpClient<DartSuiteApiService>(client =>
 {

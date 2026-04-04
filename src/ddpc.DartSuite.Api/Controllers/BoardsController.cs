@@ -138,6 +138,7 @@ public sealed class BoardsController(
     {
         var board = await boardService.UpdateConnectionStateAsync(id, state, cancellationToken);
         if (board is null) return NotFound();
+        await hubContext.Clients.All.SendAsync("BoardConnectionChanged", board, cancellationToken);
         await hubContext.Clients.All.SendAsync("BoardStatusChanged", board, cancellationToken);
         return Ok(board);
     }
@@ -147,6 +148,7 @@ public sealed class BoardsController(
     {
         var board = await boardService.UpdateExtensionStatusAsync(id, status, cancellationToken);
         if (board is null) return NotFound();
+        await hubContext.Clients.All.SendAsync("BoardExtensionStatusChanged", board, cancellationToken);
         await hubContext.Clients.All.SendAsync("BoardStatusChanged", board, cancellationToken);
         return Ok(board);
     }
@@ -343,7 +345,6 @@ public sealed class BoardsController(
             DerivedStatus: derivedStatus.ToString(),
             TournamentId: tournamentId,
             ExternalMatchId: request.ExternalMatchId,
-            Player1: request.Player1,
             Player1: resolvedPlayer1,
             Player2: resolvedPlayer2,
             MatchStatus: request.MatchStatus,
@@ -510,17 +511,7 @@ public sealed class BoardsController(
 
     private static string[] ExtractPlayerNames(AutodartsMatchDetail match)
     {
-        if (match.RawJson.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
-            return [];
-
-        if (!match.RawJson.TryGetProperty("players", out var playersElement) || playersElement.ValueKind != JsonValueKind.Array)
-            return [];
-
-        return playersElement.EnumerateArray()
-            .Select(ExtractPlayerName)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Select(name => name!.Trim())
-            .ToArray();
+        return AutodartsMatchScoreMapper.GetOrderedPlayerNames(match);
     }
 
     private static string? ExtractPlayerName(JsonElement player)

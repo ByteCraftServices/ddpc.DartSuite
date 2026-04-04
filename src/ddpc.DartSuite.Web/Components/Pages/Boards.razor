@@ -1,12 +1,22 @@
 @page "/boards"
 @using ddpc.DartSuite.Application.Contracts.Tournaments
+@using ddpc.DartSuite.Web.Services
 @inject DartSuiteApiService Api
 @inject AppStateService AppState
+@inject BoardHubService BoardHubService
 @implements IDisposable
 
 <PageTitle>Boards</PageTitle>
 
 <h1>Boards</h1>
+@if (isRealtimeConnected)
+{
+    <div class="alert alert-success py-2">Echtzeit aktiv: Board-Updates werden direkt ueber SignalR empfangen.</div>
+}
+else
+{
+    <div class="alert alert-warning py-2">Echtzeit getrennt: Daten werden bei Aktionen/Navigation aktualisiert.</div>
+}
 
 <div class="card mt-3 shadow-sm">
     <div class="card-body">
@@ -107,11 +117,59 @@
     private string newBoardExternalId = string.Empty;
     private string newBoardName = string.Empty;
     private string? boardError;
+    private bool isRealtimeConnected;
 
     protected override async Task OnInitializedAsync()
     {
         AppState.OnChange += OnAppStateChanged;
         boards = (await Api.GetBoardsAsync()).ToList();
+
+        try
+        {
+            BoardHubService.OnConnectionChanged += OnBoardHubConnectionChanged;
+            BoardHubService.OnBoardAdded += OnBoardChanged;
+            BoardHubService.OnBoardStatusChanged += OnBoardChanged;
+            BoardHubService.OnBoardConnectionChanged += OnBoardChanged;
+            BoardHubService.OnBoardExtensionStatusChanged += OnBoardChanged;
+            BoardHubService.OnBoardCurrentMatchChanged += OnBoardChanged;
+            BoardHubService.OnBoardManagedModeChanged += OnBoardChanged;
+            BoardHubService.OnBoardRemoved += OnBoardRemoved;
+
+            await BoardHubService.StartAsync();
+        }
+        catch
+        {
+            isRealtimeConnected = false;
+        }
+    }
+
+    private async Task OnBoardHubConnectionChanged(bool connected)
+    {
+        isRealtimeConnected = connected;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnBoardChanged(BoardDto board)
+    {
+        await InvokeAsync(() =>
+        {
+            var index = boards.FindIndex(b => b.Id == board.Id);
+            if (index >= 0)
+                boards[index] = board;
+            else
+                boards.Add(board);
+
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnBoardRemoved(Guid boardId)
+    {
+        await InvokeAsync(() =>
+        {
+            boards.RemoveAll(b => b.Id == boardId);
+            StateHasChanged();
+        });
     }
 
     private async void OnAppStateChanged()
@@ -173,5 +231,13 @@
     public void Dispose()
     {
         AppState.OnChange -= OnAppStateChanged;
+        BoardHubService.OnConnectionChanged -= OnBoardHubConnectionChanged;
+        BoardHubService.OnBoardAdded -= OnBoardChanged;
+        BoardHubService.OnBoardStatusChanged -= OnBoardChanged;
+        BoardHubService.OnBoardConnectionChanged -= OnBoardChanged;
+        BoardHubService.OnBoardExtensionStatusChanged -= OnBoardChanged;
+        BoardHubService.OnBoardCurrentMatchChanged -= OnBoardChanged;
+        BoardHubService.OnBoardManagedModeChanged -= OnBoardChanged;
+        BoardHubService.OnBoardRemoved -= OnBoardRemoved;
     }
 }

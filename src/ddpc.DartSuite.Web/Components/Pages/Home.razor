@@ -2,13 +2,24 @@
 @using ddpc.DartSuite.Application.Contracts.Boards
 @using ddpc.DartSuite.Application.Contracts.Matches
 @using ddpc.DartSuite.Application.Contracts.Tournaments
+@using ddpc.DartSuite.Web.Services
 @inject DartSuiteApiService Api
 @inject AppStateService AppState
+@inject BoardHubService BoardHubService
 @implements IDisposable
 
 <PageTitle>DartSuite Dashboard</PageTitle>
 
 <h1 class="mb-3">Dashboard</h1>
+
+@if (isRealtimeConnected)
+{
+    <div class="alert alert-success py-2 mb-3">Echtzeit aktiv: Board- und Match-Updates laufen ueber SignalR.</div>
+}
+else
+{
+    <div class="alert alert-warning py-2 mb-3">Echtzeit getrennt: 10s-Fallback-Polling ist aktiv.</div>
+}
 
 @* ─── Tournament selector ─── *@
 <div class="d-flex align-items-center gap-3 mb-4">
@@ -166,6 +177,7 @@ else
     private bool showFinished;
     private string selectedTournamentId = "";
     private Timer? _autoRefreshTimer;
+    private bool isRealtimeConnected;
 
     private IReadOnlyList<TournamentDto> filteredTournaments => showFinished
     ? tournaments
@@ -200,15 +212,100 @@ else
         if (selectedTournament is not null)
             await LoadTournamentDataAsync();
 
-        _autoRefreshTimer = new Timer(OnAutoRefresh, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+        await ConnectBoardHubAsync();
+        UpdateAutoRefreshFallbackState();
+    }
+
+    private async Task ConnectBoardHubAsync()
+    {
+        try
+        {
+            BoardHubService.OnConnectionChanged += OnBoardHubConnectionChanged;
+            BoardHubService.OnBoardAdded += OnBoardChanged;
+            BoardHubService.OnBoardStatusChanged += OnBoardChanged;
+            BoardHubService.OnBoardConnectionChanged += OnBoardChanged;
+            BoardHubService.OnBoardExtensionStatusChanged += OnBoardChanged;
+            BoardHubService.OnBoardCurrentMatchChanged += OnBoardChanged;
+            BoardHubService.OnBoardManagedModeChanged += OnBoardChanged;
+            BoardHubService.OnBoardRemoved += OnBoardRemoved;
+            BoardHubService.OnMatchUpdated += OnMatchUpdated;
+
+            await BoardHubService.StartAsync();
+        }
+        catch
+        {
+            isRealtimeConnected = false;
+        }
+    }
+
+    private async Task OnBoardHubConnectionChanged(bool connected)
+    {
+        isRealtimeConnected = connected;
+        UpdateAutoRefreshFallbackState();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnBoardChanged(BoardDto board)
+    {
+        await InvokeAsync(() =>
+        {
+            var index = boards.FindIndex(b => b.Id == board.Id);
+            if (index >= 0)
+                boards[index] = board;
+            else
+                boards.Add(board);
+
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnBoardRemoved(Guid boardId)
+    {
+        await InvokeAsync(() =>
+        {
+            boards.RemoveAll(b => b.Id == boardId);
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnMatchUpdated(MatchDto match)
+    {
+        if (selectedTournament is null || match.TournamentId != selectedTournament.Id)
+            return;
+
+        await InvokeAsync(() =>
+        {
+            var index = matchesForTournament.FindIndex(m => m.Id == match.Id);
+            if (index >= 0)
+                matchesForTournament[index] = match;
+            else
+                matchesForTournament.Add(match);
+
+            StateHasChanged();
+        });
+    }
+
+    private void UpdateAutoRefreshFallbackState()
+    {
+        if (isRealtimeConnected)
+        {
+            _autoRefreshTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            return;
+        }
+
+        _autoRefreshTimer ??= new Timer(OnAutoRefresh, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+        _autoRefreshTimer.Change(TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
     }
 
     private async void OnAutoRefresh(object? _)
     {
-        if (selectedTournament is null) return;
+        if (isRealtimeConnected) return;
+
         try
         {
-            matchesForTournament = (await Api.GetMatchesAsync(selectedTournament.Id)).ToList();
+            boards = (await Api.GetBoardsAsync()).ToList();
+            if (selectedTournament is not null)
+                matchesForTournament = (await Api.GetMatchesAsync(selectedTournament.Id)).ToList();
             await InvokeAsync(StateHasChanged);
         }
         catch { /* ignore refresh errors */ }
@@ -332,5 +429,14 @@ else
     {
         _autoRefreshTimer?.Dispose();
         AppState.OnChange -= OnAppStateChanged;
+        BoardHubService.OnConnectionChanged -= OnBoardHubConnectionChanged;
+        BoardHubService.OnBoardAdded -= OnBoardChanged;
+        BoardHubService.OnBoardStatusChanged -= OnBoardChanged;
+        BoardHubService.OnBoardConnectionChanged -= OnBoardChanged;
+        BoardHubService.OnBoardExtensionStatusChanged -= OnBoardChanged;
+        BoardHubService.OnBoardCurrentMatchChanged -= OnBoardChanged;
+        BoardHubService.OnBoardManagedModeChanged -= OnBoardChanged;
+        BoardHubService.OnBoardRemoved -= OnBoardRemoved;
+        BoardHubService.OnMatchUpdated -= OnMatchUpdated;
     }
 }

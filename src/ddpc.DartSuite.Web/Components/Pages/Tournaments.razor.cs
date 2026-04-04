@@ -17,6 +17,7 @@ public partial class Tournaments : IAsyncDisposable
     [Inject] private NavigationManager Navigation { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private AppStateService AppState { get; set; } = default!;
+    [Inject] private BoardHubService BoardHubService { get; set; } = default!;
     [Inject] private TournamentHubService HubService { get; set; } = default!;
     [Inject] private IWebHostEnvironment HostEnvironment { get; set; } = default!;
 
@@ -30,6 +31,8 @@ public partial class Tournaments : IAsyncDisposable
     public string? QueryTab { get; set; }
 
     private Timer? _autoRefreshTimer;
+    private bool isTournamentHubConnected;
+    private bool isBoardHubConnected;
 
     // ─── Data State ───
     private List<TournamentDto> tournaments = [];
@@ -244,6 +247,22 @@ public partial class Tournaments : IAsyncDisposable
          || participants.Any(p => p.IsManager && string.Equals(p.AccountName, autodartsDisplayName, StringComparison.OrdinalIgnoreCase))
          || participants.Any(p => p.IsManager && string.Equals(p.DisplayName, autodartsDisplayName, StringComparison.OrdinalIgnoreCase)));
 
+    private bool IsRealtimeFallbackActive => !isTournamentHubConnected || !isBoardHubConnected;
+
+    private string RealtimeFallbackReason
+    {
+        get
+        {
+            if (!isTournamentHubConnected && !isBoardHubConnected)
+                return "Turnier- und Board-Hub sind getrennt";
+            if (!isTournamentHubConnected)
+                return "Turnier-Hub ist getrennt";
+            if (!isBoardHubConnected)
+                return "Board-Hub ist getrennt";
+            return "Fallback aktiv";
+        }
+    }
+
     private bool CanEditTournamentSettings => selectedTournament is not null && !selectedTournament.IsLocked && IsCurrentUserManager;
 
     /// <summary>Managers can edit basic settings while tournament is unlocked.</summary>
@@ -437,10 +456,10 @@ public partial class Tournaments : IAsyncDisposable
             }
         }
 
-        _autoRefreshTimer = new Timer(OnAutoRefresh, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
-
-        // Connect to SignalR hub
+        // Connect to SignalR hubs
         await ConnectToHubAsync();
+        await ConnectToBoardHubAsync();
+        UpdateAutoRefreshTimerMode();
     }
 
     private async Task TryOpenBoardDetailFromQueryAsync()
@@ -488,6 +507,7 @@ public partial class Tournaments : IAsyncDisposable
     {
         try
         {
+            HubService.OnConnectionChanged += OnTournamentHubConnectionChanged;
             HubService.OnMatchUpdated += OnHubMatchUpdated;
             HubService.OnBoardsUpdated += OnHubBoardsUpdated;
             HubService.OnParticipantsUpdated += OnHubParticipantsUpdated;
@@ -503,6 +523,78 @@ public partial class Tournaments : IAsyncDisposable
                 await HubService.JoinTournamentAsync(selectedTournament.Id.ToString());
         }
         catch { /* Hub connection is optional — timer fallback handles it */ }
+    }
+
+    private async Task ConnectToBoardHubAsync()
+    {
+        try
+        {
+            BoardHubService.OnConnectionChanged += OnBoardHubConnectionChanged;
+            BoardHubService.OnBoardAdded += OnBoardChanged;
+            BoardHubService.OnBoardStatusChanged += OnBoardChanged;
+            BoardHubService.OnBoardConnectionChanged += OnBoardChanged;
+            BoardHubService.OnBoardExtensionStatusChanged += OnBoardChanged;
+            BoardHubService.OnBoardCurrentMatchChanged += OnBoardChanged;
+            BoardHubService.OnBoardManagedModeChanged += OnBoardChanged;
+            BoardHubService.OnBoardRemoved += OnBoardRemoved;
+
+            await BoardHubService.StartAsync();
+        }
+        catch { /* Hub connection is optional — timer fallback handles it */ }
+    }
+
+    private async Task OnTournamentHubConnectionChanged(bool connected)
+    {
+        isTournamentHubConnected = connected;
+        UpdateAutoRefreshTimerMode();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnBoardHubConnectionChanged(bool connected)
+    {
+        isBoardHubConnected = connected;
+        UpdateAutoRefreshTimerMode();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void UpdateAutoRefreshTimerMode()
+    {
+        if (IsRealtimeFallbackActive)
+        {
+            _autoRefreshTimer ??= new Timer(OnAutoRefresh, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+            _autoRefreshTimer.Change(TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+            return;
+        }
+
+        _autoRefreshTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+    }
+
+    private async Task OnBoardChanged(BoardDto board)
+    {
+        await InvokeAsync(() =>
+        {
+            var index = boards.FindIndex(b => b.Id == board.Id);
+            if (index >= 0)
+                boards[index] = board;
+            else
+                boards.Add(board);
+
+            if (detailBoard?.Id == board.Id)
+                detailBoard = board;
+
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnBoardRemoved(Guid boardId)
+    {
+        await InvokeAsync(() =>
+        {
+            boards.RemoveAll(b => b.Id == boardId);
+            if (detailBoard?.Id == boardId)
+                detailBoard = null;
+            StateHasChanged();
+        });
     }
 
     private async Task OnHubMatchUpdated(string tournamentId)
@@ -653,6 +745,9 @@ public partial class Tournaments : IAsyncDisposable
 
     private async void OnAutoRefresh(object? state)
     {
+        if (!IsRealtimeFallbackActive)
+            return;
+
         try
         {
             if (selectedTournament is null) return;
@@ -717,6 +812,7 @@ public partial class Tournaments : IAsyncDisposable
     {
         _autoRefreshTimer?.Dispose();
 
+        HubService.OnConnectionChanged -= OnTournamentHubConnectionChanged;
         HubService.OnMatchUpdated -= OnHubMatchUpdated;
         HubService.OnBoardsUpdated -= OnHubBoardsUpdated;
         HubService.OnParticipantsUpdated -= OnHubParticipantsUpdated;
@@ -725,6 +821,15 @@ public partial class Tournaments : IAsyncDisposable
         HubService.OnMatchDataReceived -= OnHubMatchDataReceived;
         HubService.OnMatchStatisticsUpdated -= OnHubMatchStatisticsUpdated;
         HubService.OnReconnected -= OnHubReconnected;
+
+        BoardHubService.OnConnectionChanged -= OnBoardHubConnectionChanged;
+        BoardHubService.OnBoardAdded -= OnBoardChanged;
+        BoardHubService.OnBoardStatusChanged -= OnBoardChanged;
+        BoardHubService.OnBoardConnectionChanged -= OnBoardChanged;
+        BoardHubService.OnBoardExtensionStatusChanged -= OnBoardChanged;
+        BoardHubService.OnBoardCurrentMatchChanged -= OnBoardChanged;
+        BoardHubService.OnBoardManagedModeChanged -= OnBoardChanged;
+        BoardHubService.OnBoardRemoved -= OnBoardRemoved;
 
         if (selectedTournament is not null)
         {
