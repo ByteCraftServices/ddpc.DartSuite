@@ -114,6 +114,8 @@ public partial class Tournaments : IAsyncDisposable
     private int editHomeSets;
     private int editAwaySets;
     private string? resultError;
+    private bool showWalkoverConfirm;
+    private string walkoverWinnerId = string.Empty;
     private bool isSyncing;
     private bool detailMatchOpenedFromSchedule;
 
@@ -1414,6 +1416,8 @@ public partial class Tournaments : IAsyncDisposable
     {
         detailMatch = match;
         detailMatchOpenedFromSchedule = openedFromSchedule;
+        showWalkoverConfirm = false;
+        walkoverWinnerId = string.Empty;
         editHomeLegs = match.HomeLegs;
         editAwayLegs = match.AwayLegs;
         editHomeSets = match.HomeSets;
@@ -1429,6 +1433,96 @@ public partial class Tournaments : IAsyncDisposable
     {
         detailMatch = null;
         detailMatchOpenedFromSchedule = false;
+        showWalkoverConfirm = false;
+        walkoverWinnerId = string.Empty;
+    }
+
+    private bool CanSetWalkover(MatchDto match)
+    {
+        return match.StartedUtc is null
+            && match.FinishedUtc is null
+            && !string.Equals(match.Status, "WalkOver", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(match.Status, "Beendet", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void OpenWalkoverDialog(MatchDto match)
+    {
+        if (!CanSetWalkover(match))
+            return;
+
+        showWalkoverConfirm = true;
+        walkoverWinnerId = GetDefaultWalkoverWinnerId(match);
+        resultError = null;
+    }
+
+    private void CancelWalkoverDialog()
+    {
+        showWalkoverConfirm = false;
+        walkoverWinnerId = string.Empty;
+    }
+
+    private static string GetDefaultWalkoverWinnerId(MatchDto match)
+    {
+        if (match.HomeParticipantId == Guid.Empty && match.AwayParticipantId != Guid.Empty)
+            return match.AwayParticipantId.ToString();
+
+        if (match.AwayParticipantId == Guid.Empty && match.HomeParticipantId != Guid.Empty)
+            return match.HomeParticipantId.ToString();
+
+        return string.Empty;
+    }
+
+    private async Task ApplyWalkoverAsync()
+    {
+        if (detailMatch is null || selectedTournament is null)
+            return;
+
+        try
+        {
+            isWorking = true;
+            resultError = null;
+
+            var winnerId = Guid.TryParse(walkoverWinnerId, out var parsedWinner)
+                ? parsedWinner
+                : (Guid?)null;
+
+            if (!winnerId.HasValue)
+                throw new InvalidOperationException("Bitte waehlen Sie einen Gewinner fuer den Walkover aus.");
+
+            var updated = await Api.UpdateMatchAsync(new UpdateMatchRequest(
+                detailMatch.Id,
+                detailMatch.BoardId,
+                detailMatch.HomeLegs,
+                detailMatch.AwayLegs,
+                detailMatch.HomeSets,
+                detailMatch.AwaySets,
+                "WalkOver",
+                detailMatch.IsStartTimeLocked,
+                detailMatch.IsBoardLocked,
+                winnerId));
+
+            if (updated is not null)
+            {
+                var index = matches.FindIndex(m => m.Id == updated.Id);
+                if (index >= 0)
+                    matches[index] = updated;
+
+                detailMatch = updated;
+            }
+
+            if (selectedTournament.Mode == "GroupAndKnockout")
+                groupStandings = (await Api.GetGroupStandingsAsync(selectedTournament.Id)).ToList();
+
+            showWalkoverConfirm = false;
+        }
+        catch (Exception ex)
+        {
+            resultError = ex.Message;
+        }
+        finally
+        {
+            isWorking = false;
+        }
     }
 
     private async Task SaveResultAsync()

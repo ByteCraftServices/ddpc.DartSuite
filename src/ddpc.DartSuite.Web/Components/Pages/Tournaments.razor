@@ -311,6 +311,43 @@ else
                                                 </div>
                                             }
 
+                                            @if (CanSetWalkover(detailMatch))
+                                            {
+                                                <div class="d-flex align-items-center gap-2 mt-2 mb-2">
+                                                    <button class="btn btn-outline-dark btn-sm" @onclick="() => OpenWalkoverDialog(detailMatch)" disabled="@isWorking">
+                                                        ⚑ Walkover setzen
+                                                    </button>
+                                                    <span class="small text-muted">Nur zulaessig fuer noch nicht gestartete Matches.</span>
+                                                </div>
+                                            }
+
+                                            @if (showWalkoverConfirm)
+                                            {
+                                                <div class="alert alert-warning py-2">
+                                                    <div class="fw-semibold mb-2">Walkover bestaetigen</div>
+                                                    <div class="small mb-2">Waehlen Sie den Teilnehmer, der als Gewinner fortgeschrieben werden soll.</div>
+                                                    <select class="form-select form-select-sm mb-2" @bind="walkoverWinnerId" disabled="@isWorking">
+                                                        <option value="">-- Gewinner waehlen --</option>
+                                                        @if (detailMatch.HomeParticipantId != Guid.Empty)
+                                                        {
+                                                            <option value="@detailMatch.HomeParticipantId">@(homeP?.DisplayName ?? "Heim")</option>
+                                                        }
+                                                        @if (detailMatch.AwayParticipantId != Guid.Empty)
+                                                        {
+                                                            <option value="@detailMatch.AwayParticipantId">@(awayP?.DisplayName ?? "Gast")</option>
+                                                        }
+                                                    </select>
+                                                    <div class="d-flex gap-2">
+                                                        <button class="btn btn-dark btn-sm" @onclick="ApplyWalkoverAsync" disabled="@isWorking">
+                                                            Walkover uebernehmen
+                                                        </button>
+                                                        <button class="btn btn-outline-secondary btn-sm" @onclick="CancelWalkoverDialog" disabled="@isWorking">
+                                                            Abbrechen
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            }
+
                                             <hr />
                                             @if (showManualResultEditor)
                                             {

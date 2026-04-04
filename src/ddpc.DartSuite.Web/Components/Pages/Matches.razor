@@ -277,7 +277,34 @@ else
                         <div class="d-flex flex-wrap gap-2 justify-content-center mt-3">
                             <button class="btn btn-primary btn-sm" @onclick="StartEditing">Bearbeiten</button>
                             <button class="btn btn-outline-primary btn-sm" @onclick="GoToTournamentMatch">Im Turnier öffnen →</button>
+                            @if (CanSetWalkover(detailMatch))
+                            {
+                                <button class="btn btn-outline-dark btn-sm" @onclick="OpenWalkoverDialog" disabled="@isSaving">Walkover setzen</button>
+                            }
                         </div>
+
+                        @if (showWalkoverConfirm)
+                        {
+                            <div class="alert alert-warning py-2 mt-3">
+                                <div class="fw-semibold mb-2">Walkover bestaetigen</div>
+                                <div class="small mb-2">Waehlen Sie den Teilnehmer, der als Gewinner fortgeschrieben wird.</div>
+                                <select class="form-select form-select-sm mb-2" @bind="walkoverWinnerId" disabled="@isSaving">
+                                    <option value="">-- Gewinner waehlen --</option>
+                                    @if (detailMatch.HomeParticipantId != Guid.Empty)
+                                    {
+                                        <option value="@detailMatch.HomeParticipantId">@(homeP?.DisplayName ?? "Home")</option>
+                                    }
+                                    @if (detailMatch.AwayParticipantId != Guid.Empty)
+                                    {
+                                        <option value="@detailMatch.AwayParticipantId">@(awayP?.DisplayName ?? "Away")</option>
+                                    }
+                                </select>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-dark btn-sm" @onclick="ApplyWalkoverAsync" disabled="@isSaving">Walkover uebernehmen</button>
+                                    <button class="btn btn-outline-secondary btn-sm" @onclick="CancelWalkoverDialog" disabled="@isSaving">Abbrechen</button>
+                                </div>
+                            </div>
+                        }
                     }
                     else
                     {
@@ -393,6 +420,8 @@ else
     private bool isEditing;
     private bool isSaving;
     private string? editError;
+    private bool showWalkoverConfirm;
+    private string walkoverWinnerId = string.Empty;
     private string editStatus = "";
     private string editBoardId = "";
     private int editHomeLegs;
@@ -616,6 +645,8 @@ else
     {
         detailMatch = match;
         isEditing = false;
+        showWalkoverConfirm = false;
+        walkoverWinnerId = string.Empty;
         editError = null;
     }
 
@@ -623,11 +654,98 @@ else
     {
         detailMatch = null;
         isEditing = false;
+        showWalkoverConfirm = false;
+        walkoverWinnerId = string.Empty;
+    }
+
+    private static bool CanSetWalkover(MatchDto match)
+    {
+        return match.StartedUtc is null
+            && match.FinishedUtc is null
+            && !string.Equals(match.Status, "WalkOver", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(match.Status, "Beendet", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void OpenWalkoverDialog()
+    {
+        if (detailMatch is null || !CanSetWalkover(detailMatch))
+            return;
+
+        showWalkoverConfirm = true;
+        walkoverWinnerId = GetDefaultWalkoverWinnerId(detailMatch);
+        editError = null;
+    }
+
+    private void CancelWalkoverDialog()
+    {
+        showWalkoverConfirm = false;
+        walkoverWinnerId = string.Empty;
+    }
+
+    private static string GetDefaultWalkoverWinnerId(MatchDto match)
+    {
+        if (match.HomeParticipantId == Guid.Empty && match.AwayParticipantId != Guid.Empty)
+            return match.AwayParticipantId.ToString();
+
+        if (match.AwayParticipantId == Guid.Empty && match.HomeParticipantId != Guid.Empty)
+            return match.HomeParticipantId.ToString();
+
+        return string.Empty;
+    }
+
+    private async Task ApplyWalkoverAsync()
+    {
+        if (detailMatch is null)
+            return;
+
+        isSaving = true;
+        editError = null;
+        try
+        {
+            var winnerId = Guid.TryParse(walkoverWinnerId, out var parsedWinner)
+                ? parsedWinner
+                : (Guid?)null;
+
+            if (!winnerId.HasValue)
+                throw new InvalidOperationException("Bitte waehlen Sie einen Gewinner fuer den Walkover aus.");
+
+            var request = new UpdateMatchRequest(
+                detailMatch.Id,
+                detailMatch.BoardId,
+                detailMatch.HomeLegs,
+                detailMatch.AwayLegs,
+                detailMatch.HomeSets,
+                detailMatch.AwaySets,
+                "WalkOver",
+                detailMatch.IsStartTimeLocked,
+                detailMatch.IsBoardLocked,
+                winnerId);
+
+            var updated = await Api.UpdateMatchAsync(request);
+            if (updated is not null)
+            {
+                detailMatch = updated;
+                var idx = matches.FindIndex(m => m.Id == updated.Id);
+                if (idx >= 0)
+                    matches[idx] = updated;
+            }
+
+            showWalkoverConfirm = false;
+        }
+        catch (Exception ex)
+        {
+            editError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
     }
 
     private void StartEditing()
     {
         if (detailMatch is null) return;
+        showWalkoverConfirm = false;
         editStatus = detailMatch.Status;
         editBoardId = detailMatch.BoardId?.ToString() ?? "";
         editHomeLegs = detailMatch.HomeLegs;
