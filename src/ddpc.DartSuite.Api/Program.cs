@@ -22,6 +22,7 @@ builder.Services.AddDartSuiteApiClient(builder.Configuration);
 builder.Services.AddSingleton<AutodartsSessionStore>();
 builder.Services.AddSingleton<AutodartsMatchListenerService>();
 builder.Services.AddSingleton<BoardExtensionSyncRequestStore>();
+builder.Services.AddScoped<TournamentAuthorizationService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<AutodartsMatchListenerService>());
 
 var app = builder.Build();

@@ -19,6 +19,7 @@ public sealed class MatchesController(
     IAutodartsClient autodartsClient,
     AutodartsSessionStore sessionStore,
     AutodartsMatchListenerService listenerService,
+    TournamentAuthorizationService tournamentAuthorization,
     DartSuiteDbContext dbContext,
     IHubContext<TournamentHub> tournamentHub,
     ILogger<MatchesController> logger) : ControllerBase
@@ -32,6 +33,9 @@ public sealed class MatchesController(
     [HttpPost("{tournamentId:guid}/generate")]
     public async Task<ActionResult<IReadOnlyList<MatchDto>>> Generate(Guid tournamentId, CancellationToken cancellationToken)
     {
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         var result = await matchService.GenerateKnockoutPlanAsync(tournamentId, cancellationToken);
         await NotifyTournamentAsync(tournamentId, "MatchUpdated");
         return Ok(result);
@@ -40,6 +44,9 @@ public sealed class MatchesController(
     [HttpPost("{tournamentId:guid}/generate-groups")]
     public async Task<ActionResult<IReadOnlyList<MatchDto>>> GenerateGroups(Guid tournamentId, CancellationToken cancellationToken)
     {
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         var result = await matchService.GenerateGroupPhaseAsync(tournamentId, cancellationToken);
         await NotifyTournamentAsync(tournamentId, "MatchUpdated");
         return Ok(result);
@@ -54,6 +61,9 @@ public sealed class MatchesController(
     [HttpPost("{tournamentId:guid}/generate-schedule")]
     public async Task<ActionResult<IReadOnlyList<MatchDto>>> GenerateSchedule(Guid tournamentId, CancellationToken cancellationToken)
     {
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         var result = await matchService.GenerateScheduleAsync(tournamentId, cancellationToken);
         await NotifyTournamentAsync(tournamentId, "ScheduleUpdated");
         return Ok(result);
@@ -62,6 +72,9 @@ public sealed class MatchesController(
     [HttpPatch("{matchId:guid}/swap")]
     public async Task<IActionResult> SwapParticipants(Guid matchId, [FromQuery] Guid participantId, [FromQuery] Guid targetParticipantId, CancellationToken cancellationToken)
     {
+        var access = await RequireManagerForMatchAsync(matchId, cancellationToken);
+        if (access.Denied is not null) return access.Denied;
+
         await matchService.SwapParticipantsAsync(matchId, participantId, targetParticipantId, cancellationToken);
         return NoContent();
     }
@@ -69,6 +82,9 @@ public sealed class MatchesController(
     [HttpPatch("{matchId:guid}/board")]
     public async Task<ActionResult<MatchDto>> AssignBoard(Guid matchId, [FromQuery] Guid boardId, CancellationToken cancellationToken)
     {
+        var access = await RequireManagerForMatchAsync(matchId, cancellationToken);
+        if (access.Denied is not null) return access.Denied;
+
         var match = await matchService.AssignBoardAsync(matchId, boardId, cancellationToken);
         return match is null ? NotFound() : Ok(match);
     }
@@ -82,6 +98,9 @@ public sealed class MatchesController(
         [FromQuery] bool lockBoard,
         CancellationToken cancellationToken)
     {
+        var access = await RequireManagerForMatchAsync(matchId, cancellationToken);
+        if (access.Denied is not null) return access.Denied;
+
         var match = await matchService.UpdateMatchScheduleAsync(matchId, startTime, lockTime, boardId, lockBoard, cancellationToken);
         return match is null ? NotFound() : Ok(match);
     }
@@ -89,6 +108,9 @@ public sealed class MatchesController(
     [HttpPatch("{matchId:guid}/lock-time")]
     public async Task<ActionResult<MatchDto>> ToggleTimeLock(Guid matchId, [FromQuery] bool locked, CancellationToken cancellationToken)
     {
+        var access = await RequireManagerForMatchAsync(matchId, cancellationToken);
+        if (access.Denied is not null) return access.Denied;
+
         var match = await matchService.ToggleMatchTimeLockAsync(matchId, locked, cancellationToken);
         return match is null ? NotFound() : Ok(match);
     }
@@ -96,6 +118,9 @@ public sealed class MatchesController(
     [HttpPatch("{matchId:guid}/lock-board")]
     public async Task<ActionResult<MatchDto>> ToggleBoardLock(Guid matchId, [FromQuery] bool locked, CancellationToken cancellationToken)
     {
+        var access = await RequireManagerForMatchAsync(matchId, cancellationToken);
+        if (access.Denied is not null) return access.Denied;
+
         var match = await matchService.ToggleMatchBoardLockAsync(matchId, locked, cancellationToken);
         return match is null ? NotFound() : Ok(match);
     }
@@ -103,6 +128,9 @@ public sealed class MatchesController(
     [HttpPost("result")]
     public async Task<ActionResult<MatchDto>> ReportResult([FromBody] ReportMatchResultRequest request, CancellationToken cancellationToken)
     {
+        var access = await RequireManagerForMatchAsync(request.MatchId, cancellationToken);
+        if (access.Denied is not null) return access.Denied;
+
         var match = await matchService.ReportResultAsync(request, cancellationToken);
         if (match is not null)
             await NotifyTournamentAsync(match.TournamentId, "MatchUpdated");
@@ -121,6 +149,10 @@ public sealed class MatchesController(
         // Look up the DartSuite match to get the ExternalMatchId
         var existingMatch = await matchService.GetMatchAsync(matchId, cancellationToken);
         if (existingMatch is null) return NotFound();
+
+        var denied = await RequireManagerAccessAsync(existingMatch.TournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         if (string.IsNullOrEmpty(existingMatch.ExternalMatchId))
             return BadRequest(new { message = "Match has no ExternalMatchId." });
 
@@ -256,6 +288,10 @@ public sealed class MatchesController(
     {
         var match = await matchService.GetMatchAsync(matchId, cancellationToken);
         if (match is null) return NotFound();
+
+        var denied = await RequireManagerAccessAsync(match.TournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         if (string.IsNullOrEmpty(match.ExternalMatchId))
             return BadRequest(new { message = "Match has no ExternalMatchId." });
 
@@ -264,8 +300,14 @@ public sealed class MatchesController(
     }
 
     [HttpDelete("{matchId:guid}/listener")]
-    public IActionResult StopListener(Guid matchId)
+    public async Task<IActionResult> StopListener(Guid matchId, CancellationToken cancellationToken)
     {
+        var match = await matchService.GetMatchAsync(matchId, cancellationToken);
+        if (match is null) return NotFound();
+
+        var denied = await RequireManagerAccessAsync(match.TournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         listenerService.StopListener(matchId);
         return NoContent();
     }
@@ -273,6 +315,9 @@ public sealed class MatchesController(
     [HttpPost("{matchId:guid}/reset")]
     public async Task<ActionResult<MatchDto>> ResetMatch(Guid matchId, CancellationToken cancellationToken)
     {
+        var access = await RequireManagerForMatchAsync(matchId, cancellationToken);
+        if (access.Denied is not null) return access.Denied;
+
         // Stop any active listener before resetting
         listenerService.StopListener(matchId);
 
@@ -289,6 +334,10 @@ public sealed class MatchesController(
     public async Task<ActionResult<MatchDto>> UpdateMatch(Guid matchId, [FromBody] UpdateMatchRequest request, CancellationToken cancellationToken)
     {
         if (matchId != request.MatchId) return BadRequest();
+
+        var access = await RequireManagerForMatchAsync(matchId, cancellationToken);
+        if (access.Denied is not null) return access.Denied;
+
         var result = await matchService.UpdateMatchAsync(request, cancellationToken);
         return result is null ? NotFound() : Ok(result);
     }
@@ -296,6 +345,12 @@ public sealed class MatchesController(
     [HttpPost("batch-reset")]
     public async Task<ActionResult<IReadOnlyList<MatchDto>>> BatchReset([FromBody] IReadOnlyList<Guid> matchIds, CancellationToken cancellationToken)
     {
+        foreach (var id in matchIds)
+        {
+            var access = await RequireManagerForMatchAsync(id, cancellationToken);
+            if (access.Denied is not null) return access.Denied;
+        }
+
         foreach (var id in matchIds)
             listenerService.StopListener(id);
 
@@ -311,6 +366,9 @@ public sealed class MatchesController(
     [HttpPost("{tournamentId:guid}/cleanup")]
     public async Task<ActionResult<IReadOnlyList<MatchDto>>> CleanupStale(Guid tournamentId, [FromQuery] int staleMinutes = 120, CancellationToken cancellationToken = default)
     {
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         var result = await matchService.CleanupStaleMatchesAsync(tournamentId, staleMinutes, cancellationToken);
         await NotifyTournamentAsync(tournamentId, "MatchUpdated");
         await NotifyTournamentAsync(tournamentId, "BoardsUpdated");
@@ -320,6 +378,9 @@ public sealed class MatchesController(
     [HttpPost("{tournamentId:guid}/check-external")]
     public async Task<ActionResult<IReadOnlyList<MatchDto>>> CheckExternalMatches(Guid tournamentId, CancellationToken cancellationToken)
     {
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         var accessToken = await GetActiveAccessTokenAsync(cancellationToken);
         if (accessToken is null)
             return Unauthorized(new { message = "Not connected to Autodarts." });
@@ -371,6 +432,10 @@ public sealed class MatchesController(
     public async Task<ActionResult<MatchPlayerStatisticDto>> SaveStatistic(Guid matchId, [FromBody] MatchPlayerStatisticDto statistic, CancellationToken cancellationToken)
     {
         if (statistic.MatchId != matchId) return BadRequest("Match id mismatch.");
+
+        var access = await RequireManagerForMatchAsync(matchId, cancellationToken);
+        if (access.Denied is not null) return access.Denied;
+
         var result = await matchService.SaveMatchPlayerStatisticAsync(statistic, cancellationToken);
         return Ok(result);
     }
@@ -380,6 +445,10 @@ public sealed class MatchesController(
     {
         var existingMatch = await matchService.GetMatchAsync(matchId, cancellationToken);
         if (existingMatch is null) return NotFound();
+
+        var denied = await RequireManagerAccessAsync(existingMatch.TournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         if (string.IsNullOrWhiteSpace(existingMatch.ExternalMatchId))
             return BadRequest(new { message = "Match has no ExternalMatchId." });
 
@@ -433,6 +502,10 @@ public sealed class MatchesController(
     public async Task<ActionResult<MatchFollowerDto>> FollowMatch(Guid matchId, [FromQuery] string userAccountName, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(userAccountName)) return BadRequest("userAccountName is required.");
+
+        var access = await RequireSelfOrManagerForMatchAsync(matchId, userAccountName, cancellationToken);
+        if (access.Denied is not null) return access.Denied;
+
         return Ok(await matchService.FollowMatchAsync(matchId, userAccountName, cancellationToken));
     }
 
@@ -440,6 +513,10 @@ public sealed class MatchesController(
     public async Task<IActionResult> UnfollowMatch(Guid matchId, [FromQuery] string userAccountName, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(userAccountName)) return BadRequest("userAccountName is required.");
+
+        var access = await RequireSelfOrManagerForMatchAsync(matchId, userAccountName, cancellationToken);
+        if (access.Denied is not null) return access.Denied;
+
         var result = await matchService.UnfollowMatchAsync(matchId, userAccountName, cancellationToken);
         return result ? NoContent() : NotFound();
     }
@@ -449,6 +526,9 @@ public sealed class MatchesController(
     [HttpPost("{tournamentId:guid}/recalculate-schedule")]
     public async Task<ActionResult<IReadOnlyList<MatchDto>>> RecalculateSchedule(Guid tournamentId, CancellationToken cancellationToken)
     {
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         var result = await matchService.RecalculateScheduleAsync(tournamentId, cancellationToken);
         await NotifyTournamentAsync(tournamentId, "ScheduleUpdated");
         return Ok(result);
@@ -457,5 +537,37 @@ public sealed class MatchesController(
     private Task NotifyTournamentAsync(Guid tournamentId, string method)
     {
         return tournamentHub.Clients.Group($"tournament-{tournamentId}").SendAsync(method, tournamentId.ToString());
+    }
+
+    private async Task<ActionResult?> RequireManagerAccessAsync(Guid tournamentId, CancellationToken cancellationToken)
+    {
+        return ToDeniedResult(await tournamentAuthorization.EnsureManagerOrIntegrationAsync(HttpContext, tournamentId, cancellationToken));
+    }
+
+    private async Task<(ActionResult? Denied, MatchDto? Match)> RequireManagerForMatchAsync(Guid matchId, CancellationToken cancellationToken)
+    {
+        var match = await matchService.GetMatchAsync(matchId, cancellationToken);
+        if (match is null)
+            return (NotFound(), null);
+
+        var denied = await RequireManagerAccessAsync(match.TournamentId, cancellationToken);
+        return (denied, match);
+    }
+
+    private async Task<(ActionResult? Denied, MatchDto? Match)> RequireSelfOrManagerForMatchAsync(Guid matchId, string userAccountName, CancellationToken cancellationToken)
+    {
+        var match = await matchService.GetMatchAsync(matchId, cancellationToken);
+        if (match is null)
+            return (NotFound(), null);
+
+        var access = await tournamentAuthorization.EnsureSelfOrManagerOrIntegrationAsync(HttpContext, match.TournamentId, userAccountName, cancellationToken);
+        return (ToDeniedResult(access), match);
+    }
+
+    private ActionResult? ToDeniedResult(AccessCheckResult access)
+    {
+        return access.Allowed
+            ? null
+            : StatusCode(access.StatusCode, new { message = access.Message });
     }
 }

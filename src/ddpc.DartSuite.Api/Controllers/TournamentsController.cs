@@ -2,6 +2,7 @@ using ddpc.DartSuite.Application.Abstractions;
 using ddpc.DartSuite.Application.Contracts.Notifications;
 using ddpc.DartSuite.Application.Contracts.Tournaments;
 using ddpc.DartSuite.Api.Hubs;
+using ddpc.DartSuite.Api.Services;
 using ddpc.DartSuite.Infrastructure.Configuration;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
@@ -14,6 +15,7 @@ namespace ddpc.DartSuite.Api.Controllers;
 public sealed class TournamentsController(
     ITournamentManagementService tournamentService,
     IDiscordWebhookService discordWebhookService,
+    TournamentAuthorizationService tournamentAuthorization,
     IHubContext<TournamentHub> tournamentHub,
     IOptions<VapidOptions> vapidOptions) : ControllerBase
 {
@@ -46,6 +48,10 @@ public sealed class TournamentsController(
     [HttpPost]
     public async Task<ActionResult<TournamentDto>> Create([FromBody] CreateTournamentRequest request, CancellationToken cancellationToken)
     {
+        var ownAccountAccess = tournamentAuthorization.EnsureSelfOrIntegration(HttpContext, request.OrganizerAccount);
+        var denied = ToDeniedResult(ownAccountAccess);
+        if (denied is not null) return denied;
+
         var tournament = await tournamentService.CreateTournamentAsync(request, cancellationToken);
         return Ok(tournament);
     }
@@ -55,6 +61,9 @@ public sealed class TournamentsController(
     {
         if (request.Id != tournamentId)
             return BadRequest("Tournament id mismatch.");
+
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
 
         try
         {
@@ -72,6 +81,9 @@ public sealed class TournamentsController(
     [HttpPatch("{tournamentId:guid}/lock")]
     public async Task<ActionResult<TournamentDto>> SetLocked(Guid tournamentId, [FromQuery] bool locked, CancellationToken cancellationToken)
     {
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         var tournament = await tournamentService.SetLockedAsync(tournamentId, locked, cancellationToken);
         return tournament is null ? NotFound() : Ok(tournament);
     }
@@ -98,6 +110,9 @@ public sealed class TournamentsController(
         if (request.TournamentId != tournamentId)
             return BadRequest("Tournament id mismatch.");
 
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         try
         {
             var participant = await tournamentService.AddParticipantAsync(request, cancellationToken);
@@ -116,6 +131,9 @@ public sealed class TournamentsController(
         if (request.TournamentId != tournamentId || request.ParticipantId != participantId)
             return BadRequest("Id mismatch.");
 
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         try
         {
             var result = await tournamentService.UpdateParticipantAsync(request, cancellationToken);
@@ -130,6 +148,9 @@ public sealed class TournamentsController(
     [HttpDelete("{tournamentId:guid}/participants/{participantId:guid}")]
     public async Task<IActionResult> RemoveParticipant(Guid tournamentId, Guid participantId, CancellationToken cancellationToken)
     {
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         try
         {
             var removed = await tournamentService.RemoveParticipantAsync(tournamentId, participantId, cancellationToken);
@@ -144,6 +165,9 @@ public sealed class TournamentsController(
     [HttpPost("{tournamentId:guid}/participants/assign-seed-pots")]
     public async Task<ActionResult<IReadOnlyList<ParticipantDto>>> AssignSeedPots(Guid tournamentId, CancellationToken cancellationToken)
     {
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         return Ok(await tournamentService.AssignSeedPotsAsync(tournamentId, cancellationToken));
     }
 
@@ -161,12 +185,18 @@ public sealed class TournamentsController(
         if (request.TournamentId != tournamentId)
             return BadRequest("Tournament id mismatch.");
 
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         return Ok(await tournamentService.SaveRoundAsync(request, cancellationToken));
     }
 
     [HttpDelete("{tournamentId:guid}/rounds/{phase}/{roundNumber:int}")]
     public async Task<IActionResult> DeleteRound(Guid tournamentId, string phase, int roundNumber, CancellationToken cancellationToken)
     {
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         var deleted = await tournamentService.DeleteRoundAsync(tournamentId, phase, roundNumber, cancellationToken);
         return deleted ? NoContent() : NotFound();
     }
@@ -176,6 +206,9 @@ public sealed class TournamentsController(
     [HttpPatch("{tournamentId:guid}/status")]
     public async Task<ActionResult<TournamentDto>> UpdateStatus(Guid tournamentId, [FromQuery] string status, CancellationToken cancellationToken)
     {
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         try
         {
             var result = await tournamentService.UpdateStatusAsync(tournamentId, status, cancellationToken);
@@ -190,6 +223,9 @@ public sealed class TournamentsController(
     [HttpDelete("{tournamentId:guid}")]
     public async Task<IActionResult> DeleteTournament(Guid tournamentId, CancellationToken cancellationToken)
     {
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         try
         {
             var deleted = await tournamentService.DeleteTournamentAsync(tournamentId, cancellationToken);
@@ -215,12 +251,18 @@ public sealed class TournamentsController(
         if (request.TournamentId != tournamentId)
             return BadRequest("Tournament id mismatch.");
 
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         return Ok(await tournamentService.CreateTeamAsync(request, cancellationToken));
     }
 
     [HttpDelete("{tournamentId:guid}/teams/{teamId:guid}")]
     public async Task<IActionResult> DeleteTeam(Guid tournamentId, Guid teamId, CancellationToken cancellationToken)
     {
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         var deleted = await tournamentService.DeleteTeamAsync(tournamentId, teamId, cancellationToken);
         return deleted ? NoContent() : NotFound();
     }
@@ -239,6 +281,9 @@ public sealed class TournamentsController(
         if (request.TournamentId != tournamentId)
             return BadRequest("Tournament id mismatch.");
 
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         return Ok(await tournamentService.SaveScoringCriteriaAsync(request, cancellationToken));
     }
 
@@ -247,6 +292,9 @@ public sealed class TournamentsController(
     [HttpGet("{tournamentId:guid}/notifications/{userAccountName}")]
     public async Task<ActionResult<IReadOnlyList<NotificationSubscriptionDto>>> GetNotifications(Guid tournamentId, string userAccountName, CancellationToken cancellationToken)
     {
+        var denied = await RequireSelfOrManagerAccessAsync(tournamentId, userAccountName, cancellationToken);
+        if (denied is not null) return denied;
+
         return Ok(await tournamentService.GetNotificationSubscriptionsAsync(tournamentId, userAccountName, cancellationToken));
     }
 
@@ -255,6 +303,9 @@ public sealed class TournamentsController(
     {
         if (request.TournamentId != tournamentId)
             return BadRequest("Tournament id mismatch.");
+
+        var denied = await RequireSelfOrManagerAccessAsync(tournamentId, request.UserAccountName, cancellationToken);
+        if (denied is not null) return denied;
 
         return Ok(await tournamentService.SubscribeNotificationsAsync(request, cancellationToken));
     }
@@ -271,6 +322,9 @@ public sealed class TournamentsController(
     [HttpPost("{tournamentId:guid}/webhook/test")]
     public async Task<IActionResult> TestWebhook(Guid tournamentId, CancellationToken cancellationToken)
     {
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
         var tournament = await tournamentService.GetTournamentAsync(tournamentId, cancellationToken);
         if (tournament is null) return NotFound();
         if (string.IsNullOrEmpty(tournament.DiscordWebhookUrl))
@@ -285,6 +339,9 @@ public sealed class TournamentsController(
     [HttpGet("preferences/{userAccountName}/{viewContext}")]
     public async Task<ActionResult<UserViewPreferenceDto>> GetViewPreference(string userAccountName, string viewContext, CancellationToken cancellationToken)
     {
+        var denied = ToDeniedResult(tournamentAuthorization.EnsureSelfOrIntegration(HttpContext, userAccountName));
+        if (denied is not null) return denied;
+
         var pref = await tournamentService.GetUserViewPreferenceAsync(userAccountName, viewContext, cancellationToken);
         return pref is null ? NotFound() : Ok(pref);
     }
@@ -292,6 +349,9 @@ public sealed class TournamentsController(
     [HttpPut("preferences/{userAccountName}/{viewContext}")]
     public async Task<ActionResult<UserViewPreferenceDto>> SaveViewPreference(string userAccountName, string viewContext, [FromBody] string settingsJson, CancellationToken cancellationToken)
     {
+        var denied = ToDeniedResult(tournamentAuthorization.EnsureSelfOrIntegration(HttpContext, userAccountName));
+        if (denied is not null) return denied;
+
         return Ok(await tournamentService.SaveUserViewPreferenceAsync(userAccountName, viewContext, settingsJson, cancellationToken));
     }
 
@@ -307,5 +367,22 @@ public sealed class TournamentsController(
     private Task NotifyTournamentAsync(Guid tournamentId, string method)
     {
         return tournamentHub.Clients.Group($"tournament-{tournamentId}").SendAsync(method, tournamentId.ToString());
+    }
+
+    private async Task<ActionResult?> RequireManagerAccessAsync(Guid tournamentId, CancellationToken cancellationToken)
+    {
+        return ToDeniedResult(await tournamentAuthorization.EnsureManagerOrIntegrationAsync(HttpContext, tournamentId, cancellationToken));
+    }
+
+    private async Task<ActionResult?> RequireSelfOrManagerAccessAsync(Guid tournamentId, string userAccountName, CancellationToken cancellationToken)
+    {
+        return ToDeniedResult(await tournamentAuthorization.EnsureSelfOrManagerOrIntegrationAsync(HttpContext, tournamentId, userAccountName, cancellationToken));
+    }
+
+    private ActionResult? ToDeniedResult(AccessCheckResult access)
+    {
+        return access.Allowed
+            ? null
+            : StatusCode(access.StatusCode, new { message = access.Message });
     }
 }

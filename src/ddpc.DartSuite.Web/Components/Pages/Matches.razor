@@ -22,6 +22,11 @@ else
         <strong>@AppState.SelectedTournament.Name</strong>
     </div>
 
+    @if (!CanManageSelectedTournament)
+    {
+        <div class="alert alert-info py-2">Read-only: Verwaltungsaktionen sind nur fuer Spielleiter verfuegbar.</div>
+    }
+
     @* ─── Filters ─── *@
     <div class="d-flex flex-wrap gap-2 align-items-center mb-3 small filter-bar">
         <div class="form-check">
@@ -50,28 +55,31 @@ else
 
     @* ─── Actions toolbar ─── *@
     <div class="d-flex flex-wrap gap-2 mb-3">
-        <button class="btn btn-outline-secondary btn-sm" @onclick="SelectAll"
-                disabled="@(!FilteredMatches.Any())">Alle auswählen</button>
-        <button class="btn btn-outline-warning btn-sm" @onclick="SelectInactive"
-                disabled="@(!matches.Any(m => m.Status == "Inaktiv"))">Inaktive auswählen</button>
-        <button class="btn btn-outline-danger btn-sm" @onclick="DeselectAll"
-                disabled="@(!selectedMatchIds.Any())">Auswahl aufheben</button>
-        @if (selectedMatchIds.Any())
+        @if (CanManageSelectedTournament)
         {
-            <button class="btn btn-danger btn-sm" @onclick="BulkResetAsync">
-                Auswahl zurücksetzen (@selectedMatchIds.Count)
-            </button>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="SelectAll"
+                    disabled="@(!FilteredMatches.Any())">Alle auswählen</button>
+            <button class="btn btn-outline-warning btn-sm" @onclick="SelectInactive"
+                    disabled="@(!matches.Any(m => m.Status == "Inaktiv"))">Inaktive auswählen</button>
+            <button class="btn btn-outline-danger btn-sm" @onclick="DeselectAll"
+                    disabled="@(!selectedMatchIds.Any())">Auswahl aufheben</button>
+            @if (selectedMatchIds.Any())
+            {
+                <button class="btn btn-danger btn-sm" @onclick="BulkResetAsync">
+                    Auswahl zurücksetzen (@selectedMatchIds.Count)
+                </button>
+            }
+            <div class="ms-auto d-flex flex-wrap gap-2">
+                <button class="btn btn-outline-info btn-sm" @onclick="RunCleanupAsync" disabled="@isCleanupRunning">
+                    @if (isCleanupRunning) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Auto-Cleanup
+                </button>
+                <button class="btn btn-outline-info btn-sm" @onclick="CheckExternalAsync" disabled="@isCheckingExternal">
+                    @if (isCheckingExternal) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    ExternalIDs prüfen
+                </button>
+            </div>
         }
-        <div class="ms-auto d-flex flex-wrap gap-2">
-            <button class="btn btn-outline-info btn-sm" @onclick="RunCleanupAsync" disabled="@isCleanupRunning">
-                @if (isCleanupRunning) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                Auto-Cleanup
-            </button>
-            <button class="btn btn-outline-info btn-sm" @onclick="CheckExternalAsync" disabled="@isCheckingExternal">
-                @if (isCheckingExternal) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                ExternalIDs prüfen
-            </button>
-        </div>
     </div>
 
     @if (!string.IsNullOrEmpty(actionMessage))
@@ -275,15 +283,18 @@ else
                             }
                         </dl>
                         <div class="d-flex flex-wrap gap-2 justify-content-center mt-3">
-                            <button class="btn btn-primary btn-sm" @onclick="StartEditing">Bearbeiten</button>
+                            @if (CanManageSelectedTournament)
+                            {
+                                <button class="btn btn-primary btn-sm" @onclick="StartEditing">Bearbeiten</button>
+                            }
                             <button class="btn btn-outline-primary btn-sm" @onclick="GoToTournamentMatch">Im Turnier öffnen →</button>
-                            @if (CanSetWalkover(detailMatch))
+                            @if (CanManageSelectedTournament && CanSetWalkover(detailMatch))
                             {
                                 <button class="btn btn-outline-dark btn-sm" @onclick="OpenWalkoverDialog" disabled="@isSaving">Walkover setzen</button>
                             }
                         </div>
 
-                        @if (showWalkoverConfirm)
+                        @if (CanManageSelectedTournament && showWalkoverConfirm)
                         {
                             <div class="alert alert-warning py-2 mt-3">
                                 <div class="fw-semibold mb-2">Walkover bestaetigen</div>
@@ -422,6 +433,8 @@ else
     private string? editError;
     private bool showWalkoverConfirm;
     private string walkoverWinnerId = string.Empty;
+    private bool isAutodartsConnected;
+    private string? autodartsDisplayName;
     private string editStatus = "";
     private string editBoardId = "";
     private int editHomeLegs;
@@ -472,10 +485,21 @@ else
         }
     }
 
+    private bool CanManageSelectedTournament =>
+        AppState.SelectedTournament is not null
+        && isAutodartsConnected
+        && !string.IsNullOrWhiteSpace(autodartsDisplayName)
+        && (
+            string.Equals(AppState.SelectedTournament.OrganizerAccount, autodartsDisplayName, StringComparison.OrdinalIgnoreCase)
+            || participants.Any(p => p.IsManager &&
+                (string.Equals(p.AccountName, autodartsDisplayName, StringComparison.OrdinalIgnoreCase)
+                 || string.Equals(p.DisplayName, autodartsDisplayName, StringComparison.OrdinalIgnoreCase)))
+        );
+
     protected override async Task OnInitializedAsync()
     {
         AppState.OnChange += OnAppStateChanged;
-        await LoadDataAsync();
+        await Task.WhenAll(LoadDataAsync(), TryLoadAutodartsSessionAsync());
 
         if (!string.IsNullOrEmpty(QueryMatchId) && Guid.TryParse(QueryMatchId, out var qMatchId))
         {
@@ -491,9 +515,24 @@ else
     {
         await InvokeAsync(async () =>
         {
-            await LoadDataAsync();
+            await Task.WhenAll(LoadDataAsync(), TryLoadAutodartsSessionAsync());
             StateHasChanged();
         });
+    }
+
+    private async Task TryLoadAutodartsSessionAsync()
+    {
+        try
+        {
+            var status = await Api.GetAutodartsStatusAsync();
+            isAutodartsConnected = status.IsConnected;
+            autodartsDisplayName = status.Profile?.DisplayName;
+        }
+        catch
+        {
+            isAutodartsConnected = false;
+            autodartsDisplayName = null;
+        }
     }
 
     private async void OnAutoRefresh(object? _)
@@ -572,6 +611,9 @@ else
 
     private async Task BulkResetAsync()
     {
+        if (!CanManageSelectedTournament)
+            return;
+
         if (!selectedMatchIds.Any()) return;
         try
         {
@@ -593,6 +635,9 @@ else
 
     private async Task RunCleanupAsync()
     {
+        if (!CanManageSelectedTournament)
+            return;
+
         if (AppState.SelectedTournament is null) return;
         isCleanupRunning = true;
         try
@@ -617,6 +662,9 @@ else
 
     private async Task CheckExternalAsync()
     {
+        if (!CanManageSelectedTournament)
+            return;
+
         if (AppState.SelectedTournament is null) return;
         isCheckingExternal = true;
         try
@@ -668,6 +716,9 @@ else
 
     private void OpenWalkoverDialog()
     {
+        if (!CanManageSelectedTournament)
+            return;
+
         if (detailMatch is null || !CanSetWalkover(detailMatch))
             return;
 
@@ -695,6 +746,9 @@ else
 
     private async Task ApplyWalkoverAsync()
     {
+        if (!CanManageSelectedTournament)
+            return;
+
         if (detailMatch is null)
             return;
 
@@ -744,6 +798,7 @@ else
 
     private void StartEditing()
     {
+        if (!CanManageSelectedTournament) return;
         if (detailMatch is null) return;
         showWalkoverConfirm = false;
         editStatus = detailMatch.Status;
@@ -767,6 +822,9 @@ else
 
     private async Task SaveMatchAsync()
     {
+        if (!CanManageSelectedTournament)
+            return;
+
         if (detailMatch is null) return;
         isSaving = true;
         editError = null;
@@ -802,6 +860,9 @@ else
 
     private async Task ResetSingleMatchAsync()
     {
+        if (!CanManageSelectedTournament)
+            return;
+
         if (detailMatch is null) return;
         isSaving = true;
         editError = null;
