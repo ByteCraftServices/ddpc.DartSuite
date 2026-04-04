@@ -4,6 +4,8 @@ using ddpc.DartSuite.Api.Hubs;
 using ddpc.DartSuite.ApiClient;
 using ddpc.DartSuite.ApiClient.Contracts;
 using ddpc.DartSuite.Application.Abstractions;
+using ddpc.DartSuite.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.SignalR;
 
 namespace ddpc.DartSuite.Api.Services;
@@ -187,6 +189,7 @@ public sealed class AutodartsMatchListenerService : BackgroundService
                     using var scope = _serviceProvider.CreateScope();
                     var autodartsClient = scope.ServiceProvider.GetRequiredService<IAutodartsClient>();
                     var matchService = scope.ServiceProvider.GetRequiredService<IMatchManagementService>();
+                    var dbContext = scope.ServiceProvider.GetRequiredService<DartSuiteDbContext>();
 
                     AutodartsMatchDetail? adMatch;
                     try
@@ -243,22 +246,54 @@ public sealed class AutodartsMatchListenerService : BackgroundService
                     listener.LastError = null;
                     listener.LastUpdateUtc = DateTimeOffset.UtcNow;
 
-                    // Parse legs and update DB
+                    var currentMatch = await matchService.GetMatchAsync(matchId, ct);
+                    if (currentMatch is null)
+                    {
+                        listener.LastError = "Match not found in DartSuite";
+                        break;
+                    }
+
+                    var participantIds = new[] { currentMatch.HomeParticipantId, currentMatch.AwayParticipantId };
+                    var participants = await dbContext.Participants
+                        .AsNoTracking()
+                        .Where(x => participantIds.Contains(x.Id))
+                        .ToListAsync(ct);
+                    var homeParticipant = participants.FirstOrDefault(x => x.Id == currentMatch.HomeParticipantId);
+                    var awayParticipant = participants.FirstOrDefault(x => x.Id == currentMatch.AwayParticipantId);
+
                     var rawJson = adMatch.RawJson;
                     var rawJsonText = SafeGetRawJsonText(rawJson);
-                    var (homeLegs, awayLegs, homeSets, awaySets) = ParseScoresFromAutodartsMatch(adMatch);
+                    var mappedScores = AutodartsMatchScoreMapper.MapScores(
+                        adMatch,
+                        homeParticipant?.DisplayName ?? homeParticipant?.AccountName,
+                        awayParticipant?.DisplayName ?? awayParticipant?.AccountName);
+                    var homeLegs = mappedScores.HomeLegs;
+                    var awayLegs = mappedScores.AwayLegs;
+                    var homeSets = mappedScores.HomeSets;
+                    var awaySets = mappedScores.AwaySets;
                     var scoreKey = $"{homeSets}:{homeLegs}:{awaySets}:{awayLegs}:{adMatch.Finished}";
                     var isFirstPoll = listener.LastScoreKey is null;
                     var scoreChanged = listener.LastScoreKey != scoreKey;
                     listener.LastScoreKey = scoreKey;
+                    var statisticsChanged = false;
 
                     // Full response only on first poll or when score changes
                     if (isFirstPoll || scoreChanged)
                     {
                         var reason = isFirstPoll ? "FIRST POLL" : "SCORE CHANGED";
                         _logger.LogInformation(
-                            "[Listener] Match {MatchId} (ext: {ExternalMatchId}) — {Reason} — {Home}:{Away}, finished={Finished}",
-                            matchId, listener.ExternalMatchId, reason, homeLegs, awayLegs, adMatch.Finished);
+                            "[Listener] Match {MatchId} (ext: {ExternalMatchId}) — {Reason} — {Home}:{Away}, finished={Finished}, mapping={MappingSource}, apiPlayers={ExternalPlayer1}|{ExternalPlayer2}, homeSlot={HomeSlot}, awaySlot={AwaySlot}",
+                            matchId,
+                            listener.ExternalMatchId,
+                            reason,
+                            homeLegs,
+                            awayLegs,
+                            adMatch.Finished,
+                            mappedScores.MappingSource,
+                            mappedScores.ExternalPlayer1,
+                            mappedScores.ExternalPlayer2,
+                            mappedScores.HomeSlot,
+                            mappedScores.AwaySlot);
 
                         // Write full JSON to file for inspection (console truncates large JSON)
                         try
@@ -279,11 +314,40 @@ public sealed class AutodartsMatchListenerService : BackgroundService
                     var result = await matchService.SyncMatchFromExternalAsync(
                         matchId, homeLegs, awayLegs, homeSets, awaySets, adMatch.Finished, ct);
 
+                    if (isFirstPoll || scoreChanged || adMatch.Finished)
+                    {
+                        var syncResult = await AutodartsMatchStatisticsSyncService.UpsertFromRawAsync(
+                            dbContext,
+                            matchId,
+                            currentMatch.HomeParticipantId,
+                            currentMatch.AwayParticipantId,
+                            adMatch.RawJson,
+                            ct);
+
+                        statisticsChanged = syncResult.Changed;
+                    }
+
                     if (result is not null)
                     {
                         // Broadcast errors should not kill the polling loop.
                         await TryBroadcastMatchUpdatedAsync(matchId, result, ct);
-                        await TryBroadcastRawMatchDataAsync(matchId, listener, homeLegs, awayLegs, homeSets, awaySets, adMatch.Finished, rawJsonText, ct);
+                        if (statisticsChanged)
+                            await TryBroadcastMatchStatisticsUpdatedAsync(result.TournamentId, matchId, ct);
+
+                        await TryBroadcastRawMatchDataAsync(
+                            matchId,
+                            result.TournamentId,
+                            listener,
+                            homeLegs,
+                            awayLegs,
+                            homeSets,
+                            awaySets,
+                            mappedScores.HomePoints,
+                            mappedScores.AwayPoints,
+                            adMatch.Finished,
+                                statisticsChanged,
+                            rawJsonText,
+                            ct);
                     }
 
                     // If match is finished, stop the listener
@@ -436,71 +500,6 @@ public sealed class AutodartsMatchListenerService : BackgroundService
         return session.AccessToken;
     }
 
-    // ─── Leg Parsing (same logic as MatchesController) ───
-
-    private static (int HomeLegs, int AwayLegs, int HomeSets, int AwaySets) ParseScoresFromAutodartsMatch(AutodartsMatchDetail match)
-    {
-        var rawJson = match.RawJson;
-        if (rawJson.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
-        {
-            return (0, 0, 0, 0);
-        }
-
-        int p1 = 0, p2 = 0, s1 = 0, s2 = 0;
-
-        if (rawJson.TryGetProperty("legs", out var legsEl) && legsEl.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var item in legsEl.EnumerateArray())
-            {
-                if (item.ValueKind == JsonValueKind.Array)
-                    foreach (var leg in item.EnumerateArray()) CountWinner(leg, ref p1, ref p2);
-                else if (item.ValueKind == JsonValueKind.Object)
-                    CountWinner(item, ref p1, ref p2);
-            }
-        }
-
-        if (p1 == 0 && p2 == 0 && rawJson.TryGetProperty("sets", out var setsEl) && setsEl.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var set in setsEl.EnumerateArray())
-            {
-                if (set.ValueKind == JsonValueKind.Object && set.TryGetProperty("legs", out var sl) && sl.ValueKind == JsonValueKind.Array)
-                    foreach (var leg in sl.EnumerateArray()) CountWinner(leg, ref p1, ref p2);
-            }
-        }
-
-        if (p1 == 0 && p2 == 0 && rawJson.TryGetProperty("stats", out var statsEl) && statsEl.ValueKind == JsonValueKind.Array)
-        {
-            for (int i = 0; i < statsEl.GetArrayLength() && i < 2; i++)
-            {
-                var v = TryInt(statsEl[i], "legsWon") ?? TryInt(statsEl[i], "legs_won") ?? TryInt(statsEl[i], "legs");
-                if (v.HasValue) { if (i == 0) p1 = v.Value; else p2 = v.Value; }
-            }
-        }
-
-        if (p1 == 0 && p2 == 0 && rawJson.TryGetProperty("gameScores", out var gs) && gs.ValueKind == JsonValueKind.Array)
-        {
-            for (int i = 0; i < gs.GetArrayLength() && i < 2; i++)
-            {
-                var v = gs[i].ValueKind == JsonValueKind.Number ? gs[i].GetInt32() : (int?)null;
-                if (v.HasValue) { if (i == 0) p1 = v.Value; else p2 = v.Value; }
-            }
-        }
-
-        // Strategy 5: Parse "scores" array — [{"sets":0,"legs":1}, {"sets":0,"legs":0}]
-        if (p1 == 0 && p2 == 0 && rawJson.TryGetProperty("scores", out var scoresEl) && scoresEl.ValueKind == JsonValueKind.Array)
-        {
-            for (int i = 0; i < scoresEl.GetArrayLength() && i < 2; i++)
-            {
-                var v = TryInt(scoresEl[i], "legs");
-                var sv = TryInt(scoresEl[i], "sets");
-                if (v.HasValue) { if (i == 0) p1 = v.Value; else p2 = v.Value; }
-                if (sv.HasValue) { if (i == 0) s1 = sv.Value; else s2 = sv.Value; }
-            }
-        }
-
-        return (p1, p2, s1, s2);
-    }
-
     private async Task TryBroadcastMatchUpdatedAsync(Guid matchId, Application.Contracts.Matches.MatchDto result, CancellationToken ct)
     {
         try
@@ -527,34 +526,64 @@ public sealed class AutodartsMatchListenerService : BackgroundService
 
     private async Task TryBroadcastRawMatchDataAsync(
         Guid matchId,
+        Guid tournamentId,
         ActiveMatchListener listener,
         int homeLegs,
         int awayLegs,
         int homeSets,
         int awaySets,
+        int? homePoints,
+        int? awayPoints,
         bool finished,
+        bool statisticsChanged,
         string rawJsonText,
         CancellationToken ct)
     {
+        var payload = new
+        {
+            tournamentId,
+            matchId,
+            externalMatchId = listener.ExternalMatchId,
+            boardId = listener.BoardId,
+            homeLegs,
+            awayLegs,
+            homeSets,
+            awaySets,
+            homePoints,
+            awayPoints,
+            finished,
+            statisticsChanged,
+            rawJson = rawJsonText,
+            timestamp = DateTimeOffset.UtcNow
+        };
+
         try
         {
-            await _hubContext.Clients.All.SendAsync("MatchDataReceived", new
-            {
-                matchId,
-                externalMatchId = listener.ExternalMatchId,
-                boardId = listener.BoardId,
-                homeLegs,
-                awayLegs,
-                homeSets,
-                awaySets,
-                finished,
-                rawJson = rawJsonText,
-                timestamp = DateTimeOffset.UtcNow
-            }, ct);
+            await _hubContext.Clients.All.SendAsync("MatchDataReceived", payload, ct);
+            await _tournamentHubContext.Clients.Group($"tournament-{tournamentId}").SendAsync("MatchDataReceived", payload, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex, "[Listener] Match {MatchId} — MatchDataReceived broadcast failed", matchId);
+        }
+    }
+
+    private async Task TryBroadcastMatchStatisticsUpdatedAsync(Guid tournamentId, Guid matchId, CancellationToken ct)
+    {
+        var payload = new
+        {
+            tournamentId,
+            matchId,
+            timestamp = DateTimeOffset.UtcNow
+        };
+
+        try
+        {
+            await _tournamentHubContext.Clients.Group($"tournament-{tournamentId}").SendAsync("MatchStatisticsUpdated", payload, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "[Listener] Match {MatchId} — MatchStatisticsUpdated broadcast failed", matchId);
         }
     }
 
@@ -571,28 +600,6 @@ public sealed class AutodartsMatchListenerService : BackgroundService
         {
             return "{}";
         }
-    }
-
-    private static void CountWinner(JsonElement leg, ref int p1, ref int p2)
-    {
-        var w = TryInt(leg, "winner") ?? TryInt(leg, "won") ?? TryInt(leg, "winnerId");
-        if (w.HasValue) { if (w.Value == 0) p1++; else p2++; return; }
-        if (leg.TryGetProperty("result", out var r) && r.ValueKind == JsonValueKind.Object)
-        {
-            w = TryInt(r, "winner") ?? TryInt(r, "won");
-            if (w.HasValue) { if (w.Value == 0) p1++; else p2++; }
-        }
-    }
-
-    private static int? TryInt(JsonElement el, string prop)
-    {
-        if (!el.TryGetProperty(prop, out var v)) return null;
-        return v.ValueKind switch
-        {
-            JsonValueKind.Number => v.GetInt32(),
-            JsonValueKind.String when int.TryParse(v.GetString(), out var n) => n,
-            _ => null
-        };
     }
 
     private sealed class ActiveMatchListener(string externalMatchId, Guid? boardId, CancellationTokenSource cts)

@@ -116,6 +116,7 @@ public partial class Tournaments : IAsyncDisposable
 
     // ─── Match Listeners ───
     private List<MatchListenerInfoDto> matchListeners = [];
+    private readonly Dictionary<Guid, LiveMatchScoreSnapshot> liveMatchScores = [];
 
     // ─── Round Settings Editor ───
     private string newRoundPhase = "Knockout";
@@ -225,6 +226,16 @@ public partial class Tournaments : IAsyncDisposable
     private bool isAutodartsConnected;
     private string? autodartsDisplayName;
     private bool IsDevelopmentEnvironment => HostEnvironment.IsDevelopment();
+
+    private sealed record LiveMatchScoreSnapshot(
+        int HomeLegs,
+        int AwayLegs,
+        int HomeSets,
+        int AwaySets,
+        int? HomePoints,
+        int? AwayPoints,
+        bool Finished,
+        DateTimeOffset UpdatedAtUtc);
 
     /// <summary>True if the current user is a Spielleiter for the selected tournament.</summary>
     private bool IsCurrentUserManager =>
@@ -482,6 +493,8 @@ public partial class Tournaments : IAsyncDisposable
             HubService.OnParticipantsUpdated += OnHubParticipantsUpdated;
             HubService.OnTournamentUpdated += OnHubTournamentUpdated;
             HubService.OnScheduleUpdated += OnHubScheduleUpdated;
+            HubService.OnMatchDataReceived += OnHubMatchDataReceived;
+            HubService.OnMatchStatisticsUpdated += OnHubMatchStatisticsUpdated;
             HubService.OnReconnected += OnHubReconnected;
             await HubService.StartAsync();
 
@@ -498,6 +511,14 @@ public partial class Tournaments : IAsyncDisposable
         await InvokeAsync(async () =>
         {
             matches = (await Api.GetMatchesAsync(selectedTournament.Id)).ToList();
+            var activeMatchIds = matches.Select(m => m.Id).ToHashSet();
+            var obsoleteIds = liveMatchScores.Keys.Where(id => !activeMatchIds.Contains(id)).ToList();
+            foreach (var obsoleteId in obsoleteIds)
+                liveMatchScores.Remove(obsoleteId);
+
+            foreach (var finishedMatchId in matches.Where(m => m.FinishedUtc is not null).Select(m => m.Id).ToList())
+                liveMatchScores.Remove(finishedMatchId);
+
             if (activeTab == "groups")
                 groupStandings = (await Api.GetGroupStandingsAsync(selectedTournament.Id)).ToList();
             StateHasChanged();
@@ -541,6 +562,73 @@ public partial class Tournaments : IAsyncDisposable
         await InvokeAsync(async () =>
         {
             matches = (await Api.GetMatchesAsync(selectedTournament.Id)).ToList();
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnHubMatchDataReceived(TournamentHubService.MatchDataReceivedDto payload)
+    {
+        if (selectedTournament is null || payload.TournamentId != selectedTournament.Id)
+            return;
+
+        await InvokeAsync(() =>
+        {
+            liveMatchScores[payload.MatchId] = new LiveMatchScoreSnapshot(
+                payload.HomeLegs,
+                payload.AwayLegs,
+                payload.HomeSets,
+                payload.AwaySets,
+                payload.HomePoints,
+                payload.AwayPoints,
+                payload.Finished,
+                payload.Timestamp);
+
+            var current = matches.FirstOrDefault(m => m.Id == payload.MatchId);
+            if (current is not null)
+            {
+                var updated = current with
+                {
+                    HomeLegs = payload.HomeLegs,
+                    AwayLegs = payload.AwayLegs,
+                    HomeSets = payload.HomeSets,
+                    AwaySets = payload.AwaySets
+                };
+                var index = matches.FindIndex(m => m.Id == payload.MatchId);
+                if (index >= 0)
+                    matches[index] = updated;
+
+                if (detailMatch?.Id == payload.MatchId)
+                {
+                    detailMatch = updated;
+                    editHomeLegs = updated.HomeLegs;
+                    editAwayLegs = updated.AwayLegs;
+                    editHomeSets = updated.HomeSets;
+                    editAwaySets = updated.AwaySets;
+                }
+            }
+
+            if (payload.Finished)
+                liveMatchScores.Remove(payload.MatchId);
+
+            if (payload.StatisticsChanged && detailMatch?.Id == payload.MatchId)
+                _ = LoadMatchStatisticsAsync(payload.MatchId);
+
+            StateHasChanged();
+            return Task.CompletedTask;
+        });
+    }
+
+    private async Task OnHubMatchStatisticsUpdated(TournamentHubService.MatchStatisticsUpdatedDto payload)
+    {
+        if (selectedTournament is null || payload.TournamentId != selectedTournament.Id)
+            return;
+
+        if (detailMatch?.Id != payload.MatchId)
+            return;
+
+        await InvokeAsync(async () =>
+        {
+            await LoadMatchStatisticsAsync(payload.MatchId);
             StateHasChanged();
         });
     }
@@ -591,6 +679,8 @@ public partial class Tournaments : IAsyncDisposable
                                 editAwayLegs = synced.AwayLegs;
                                 matches = (await Api.GetMatchesAsync(selectedTournament.Id)).ToList();
                             }
+
+                            detailMatchStatistics = (await Api.SyncMatchStatisticsAsync(detailMatch.Id)).ToList();
                         }
                         catch { /* silent — sync may fail if not connected */ }
                     }
@@ -607,6 +697,8 @@ public partial class Tournaments : IAsyncDisposable
                                 editHomeLegs = updated.HomeLegs;
                                 editAwayLegs = updated.AwayLegs;
                             }
+
+                            detailMatchStatistics = (await Api.GetMatchStatisticsAsync(detailMatch.Id)).ToList();
                         }
                         catch { /* silent */ }
                     }
@@ -630,6 +722,8 @@ public partial class Tournaments : IAsyncDisposable
         HubService.OnParticipantsUpdated -= OnHubParticipantsUpdated;
         HubService.OnTournamentUpdated -= OnHubTournamentUpdated;
         HubService.OnScheduleUpdated -= OnHubScheduleUpdated;
+        HubService.OnMatchDataReceived -= OnHubMatchDataReceived;
+        HubService.OnMatchStatisticsUpdated -= OnHubMatchStatisticsUpdated;
         HubService.OnReconnected -= OnHubReconnected;
 
         if (selectedTournament is not null)
@@ -736,6 +830,7 @@ public partial class Tournaments : IAsyncDisposable
         editSuccess = null;
         participantError = null;
         detailMatch = null;
+        liveMatchScores.Clear();
         PopulateEditFields(tournament);
         await Task.WhenAll(LoadParticipantsAsync(tournament.Id), LoadMatchesAsync(tournament.Id), LoadBoardsAsync(), LoadRoundsAsync());
         if (tournament.Mode == "Knockout")
@@ -1635,6 +1730,33 @@ public partial class Tournaments : IAsyncDisposable
         if (IsSetMode(match))
             return $"{match.HomeSets}:{match.AwaySets} ({match.HomeLegs}:{match.AwayLegs})";
         return $"{match.HomeLegs}:{match.AwayLegs}";
+    }
+
+    private string FormatLiveScore(MatchDto match)
+    {
+        var baseScore = FormatScore(match);
+        if (match.StartedUtc is null || match.FinishedUtc is not null)
+            return baseScore;
+
+        var pointsLabel = GetLivePointsLabel(match.Id);
+        return string.IsNullOrWhiteSpace(pointsLabel) ? baseScore : $"{baseScore} [{pointsLabel}]";
+    }
+
+    private string? GetLivePointsLabel(Guid matchId)
+    {
+        if (!liveMatchScores.TryGetValue(matchId, out var snapshot))
+            return null;
+
+        if ((DateTimeOffset.UtcNow - snapshot.UpdatedAtUtc) > TimeSpan.FromSeconds(30))
+        {
+            liveMatchScores.Remove(matchId);
+            return null;
+        }
+
+        if (!snapshot.HomePoints.HasValue && !snapshot.AwayPoints.HasValue)
+            return null;
+
+        return $"{snapshot.HomePoints?.ToString() ?? "?"}:{snapshot.AwayPoints?.ToString() ?? "?"}";
     }
 
     private string? FormatGameplay(MatchDto match)

@@ -249,7 +249,7 @@
                                             @if (!string.IsNullOrEmpty(detailMatch.ExternalMatchId) && detailMatch.FinishedUtc is null && (detailMatch.HomeLegs > 0 || detailMatch.AwayLegs > 0 || detailMatch.HomeSets > 0 || detailMatch.AwaySets > 0))
                                             {
                                                 <div class="alert alert-info py-2 mb-3">
-                                                    <strong>Live:</strong> @(homeP?.DisplayName?.ToUpperInvariant() ?? "Heim") <strong>@FormatScore(detailMatch)</strong> @(awayP?.DisplayName?.ToUpperInvariant() ?? "Gast")
+                                                    <strong>Live:</strong> @(homeP?.DisplayName?.ToUpperInvariant() ?? "Heim") <strong>@FormatLiveScore(detailMatch)</strong> @(awayP?.DisplayName?.ToUpperInvariant() ?? "Gast")
                                                 </div>
                                             }
                                         }
@@ -2353,7 +2353,7 @@
                             <div class="card-body py-2">
                                 <span class="badge text-bg-secondary me-1">@MatchLabel(currentMatch)</span>
                                 <strong>@ParticipantName(currentMatch.HomeParticipantId)</strong>
-                                <span class="mx-1">@FormatScore(currentMatch)</span>
+                                <span class="mx-1">@FormatLiveScore(currentMatch)</span>
                                 <strong>@ParticipantName(currentMatch.AwayParticipantId)</strong>
                             </div>
                         </div>
