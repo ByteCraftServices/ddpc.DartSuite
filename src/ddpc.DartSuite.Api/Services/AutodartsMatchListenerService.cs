@@ -7,13 +7,13 @@ using ddpc.DartSuite.Application.Abstractions;
 using ddpc.DartSuite.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Options;
 
 namespace ddpc.DartSuite.Api.Services;
 
 /// <summary>
-/// Background service that maintains active polling listeners for running Autodarts matches.
-/// For each match with an ExternalMatchId that is not finished, a listener polls the Autodarts
-/// API every few seconds and pushes updates via SignalR to connected Blazor clients.
+/// Background service that maintains match monitoring for active Autodarts matches.
+/// WebSocket push is preferred and polling is used only as fallback.
 /// </summary>
 public sealed class AutodartsMatchListenerService : BackgroundService
 {
@@ -22,19 +22,22 @@ public sealed class AutodartsMatchListenerService : BackgroundService
     private readonly IHubContext<TournamentHub> _tournamentHubContext;
     private readonly AutodartsSessionStore _sessionStore;
     private readonly ILogger<AutodartsMatchListenerService> _logger;
+    private readonly TimeSpan _pollInterval;
 
     private readonly ConcurrentDictionary<Guid, ActiveMatchListener> _listeners = new();
     private readonly SemaphoreSlim _tokenRefreshLock = new(1, 1);
 
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan ScanInterval = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan TokenRefreshBuffer = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan RealtimeLoopDelay = TimeSpan.FromMilliseconds(150);
+    private static readonly TimeSpan RealtimeActivityWindow = TimeSpan.FromSeconds(6);
 
     public AutodartsMatchListenerService(
         IServiceProvider serviceProvider,
         IHubContext<BoardStatusHub> hubContext,
         IHubContext<TournamentHub> tournamentHubContext,
         AutodartsSessionStore sessionStore,
+        IOptions<AutodartsOptions> autodartsOptions,
         ILogger<AutodartsMatchListenerService> logger)
     {
         _serviceProvider = serviceProvider;
@@ -42,6 +45,9 @@ public sealed class AutodartsMatchListenerService : BackgroundService
         _tournamentHubContext = tournamentHubContext;
         _sessionStore = sessionStore;
         _logger = logger;
+
+        var pollMs = Math.Clamp(autodartsOptions.Value.ListenerPollMilliseconds, 200, 5000);
+        _pollInterval = TimeSpan.FromMilliseconds(pollMs);
     }
 
     /// <summary>Returns the set of DartSuite match IDs that currently have active listeners.</summary>
@@ -50,34 +56,156 @@ public sealed class AutodartsMatchListenerService : BackgroundService
         var result = new Dictionary<Guid, MatchListenerInfo>();
         foreach (var (matchId, listener) in _listeners)
         {
+            var isWebSocketActive = string.Equals(listener.TransportMode, "websocket", StringComparison.OrdinalIgnoreCase)
+                && !listener.IsFallbackActive
+                && listener.LastRealtimeEventUtc.HasValue
+                && (DateTimeOffset.UtcNow - listener.LastRealtimeEventUtc.Value) <= RealtimeActivityWindow;
+            var isPollingActive = listener.IsRunning && !isWebSocketActive;
+
             result[matchId] = new MatchListenerInfo(
                 matchId,
                 listener.ExternalMatchId,
                 listener.BoardId,
-                listener.IsRunning,
+                isPollingActive,
                 listener.LastUpdateUtc,
-                listener.LastError);
+                listener.LastError,
+                isWebSocketActive,
+                listener.TransportMode,
+                listener.IsFallbackActive,
+                listener.LastRealtimeEventUtc);
         }
         return result;
     }
 
-    /// <summary>Ensures a listener exists for the given match. Creates one if missing.</summary>
-    public void EnsureListener(Guid matchId, string externalMatchId, Guid? boardId)
+    /// <summary>
+    /// Ensures monitoring exists for the given match when it is active.
+    /// Returns true if monitoring is active after this call.
+    /// </summary>
+    public async Task<bool> EnsureListenerAsync(Guid matchId, string externalMatchId, Guid? boardId, string? boardExternalId = null, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(externalMatchId))
+        using var scope = _serviceProvider.CreateScope();
+        var matchService = scope.ServiceProvider.GetRequiredService<IMatchManagementService>();
+        var boardService = scope.ServiceProvider.GetRequiredService<IBoardManagementService>();
+
+        var match = await matchService.GetMatchAsync(matchId, cancellationToken);
+        if (!IsMonitoringEligible(match))
         {
-            _logger.LogWarning("Listener not created for match {MatchId}: external match id is empty", matchId);
-            return;
+            StopListener(matchId);
+            return false;
         }
 
-        if (_listeners.ContainsKey(matchId)) return;
+        var resolvedExternalMatchId = match!.ExternalMatchId!;
+        var resolvedBoardId = match.BoardId ?? boardId;
+
+        if (string.IsNullOrWhiteSpace(boardExternalId) && resolvedBoardId.HasValue)
+        {
+            var board = await boardService.GetBoardAsync(resolvedBoardId.Value, cancellationToken);
+            boardExternalId = board?.ExternalBoardId;
+        }
+
+        if (string.IsNullOrWhiteSpace(resolvedExternalMatchId))
+        {
+            _logger.LogWarning("Listener not created for match {MatchId}: external match id is empty", matchId);
+            return false;
+        }
+
+        if (_listeners.TryGetValue(matchId, out var existingListener))
+        {
+            if (!string.Equals(existingListener.ExternalMatchId, resolvedExternalMatchId, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogInformation(
+                    "Listener updated for match {MatchId}: external id {OldExternalMatchId} -> {NewExternalMatchId}",
+                    matchId,
+                    existingListener.ExternalMatchId,
+                    resolvedExternalMatchId);
+                existingListener.ExternalMatchId = resolvedExternalMatchId;
+            }
+
+            if (resolvedBoardId.HasValue && existingListener.BoardId != resolvedBoardId)
+            {
+                existingListener.BoardId = resolvedBoardId;
+            }
+
+            if (!string.IsNullOrWhiteSpace(boardExternalId)
+                && !string.Equals(existingListener.BoardExternalId, boardExternalId, StringComparison.OrdinalIgnoreCase))
+            {
+                existingListener.BoardExternalId = boardExternalId;
+            }
+
+            return true;
+        }
 
         var cts = new CancellationTokenSource();
-        var listener = new ActiveMatchListener(externalMatchId, boardId, cts);
+        var listener = new ActiveMatchListener(resolvedExternalMatchId, resolvedBoardId, boardExternalId, cts);
         if (_listeners.TryAdd(matchId, listener))
         {
             _ = RunListenerAsync(matchId, listener);
-            _logger.LogInformation("Listener created for match {MatchId} (external: {ExternalMatchId})", matchId, externalMatchId);
+            _logger.LogInformation("Listener created for match {MatchId} (external: {ExternalMatchId})", matchId, resolvedExternalMatchId);
+        }
+
+        return true;
+    }
+
+    /// <summary>Reconciles monitoring for all matches in a tournament.</summary>
+    public async Task ReconcileTournamentMonitoringAsync(Guid tournamentId, CancellationToken cancellationToken = default)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var matchService = scope.ServiceProvider.GetRequiredService<IMatchManagementService>();
+        var boardService = scope.ServiceProvider.GetRequiredService<IBoardManagementService>();
+
+        var matches = await matchService.GetMatchesAsync(tournamentId, cancellationToken);
+        var tournamentMatchIds = matches.Select(m => m.Id).ToHashSet();
+
+        var boards = await boardService.GetBoardsAsync(cancellationToken);
+        var boardById = boards
+            .Where(b => b.TournamentId == tournamentId)
+            .ToDictionary(b => b.Id, b => b);
+
+        var activeMatchIds = new HashSet<Guid>();
+        foreach (var match in matches.Where(IsMonitoringEligible))
+        {
+            activeMatchIds.Add(match.Id);
+            var boardExternalId = match.BoardId.HasValue && boardById.TryGetValue(match.BoardId.Value, out var board)
+                ? board.ExternalBoardId
+                : null;
+
+            await EnsureListenerAsync(match.Id, match.ExternalMatchId!, match.BoardId, boardExternalId, cancellationToken);
+        }
+
+        foreach (var listenerMatchId in _listeners.Keys.ToList())
+        {
+            if (tournamentMatchIds.Contains(listenerMatchId) && !activeMatchIds.Contains(listenerMatchId))
+                StopListener(listenerMatchId);
+        }
+    }
+
+    /// <summary>Reconciles monitoring for all matches assigned to a board.</summary>
+    public async Task ReconcileBoardMonitoringAsync(Guid boardId, CancellationToken cancellationToken = default)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var matchService = scope.ServiceProvider.GetRequiredService<IMatchManagementService>();
+        var boardService = scope.ServiceProvider.GetRequiredService<IBoardManagementService>();
+
+        var board = await boardService.GetBoardAsync(boardId, cancellationToken);
+        if (board is null || !board.TournamentId.HasValue)
+            return;
+
+        var matches = await matchService.GetMatchesAsync(board.TournamentId.Value, cancellationToken);
+        var boardMatchIds = matches.Where(m => m.BoardId == boardId).Select(m => m.Id).ToHashSet();
+
+        var activeBoardMatches = matches
+            .Where(m => m.BoardId == boardId)
+            .Where(IsMonitoringEligible)
+            .ToList();
+
+        foreach (var match in activeBoardMatches)
+            await EnsureListenerAsync(match.Id, match.ExternalMatchId!, match.BoardId, board.ExternalBoardId, cancellationToken);
+
+        var activeBoardMatchIds = activeBoardMatches.Select(m => m.Id).ToHashSet();
+        foreach (var listenerMatchId in _listeners.Keys.ToList())
+        {
+            if (boardMatchIds.Contains(listenerMatchId) && !activeBoardMatchIds.Contains(listenerMatchId))
+                StopListener(listenerMatchId);
         }
     }
 
@@ -94,7 +222,7 @@ public sealed class AutodartsMatchListenerService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("AutodartsMatchListenerService started");
+        _logger.LogInformation("AutodartsMatchListenerService started (pollInterval={PollIntervalMs}ms)", (int)_pollInterval.TotalMilliseconds);
 
         // Periodically scan for matches that need listeners
         while (!stoppingToken.IsCancellationRequested)
@@ -130,6 +258,7 @@ public sealed class AutodartsMatchListenerService : BackgroundService
 
         var boards = await boardService.GetBoardsAsync(ct);
         var boardsWithTournament = boards.Where(b => b.TournamentId.HasValue).ToList();
+        var boardById = boardsWithTournament.ToDictionary(b => b.Id, b => b);
 
         foreach (var board in boardsWithTournament)
         {
@@ -137,25 +266,29 @@ public sealed class AutodartsMatchListenerService : BackgroundService
 
             var matches = await matchService.GetMatchesAsync(board.TournamentId.Value, ct);
 
-            // Find matches that need listeners: have ExternalMatchId, not finished
+            // Match monitoring only applies to active matches.
             var activeMatches = matches
-                .Where(m => !string.IsNullOrEmpty(m.ExternalMatchId) && m.FinishedUtc is null)
+                .Where(IsMonitoringEligible)
                 .ToList();
 
             foreach (var match in activeMatches)
             {
-                EnsureListener(match.Id, match.ExternalMatchId!, match.BoardId);
+                string? boardExternalId = null;
+                if (match.BoardId.HasValue && boardById.TryGetValue(match.BoardId.Value, out var matchedBoard))
+                    boardExternalId = matchedBoard.ExternalBoardId;
+
+                await EnsureListenerAsync(match.Id, match.ExternalMatchId!, match.BoardId, boardExternalId, ct);
             }
         }
 
         // Remove listeners for matches that are finished or no longer have ExternalMatchId
         var toRemove = new List<Guid>();
-        foreach (var (matchId, listener) in _listeners)
+        foreach (var (matchId, _) in _listeners)
         {
             using var innerScope = _serviceProvider.CreateScope();
             var svc = innerScope.ServiceProvider.GetRequiredService<IMatchManagementService>();
             var match = await svc.GetMatchAsync(matchId, ct);
-            if (match is null || match.FinishedUtc is not null || string.IsNullOrEmpty(match.ExternalMatchId))
+            if (!IsMonitoringEligible(match))
             {
                 toRemove.Add(matchId);
             }
@@ -167,10 +300,28 @@ public sealed class AutodartsMatchListenerService : BackgroundService
         }
     }
 
+    private static bool IsMonitoringEligible(Application.Contracts.Matches.MatchDto? match)
+    {
+        if (match is null)
+            return false;
+
+        return !string.IsNullOrWhiteSpace(match.ExternalMatchId)
+            && match.StartedUtc is not null
+            && match.FinishedUtc is null;
+    }
+
     private async Task RunListenerAsync(Guid matchId, ActiveMatchListener listener)
     {
         listener.IsRunning = true;
         var ct = listener.Cts.Token;
+        CancellationTokenSource? realtimeCts = null;
+        Task? realtimePumpTask = null;
+
+        if (!string.IsNullOrWhiteSpace(listener.BoardExternalId))
+        {
+            realtimeCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            realtimePumpTask = RunRealtimePumpAsync(matchId, listener, realtimeCts.Token);
+        }
 
         try
         {
@@ -182,8 +333,34 @@ public sealed class AutodartsMatchListenerService : BackgroundService
                     if (accessToken is null)
                     {
                         listener.LastError = "No Autodarts session";
-                        await Task.Delay(PollInterval, ct);
+                        listener.TransportMode = "polling";
+                        listener.IsFallbackActive = true;
+                        await Task.Delay(_pollInterval, ct);
                         continue;
+                    }
+
+                    var hasRecentRealtimeSignal = !string.IsNullOrWhiteSpace(listener.BoardExternalId)
+                        && listener.LastRealtimeEventUtc.HasValue
+                        && (DateTimeOffset.UtcNow - listener.LastRealtimeEventUtc.Value) <= RealtimeActivityWindow;
+
+                    if (hasRecentRealtimeSignal)
+                    {
+                        listener.TransportMode = "websocket";
+                        listener.IsFallbackActive = false;
+
+                        if (listener.LastProcessedRealtimeEventUtc.HasValue
+                            && listener.LastRealtimeEventUtc <= listener.LastProcessedRealtimeEventUtc)
+                        {
+                            await Task.Delay(RealtimeLoopDelay, ct);
+                            continue;
+                        }
+
+                        listener.LastProcessedRealtimeEventUtc = listener.LastRealtimeEventUtc;
+                    }
+                    else
+                    {
+                        listener.TransportMode = "polling";
+                        listener.IsFallbackActive = true;
                     }
 
                     using var scope = _serviceProvider.CreateScope();
@@ -191,56 +368,96 @@ public sealed class AutodartsMatchListenerService : BackgroundService
                     var matchService = scope.ServiceProvider.GetRequiredService<IMatchManagementService>();
                     var dbContext = scope.ServiceProvider.GetRequiredService<DartSuiteDbContext>();
 
-                    AutodartsMatchDetail? adMatch;
-                    try
+                    var websocketEvent = hasRecentRealtimeSignal ? listener.LastRealtimeEvent : null;
+                    AutodartsMatchDetail? adMatch = TryBuildMatchDetailFromRealtimeEvent(websocketEvent, listener.ExternalMatchId);
+
+                    if (adMatch is null)
                     {
-                        adMatch = await autodartsClient.GetMatchAsync(accessToken, listener.ExternalMatchId, ct);
-                    }
-                    catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                    {
-                        _logger.LogWarning("[Listener] Match {MatchId}: 401 Unauthorized — attempting token refresh", matchId);
-
-                        // Step 1: Try refresh token
-                        var refreshedToken = await ForceRefreshTokenAsync(ct);
-                        if (refreshedToken is not null)
-                        {
-                            try
-                            {
-                                adMatch = await autodartsClient.GetMatchAsync(refreshedToken, listener.ExternalMatchId, ct);
-                                goto matchRetrieved;
-                            }
-                            catch (HttpRequestException) { /* refreshed token also rejected */ }
-                        }
-
-                        // Step 2: Refresh didn't help — full re-login with audience discovery
-                        _logger.LogWarning("[Listener] Match {MatchId}: Refresh token still rejected, trying re-login with audience discovery", matchId);
-                        var reLoginToken = await ReLoginWithCredentialsAsync(ct);
-                        if (reLoginToken is null)
-                        {
-                            listener.LastError = "Authentication failed";
-                            await Task.Delay(PollInterval, ct);
-                            continue;
-                        }
-
                         try
                         {
-                            adMatch = await autodartsClient.GetMatchAsync(reLoginToken, listener.ExternalMatchId, ct);
+                            adMatch = await autodartsClient.GetMatchAsync(accessToken, listener.ExternalMatchId, false, ct);
                         }
-                        catch (HttpRequestException)
+                        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                         {
-                            listener.LastError = "401 after re-login — check Autodarts credentials";
-                            _logger.LogError("[Listener] Match {MatchId}: 401 persists after re-login with all audience candidates", matchId);
-                            await Task.Delay(PollInterval, ct);
-                            continue;
+                            _logger.LogWarning("[Listener] Match {MatchId}: 401 Unauthorized — attempting token refresh", matchId);
+
+                            // Step 1: Try refresh token
+                            var refreshedToken = await ForceRefreshTokenAsync(ct);
+                            if (refreshedToken is not null)
+                            {
+                                try
+                                {
+                                    adMatch = await autodartsClient.GetMatchAsync(refreshedToken, listener.ExternalMatchId, false, ct);
+                                    goto matchRetrieved;
+                                }
+                                catch (HttpRequestException) { /* refreshed token also rejected */ }
+                            }
+
+                            // Step 2: Refresh didn't help — full re-login with audience discovery
+                            _logger.LogWarning("[Listener] Match {MatchId}: Refresh token still rejected, trying re-login with audience discovery", matchId);
+                            var reLoginToken = await ReLoginWithCredentialsAsync(ct);
+                            if (reLoginToken is null)
+                            {
+                                listener.LastError = "Autodarts session expired. Please reconnect in the extension popup.";
+                                await Task.Delay(_pollInterval, ct);
+                                continue;
+                            }
+
+                            try
+                            {
+                                adMatch = await autodartsClient.GetMatchAsync(reLoginToken, listener.ExternalMatchId, false, ct);
+                            }
+                            catch (HttpRequestException)
+                            {
+                                listener.LastError = "Autodarts token unauthorized. Please reconnect in the extension popup.";
+                                _logger.LogError("[Listener] Match {MatchId}: 401 persists after re-login with all audience candidates", matchId);
+                                await Task.Delay(_pollInterval, ct);
+                                continue;
+                            }
                         }
                     }
                 matchRetrieved:
                     if (adMatch is null)
                     {
+                        var persistedMatch = await matchService.GetMatchAsync(matchId, ct);
+                        var persistedExternalMatchId = persistedMatch?.ExternalMatchId?.Trim();
+                        if (!string.IsNullOrWhiteSpace(persistedExternalMatchId)
+                            && !string.Equals(persistedExternalMatchId, listener.ExternalMatchId, StringComparison.OrdinalIgnoreCase))
+                        {
+                            _logger.LogInformation(
+                                "[Listener] Match {MatchId}: switching stale external id from {PreviousExternalMatchId} to persisted {PersistedExternalMatchId}",
+                                matchId,
+                                listener.ExternalMatchId,
+                                persistedExternalMatchId);
+                            listener.ExternalMatchId = persistedExternalMatchId;
+                            continue;
+                        }
+
                         listener.LastError = "Match not found on Autodarts";
                         _logger.LogWarning("[Listener] Match {MatchId} (ext: {ExternalMatchId}): Autodarts API returned null", matchId, listener.ExternalMatchId);
-                        await Task.Delay(PollInterval, ct);
+                        await Task.Delay(_pollInterval, ct);
                         continue;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(adMatch.Id)
+                        && !string.Equals(adMatch.Id, listener.ExternalMatchId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var previousExternalMatchId = listener.ExternalMatchId;
+                        listener.ExternalMatchId = adMatch.Id;
+
+                        var trackedMatch = await dbContext.Matches.FirstOrDefaultAsync(x => x.Id == matchId, ct);
+                        if (trackedMatch is not null
+                            && !string.Equals(trackedMatch.ExternalMatchId, adMatch.Id, StringComparison.OrdinalIgnoreCase))
+                        {
+                            trackedMatch.ExternalMatchId = adMatch.Id;
+                            await dbContext.SaveChangesAsync(ct);
+                        }
+
+                        _logger.LogInformation(
+                            "[Listener] Match {MatchId}: resolved external match id from {PreviousExternalMatchId} to {ResolvedExternalMatchId}",
+                            matchId,
+                            previousExternalMatchId,
+                            adMatch.Id);
                     }
 
                     listener.LastError = null;
@@ -260,29 +477,54 @@ public sealed class AutodartsMatchListenerService : BackgroundService
                         .ToListAsync(ct);
                     var homeParticipant = participants.FirstOrDefault(x => x.Id == currentMatch.HomeParticipantId);
                     var awayParticipant = participants.FirstOrDefault(x => x.Id == currentMatch.AwayParticipantId);
+                    var homeParticipantName = homeParticipant?.DisplayName ?? homeParticipant?.AccountName;
+                    var awayParticipantName = awayParticipant?.DisplayName ?? awayParticipant?.AccountName;
 
                     var rawJson = adMatch.RawJson;
+                    var senderUtc = AutodartsMatchStatisticsSyncService.ResolveSenderUtc(rawJson, DateTimeOffset.UtcNow);
                     var rawJsonText = SafeGetRawJsonText(rawJson);
+                    var currentTurnSnapshot = TryGetCurrentTurnSnapshot(rawJson);
+                    var externalActivePlayerIndex = TryGetIntProperty(rawJson, "player");
+                    var activePlayerId = ResolveActivePlayerId(rawJson, externalActivePlayerIndex);
+                    var round = TryGetIntProperty(rawJson, "round");
+                    var turn = TryGetIntProperty(rawJson, "turn");
+                    var turnScore = TryGetIntProperty(rawJson, "turnScore");
+                    var turnBusted = TryGetBoolProperty(rawJson, "turnBusted");
+                    var gameScoresKey = GetArrayKey(rawJson, "gameScores");
                     var mappedScores = AutodartsMatchScoreMapper.MapScores(
                         adMatch,
-                        homeParticipant?.DisplayName ?? homeParticipant?.AccountName,
-                        awayParticipant?.DisplayName ?? awayParticipant?.AccountName);
+                        homeParticipantName,
+                        awayParticipantName);
                     var homeLegs = mappedScores.HomeLegs;
                     var awayLegs = mappedScores.AwayLegs;
                     var homeSets = mappedScores.HomeSets;
                     var awaySets = mappedScores.AwaySets;
-                    var scoreKey = $"{homeSets}:{homeLegs}:{awaySets}:{awayLegs}:{adMatch.Finished}";
-                    var isFirstPoll = listener.LastScoreKey is null;
-                    var scoreChanged = listener.LastScoreKey != scoreKey;
-                    listener.LastScoreKey = scoreKey;
+                    var activePlayerIndex = MapActivePlayerIndex(externalActivePlayerIndex, mappedScores.HomeSlot, mappedScores.AwaySlot);
+                    var resultScoreKey = $"{homeSets}:{homeLegs}:{awaySets}:{awayLegs}:{adMatch.Finished}";
+                    var liveScoreKey = $"{resultScoreKey}:{mappedScores.HomePoints?.ToString() ?? "-"}:{mappedScores.AwayPoints?.ToString() ?? "-"}";
+                    var realtimeProgressKey =
+                        $"{liveScoreKey}:{activePlayerIndex?.ToString() ?? "-"}:{activePlayerId ?? "-"}:{round?.ToString() ?? "-"}:{turn?.ToString() ?? "-"}:{turnScore?.ToString() ?? "-"}:{(turnBusted.HasValue ? (turnBusted.Value ? "1" : "0") : "-")}:{currentTurnSnapshot.Id ?? "-"}:{currentTurnSnapshot.ThrowCount}:{gameScoresKey}";
+                    var isFirstPoll = listener.LastScoreKey is null && listener.LastLiveScoreKey is null && listener.LastRealtimeKey is null;
+                    var resultScoreChanged = listener.LastScoreKey != resultScoreKey;
+                    var liveScoreChanged = listener.LastLiveScoreKey != liveScoreKey;
+                    var realtimeChanged = listener.LastRealtimeKey != realtimeProgressKey;
+                    listener.LastScoreKey = resultScoreKey;
+                    listener.LastLiveScoreKey = liveScoreKey;
+                    listener.LastRealtimeKey = realtimeProgressKey;
                     var statisticsChanged = false;
 
-                    // Full response only on first poll or when score changes
-                    if (isFirstPoll || scoreChanged)
+                    // Full response logging on first poll or when live state changes.
+                    if (isFirstPoll || realtimeChanged)
                     {
-                        var reason = isFirstPoll ? "FIRST POLL" : "SCORE CHANGED";
+                        var reason = isFirstPoll
+                            ? "FIRST POLL"
+                            : resultScoreChanged
+                                ? "RESULT SCORE CHANGED"
+                                : liveScoreChanged
+                                    ? "LIVE SCORE CHANGED"
+                                    : "TURN/PLAYER CHANGED";
                         _logger.LogInformation(
-                            "[Listener] Match {MatchId} (ext: {ExternalMatchId}) — {Reason} — {Home}:{Away}, finished={Finished}, mapping={MappingSource}, apiPlayers={ExternalPlayer1}|{ExternalPlayer2}, homeSlot={HomeSlot}, awaySlot={AwaySlot}",
+                            "[Listener] Match {MatchId} (ext: {ExternalMatchId}) — {Reason} — {Home}:{Away}, finished={Finished}, mapping={MappingSource}, apiPlayers={ExternalPlayer1}|{ExternalPlayer2}, homeSlot={HomeSlot}, awaySlot={AwaySlot}, activePlayer={ActivePlayerIndex}, round={Round}, turn={Turn}, turnScore={TurnScore}, throws={ThrowCount}",
                             matchId,
                             listener.ExternalMatchId,
                             reason,
@@ -293,7 +535,12 @@ public sealed class AutodartsMatchListenerService : BackgroundService
                             mappedScores.ExternalPlayer1,
                             mappedScores.ExternalPlayer2,
                             mappedScores.HomeSlot,
-                            mappedScores.AwaySlot);
+                            mappedScores.AwaySlot,
+                            activePlayerIndex,
+                            round,
+                            turn,
+                            turnScore,
+                            currentTurnSnapshot.ThrowCount);
 
                         // Write full JSON to file for inspection (console truncates large JSON)
                         try
@@ -314,7 +561,9 @@ public sealed class AutodartsMatchListenerService : BackgroundService
                     var result = await matchService.SyncMatchFromExternalAsync(
                         matchId, homeLegs, awayLegs, homeSets, awaySets, adMatch.Finished, ct);
 
-                    if (isFirstPoll || scoreChanged || adMatch.Finished)
+                    var shouldSyncStatistics = isFirstPoll || realtimeChanged || adMatch.Finished;
+
+                    if (shouldSyncStatistics)
                     {
                         var syncResult = await AutodartsMatchStatisticsSyncService.UpsertFromRawAsync(
                             dbContext,
@@ -322,21 +571,42 @@ public sealed class AutodartsMatchListenerService : BackgroundService
                             currentMatch.HomeParticipantId,
                             currentMatch.AwayParticipantId,
                             adMatch.RawJson,
+                            senderUtc,
+                            homeParticipantName,
+                            awayParticipantName,
                             ct);
 
                         statisticsChanged = syncResult.Changed;
+                        senderUtc = syncResult.SenderUtc;
+                        listener.LastStatisticsSyncUtc = syncResult.SenderUtc;
                     }
 
                     if (result is not null)
                     {
                         // Broadcast errors should not kill the polling loop.
-                        await TryBroadcastMatchUpdatedAsync(matchId, result, ct);
+                        if (isFirstPoll || resultScoreChanged || adMatch.Finished)
+                            await TryBroadcastMatchUpdatedAsync(matchId, result, senderUtc, ct);
+
                         if (statisticsChanged)
-                            await TryBroadcastMatchStatisticsUpdatedAsync(result.TournamentId, matchId, ct);
+                            await TryBroadcastMatchStatisticsUpdatedAsync(result.TournamentId, matchId, senderUtc, ct);
+                    }
+
+                    if (result is null && statisticsChanged)
+                    {
+                        await TryBroadcastMatchStatisticsUpdatedAsync(currentMatch.TournamentId, matchId, senderUtc, ct);
+                    }
+
+                    if (isFirstPoll || realtimeChanged || adMatch.Finished)
+                    {
+                        listener.RealtimeSequence++;
+                        var eventTimestampUtc = DateTimeOffset.UtcNow;
 
                         await TryBroadcastRawMatchDataAsync(
                             matchId,
-                            result.TournamentId,
+                            currentMatch.TournamentId,
+                            senderUtc,
+                            eventTimestampUtc,
+                            listener.RealtimeSequence,
                             listener,
                             homeLegs,
                             awayLegs,
@@ -344,8 +614,16 @@ public sealed class AutodartsMatchListenerService : BackgroundService
                             awaySets,
                             mappedScores.HomePoints,
                             mappedScores.AwayPoints,
+                                activePlayerIndex,
+                                activePlayerId,
+                                round,
+                                turn,
+                                turnScore,
+                                turnBusted,
+                                currentTurnSnapshot.Id,
+                                currentTurnSnapshot.ThrowCount,
                             adMatch.Finished,
-                                statisticsChanged,
+                            statisticsChanged,
                             rawJsonText,
                             ct);
                     }
@@ -360,17 +638,91 @@ public sealed class AutodartsMatchListenerService : BackgroundService
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     listener.LastError = $"{ex.GetType().Name}: {ex.Message}";
+                    listener.TransportMode = "polling";
+                    listener.IsFallbackActive = true;
                     _logger.LogWarning(ex, "[Listener] Poll error for match {MatchId} (ext: {ExternalMatchId})", matchId, listener.ExternalMatchId);
                 }
 
-                await Task.Delay(PollInterval, ct);
+                var loopDelay = listener.IsFallbackActive ? _pollInterval : RealtimeLoopDelay;
+                await Task.Delay(loopDelay, ct);
             }
         }
         catch (OperationCanceledException) { /* expected */ }
         finally
         {
+            if (realtimeCts is not null)
+            {
+                realtimeCts.Cancel();
+                realtimeCts.Dispose();
+            }
+
+            if (realtimePumpTask is not null)
+            {
+                try
+                {
+                    await realtimePumpTask;
+                }
+                catch (OperationCanceledException) { }
+            }
+
             listener.IsRunning = false;
             _listeners.TryRemove(matchId, out _);
+        }
+    }
+
+    private async Task RunRealtimePumpAsync(Guid matchId, ActiveMatchListener listener, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(listener.BoardExternalId))
+            return;
+
+        using var scope = _serviceProvider.CreateScope();
+        var autodartsClient = scope.ServiceProvider.GetRequiredService<IAutodartsClient>();
+
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var accessToken = await GetAccessTokenAsync(ct);
+                if (string.IsNullOrWhiteSpace(accessToken))
+                {
+                    listener.TransportMode = "polling";
+                    listener.IsFallbackActive = true;
+                    await Task.Delay(TimeSpan.FromSeconds(1), ct);
+                    continue;
+                }
+
+                await foreach (var realtimeEvent in autodartsClient.ReadEventsAsync(accessToken, listener.BoardExternalId, ct))
+                {
+                    listener.LastRealtimeEvent = realtimeEvent;
+                    listener.LastRealtimeEventUtc = DateTimeOffset.UtcNow;
+                    listener.TransportMode = "websocket";
+                    listener.IsFallbackActive = false;
+                }
+
+                listener.TransportMode = "polling";
+                listener.IsFallbackActive = true;
+
+                if (!ct.IsCancellationRequested)
+                    await Task.Delay(TimeSpan.FromSeconds(1), ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                listener.TransportMode = "polling";
+                listener.IsFallbackActive = true;
+                listener.LastError = $"Realtime stream error: {ex.Message}";
+
+                _logger.LogWarning(
+                    ex,
+                    "[Listener] Realtime stream failed for match {MatchId} boardExternalId={BoardExternalId}; using polling fallback",
+                    matchId,
+                    listener.BoardExternalId);
+
+                await Task.Delay(TimeSpan.FromSeconds(2), ct);
+            }
         }
     }
 
@@ -410,7 +762,17 @@ public sealed class AutodartsMatchListenerService : BackgroundService
 
             if (string.IsNullOrWhiteSpace(session.RefreshToken))
             {
-                _logger.LogWarning("[Listener] No refresh token available");
+                if (session.ExpiresAt.HasValue && session.ExpiresAt.Value > DateTimeOffset.UtcNow)
+                {
+                    _logger.LogDebug("[Listener] No refresh token available, reusing current access token until expiry");
+                    return session.AccessToken;
+                }
+
+                _logger.LogWarning("[Listener] No refresh token available, trying credential re-login");
+                var reLoginToken = await ReLoginWithCredentialsAsync(ct);
+                if (!string.IsNullOrWhiteSpace(reLoginToken))
+                    return reLoginToken;
+
                 return session.AccessToken;
             }
 
@@ -459,8 +821,8 @@ public sealed class AutodartsMatchListenerService : BackgroundService
         var session = _sessionStore.GetActive();
         if (session is null || string.IsNullOrWhiteSpace(session.UsernameOrEmail) || string.IsNullOrWhiteSpace(session.Password))
         {
-            _logger.LogWarning("[Listener] No stored credentials available for re-login");
-            return session?.AccessToken;
+            _logger.LogDebug("[Listener] No stored credentials available for re-login");
+            return null;
         }
 
         using var scope = _serviceProvider.CreateScope();
@@ -497,16 +859,25 @@ public sealed class AutodartsMatchListenerService : BackgroundService
         }
 
         _logger.LogError("[Listener] All re-login attempts failed");
-        return session.AccessToken;
+        return null;
     }
 
-    private async Task TryBroadcastMatchUpdatedAsync(Guid matchId, Application.Contracts.Matches.MatchDto result, CancellationToken ct)
+    private async Task TryBroadcastMatchUpdatedAsync(Guid matchId, Application.Contracts.Matches.MatchDto result, DateTimeOffset senderUtc, CancellationToken ct)
     {
         try
         {
             await _tournamentHubContext.Clients
                 .Group($"tournament-{result.TournamentId}")
                 .SendAsync("MatchUpdated", result.TournamentId.ToString(), ct);
+
+            await _tournamentHubContext.Clients
+                .Group($"tournament-{result.TournamentId}")
+                .SendAsync("MatchUpdatedTimestamped", new
+                {
+                    tournamentId = result.TournamentId,
+                    matchId,
+                    timestamp = senderUtc
+                }, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -527,6 +898,9 @@ public sealed class AutodartsMatchListenerService : BackgroundService
     private async Task TryBroadcastRawMatchDataAsync(
         Guid matchId,
         Guid tournamentId,
+        DateTimeOffset sourceTimestampUtc,
+        DateTimeOffset eventTimestampUtc,
+        long sequence,
         ActiveMatchListener listener,
         int homeLegs,
         int awayLegs,
@@ -534,6 +908,14 @@ public sealed class AutodartsMatchListenerService : BackgroundService
         int awaySets,
         int? homePoints,
         int? awayPoints,
+        int? activePlayerIndex,
+        string? activePlayerId,
+        int? round,
+        int? turn,
+        int? turnScore,
+        bool? turnBusted,
+        string? currentTurnId,
+        int currentTurnThrowCount,
         bool finished,
         bool statisticsChanged,
         string rawJsonText,
@@ -551,10 +933,20 @@ public sealed class AutodartsMatchListenerService : BackgroundService
             awaySets,
             homePoints,
             awayPoints,
+            activePlayerIndex,
+            activePlayerId,
+            round,
+            turn,
+            turnScore,
+            turnBusted,
+            currentTurnId,
+            currentTurnThrowCount,
             finished,
             statisticsChanged,
             rawJson = rawJsonText,
-            timestamp = DateTimeOffset.UtcNow
+            sourceTimestamp = sourceTimestampUtc,
+            timestamp = eventTimestampUtc,
+            sequence
         };
 
         try
@@ -568,12 +960,13 @@ public sealed class AutodartsMatchListenerService : BackgroundService
         }
     }
 
-    private async Task TryBroadcastMatchStatisticsUpdatedAsync(Guid tournamentId, Guid matchId, CancellationToken ct)
+    private async Task TryBroadcastMatchStatisticsUpdatedAsync(Guid tournamentId, Guid matchId, DateTimeOffset sourceTimestampUtc, CancellationToken ct)
     {
         var payload = new
         {
             tournamentId,
             matchId,
+            sourceTimestamp = sourceTimestampUtc,
             timestamp = DateTimeOffset.UtcNow
         };
 
@@ -585,6 +978,55 @@ public sealed class AutodartsMatchListenerService : BackgroundService
         {
             _logger.LogWarning(ex, "[Listener] Match {MatchId} — MatchStatisticsUpdated broadcast failed", matchId);
         }
+    }
+
+    private static AutodartsMatchDetail? TryBuildMatchDetailFromRealtimeEvent(AutodartsEvent? realtimeEvent, string fallbackMatchId)
+    {
+        if (realtimeEvent is null
+            || !string.Equals(realtimeEvent.EventType, "match-state", StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(realtimeEvent.PayloadJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(realtimeEvent.PayloadJson);
+            var root = document.RootElement;
+
+            if (root.ValueKind != JsonValueKind.Object)
+                return null;
+
+            return new AutodartsMatchDetail(
+                TryGetStringProperty(root, "id") ?? fallbackMatchId,
+                TryGetStringProperty(root, "variant"),
+                TryGetStringProperty(root, "gameMode"),
+                root.TryGetProperty("finished", out var finishedElement) && finishedElement.ValueKind == JsonValueKind.True,
+                root.TryGetProperty("players", out var playersElement) && playersElement.ValueKind != JsonValueKind.Null ? playersElement.Clone() : null,
+                root.TryGetProperty("turns", out var turnsElement) && turnsElement.ValueKind != JsonValueKind.Null ? turnsElement.Clone() : null,
+                root.TryGetProperty("legs", out var legsElement) && legsElement.ValueKind != JsonValueKind.Null ? legsElement.Clone() : null,
+                root.TryGetProperty("sets", out var setsElement) && setsElement.ValueKind != JsonValueKind.Null ? setsElement.Clone() : null,
+                root.TryGetProperty("stats", out var statsElement) && statsElement.ValueKind != JsonValueKind.Null ? statsElement.Clone() : null,
+                root.Clone());
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static int? MapActivePlayerIndex(int? externalActivePlayerIndex, int homeSlot, int awaySlot)
+    {
+        if (!externalActivePlayerIndex.HasValue)
+            return null;
+
+        if (externalActivePlayerIndex.Value == homeSlot)
+            return 0;
+
+        if (externalActivePlayerIndex.Value == awaySlot)
+            return 1;
+
+        return externalActivePlayerIndex;
     }
 
     private static string SafeGetRawJsonText(JsonElement rawJson)
@@ -602,16 +1044,122 @@ public sealed class AutodartsMatchListenerService : BackgroundService
         }
     }
 
-    private sealed class ActiveMatchListener(string externalMatchId, Guid? boardId, CancellationTokenSource cts)
+    private static string? TryGetStringProperty(JsonElement element, string propertyName)
     {
-        public string ExternalMatchId { get; } = externalMatchId;
-        public Guid? BoardId { get; } = boardId;
+        return element.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+    }
+
+    private static int? TryGetIntProperty(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value))
+            return null;
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var parsed))
+            return parsed;
+
+        return null;
+    }
+
+    private static bool? TryGetBoolProperty(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value))
+            return null;
+
+        if (value.ValueKind == JsonValueKind.True)
+            return true;
+        if (value.ValueKind == JsonValueKind.False)
+            return false;
+
+        return null;
+    }
+
+    private static string ResolveActivePlayerId(JsonElement rawJson, int? activePlayerIndex)
+    {
+        if (!activePlayerIndex.HasValue || activePlayerIndex.Value < 0)
+            return string.Empty;
+
+        if (!rawJson.TryGetProperty("players", out var players) || players.ValueKind != JsonValueKind.Array)
+            return string.Empty;
+
+        var index = activePlayerIndex.Value;
+        if (index >= players.GetArrayLength())
+            return string.Empty;
+
+        var player = players[index];
+        return player.ValueKind == JsonValueKind.Object && player.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String
+            ? id.GetString() ?? string.Empty
+            : string.Empty;
+    }
+
+    private static string GetArrayKey(JsonElement rawJson, string propertyName)
+    {
+        if (!rawJson.TryGetProperty(propertyName, out var element) || element.ValueKind != JsonValueKind.Array)
+            return "-";
+
+        var parts = new List<string>();
+        foreach (var item in element.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out var i))
+            {
+                parts.Add(i.ToString());
+                continue;
+            }
+
+            parts.Add(item.GetRawText());
+        }
+
+        return parts.Count == 0 ? "-" : string.Join(",", parts);
+    }
+
+    private static TurnSnapshot TryGetCurrentTurnSnapshot(JsonElement rawJson)
+    {
+        if (!rawJson.TryGetProperty("turns", out var turns) || turns.ValueKind != JsonValueKind.Array)
+            return default;
+
+        string? turnId = null;
+        var throwCount = 0;
+
+        foreach (var turn in turns.EnumerateArray())
+        {
+            if (turn.ValueKind != JsonValueKind.Object)
+                continue;
+
+            if (turn.TryGetProperty("id", out var idElement) && idElement.ValueKind == JsonValueKind.String)
+                turnId = idElement.GetString();
+
+            if (turn.TryGetProperty("throws", out var throwsElement) && throwsElement.ValueKind == JsonValueKind.Array)
+                throwCount = throwsElement.GetArrayLength();
+            else
+                throwCount = 0;
+        }
+
+        return new TurnSnapshot(turnId, throwCount);
+    }
+
+    private sealed class ActiveMatchListener(string externalMatchId, Guid? boardId, string? boardExternalId, CancellationTokenSource cts)
+    {
+        public string ExternalMatchId { get; set; } = externalMatchId;
+        public Guid? BoardId { get; set; } = boardId;
+        public string? BoardExternalId { get; set; } = boardExternalId;
         public CancellationTokenSource Cts { get; } = cts;
         public bool IsRunning { get; set; }
         public DateTimeOffset? LastUpdateUtc { get; set; }
         public string? LastError { get; set; }
+        public string TransportMode { get; set; } = "polling";
+        public bool IsFallbackActive { get; set; } = true;
+        public AutodartsEvent? LastRealtimeEvent { get; set; }
+        public DateTimeOffset? LastRealtimeEventUtc { get; set; }
+        public DateTimeOffset? LastProcessedRealtimeEventUtc { get; set; }
         public string? LastScoreKey { get; set; }
+        public string? LastLiveScoreKey { get; set; }
+        public string? LastRealtimeKey { get; set; }
+        public DateTimeOffset? LastStatisticsSyncUtc { get; set; }
+        public long RealtimeSequence { get; set; }
     }
+
+    private readonly record struct TurnSnapshot(string? Id, int ThrowCount);
 }
 
 public sealed record MatchListenerInfo(
@@ -620,4 +1168,8 @@ public sealed record MatchListenerInfo(
     Guid? BoardId,
     bool IsRunning,
     DateTimeOffset? LastUpdateUtc,
-    string? LastError);
+    string? LastError,
+    bool IsWebSocketActive,
+    string TransportMode,
+    bool IsFallbackActive,
+    DateTimeOffset? LastRealtimeEventUtc);

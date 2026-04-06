@@ -21,7 +21,7 @@ public sealed class DartSuiteDbContext(DbContextOptions<DartSuiteDbContext> opti
     {
         modelBuilder.Entity<Board>(entity =>
         {
-            entity.HasIndex(x => x.ExternalBoardId).IsUnique();
+            //entity.HasIndex(x => x.ExternalBoardId).IsUnique();
             entity.Property(x => x.Name).HasMaxLength(128);
             entity.Property(x => x.CurrentMatchLabel).HasMaxLength(256);
         });

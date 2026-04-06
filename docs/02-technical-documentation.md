@@ -1,5 +1,19 @@
 # Technische Dokumentation
 
+## Dokumentationsstruktur
+
+- Detaillierte REST-API-Referenz: [07-rest-api.md](07-rest-api.md)
+- Integrierter UI-Hilfekatalog: [06-ui-help.md](06-ui-help.md)
+- UI/UX- und Accessibility-Review: [08-ui-ux-accessibility-review.md](08-ui-ux-accessibility-review.md)
+- Dokumentationspflege-Prozess: [09-documentation-maintenance.md](09-documentation-maintenance.md)
+
+## Datenkonsistenz: tournamentId/boardId
+
+- Boardzuweisungen werden serverseitig gegen den Turnierkontext validiert.
+- Cross-Tournament-Zuweisungen liefern einen fachlichen Konflikt (`409`).
+- Navigation und Kernseiten laden Boarddaten im aktiven Turnierkontext, um Datenvermischung in der UI zu vermeiden.
+- Regressionstests decken Board-Scopes in Matchzuweisung und Scheduling ab.
+
 ## API Endpunkte
 
 ### Boards
@@ -21,7 +35,7 @@
 ### Teilnehmer
 - `GET /api/tournaments/{id}/participants` — Teilnehmer abrufen
 - `POST /api/tournaments/{id}/participants` — Teilnehmer hinzufügen
-- `PUT /api/tournaments/{id}/participants` — Teilnehmer aktualisieren (inkl. SeedPot)
+- `PUT /api/tournaments/{id}/participants` — Teilnehmer aktualisieren (inkl. SeedPot, ParticipantType)
 - `DELETE /api/tournaments/{id}/participants/{participantId}` — Teilnehmer entfernen
 - `POST /api/tournaments/{id}/participants/assign-seed-pots` — Lostöpfe automatisch zuweisen (#13)
 
@@ -95,6 +109,12 @@
 - `NotificationPreference` (None/OwnMatches/FollowedMatches/AllMatches) — Benachrichtigungs-Flags (#14)
 - `TournamentEventType` — 11 Event-Typen (#14)
 - `ScoringCriterionType` — Erweitert um HighestCheckout, AverageDartsPerLeg, CheckoutPercentage, LotDraw (#16)
+- `ParticipantType` — Teilnehmer-Typen fuer Teamplay und Fachlogik (#39)
+
+## Sprint #39: Datenmodell und Migration
+- `Participant` wurde um das Feld `Type` erweitert (Enum: `ParticipantType`).
+- Migration: `20260406182805_AddParticipantType` fuegt Spalte `Participants.Type` hinzu.
+- Migrationsstatus: in Entwicklung erzeugt und per `dotnet ef database update` angewendet.
 
 ## Browser Push Notifications (VAPID/WebPush)
 - **Backend:** `NotificationService` nutzt die `WebPush`-Library mit VAPID-Schlüsseln. Abgelaufene Subscriptions werden automatisch entfernt (HTTP 410 Gone).

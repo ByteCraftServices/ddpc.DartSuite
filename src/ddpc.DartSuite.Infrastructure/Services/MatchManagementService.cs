@@ -11,6 +11,11 @@ namespace ddpc.DartSuite.Infrastructure.Services;
 
 public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchPredictionService predictionService) : IMatchManagementService
 {
+    private static IQueryable<Participant> ApplyPlanParticipantFilter(IQueryable<Participant> query, Tournament tournament)
+        => tournament.TeamplayEnabled
+            ? query.Where(x => x.Type == ParticipantType.TeamMember)
+            : query;
+
     private static MatchDto ToDto(Match m) => new(
         m.Id, m.TournamentId, m.Phase.ToString(), m.GroupNumber,
         m.Round, m.MatchNumber, m.BoardId,
@@ -20,6 +25,27 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         m.StartedUtc, m.FinishedUtc, m.Status.ToString(), m.ExternalMatchId,
         m.PlannedEndUtc, m.ExpectedEndUtc, m.DelayMinutes, m.SchedulingStatus.ToString(),
         m.HomeSlotOrigin, m.AwaySlotOrigin, m.NextMatchInfo);
+
+    private async Task EnsureTournamentStructureEditableAsync(Guid tournamentId, CancellationToken cancellationToken)
+    {
+        var tournament = await dbContext.Tournaments.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == tournamentId, cancellationToken);
+
+        if (tournament is null)
+            throw new InvalidOperationException("Turnier nicht gefunden.");
+
+        if (tournament.IsLocked)
+            throw new InvalidOperationException("Das Turnier ist gesperrt. Bitte entsperren Sie es, bevor Sie Änderungen vornehmen.");
+
+        var hasProgressedMatches = await dbContext.Matches.AsNoTracking().AnyAsync(
+            x => x.TournamentId == tournamentId
+                && x.Status != MatchStatus.WalkOver
+                && (x.StartedUtc != null || x.FinishedUtc != null),
+            cancellationToken);
+
+        if (hasProgressedMatches)
+            throw new InvalidOperationException("Die Turnierstruktur ist gesperrt, da bereits Matches gestartet oder beendet wurden.");
+    }
 
     public async Task<MatchDto?> GetMatchAsync(Guid matchId, CancellationToken cancellationToken = default)
     {
@@ -49,8 +75,11 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         var tournament = await dbContext.Tournaments.FindAsync([tournamentId], cancellationToken);
         if (tournament is null) return [];
 
-        var allParticipants = await dbContext.Participants
-            .Where(x => x.TournamentId == tournamentId)
+        await EnsureTournamentStructureEditableAsync(tournamentId, cancellationToken);
+
+        var allParticipants = await ApplyPlanParticipantFilter(
+            dbContext.Participants.Where(x => x.TournamentId == tournamentId),
+            tournament)
             .ToListAsync(cancellationToken);
 
         var hasExplicitSeeds = allParticipants.Any(p => p.Seed > 0);
@@ -250,8 +279,11 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         var tournament = await dbContext.Tournaments.FindAsync([tournamentId], cancellationToken);
         if (tournament is null || tournament.GroupCount < 1) return [];
 
-        var participants = await dbContext.Participants
-            .Where(x => x.TournamentId == tournamentId)
+        await EnsureTournamentStructureEditableAsync(tournamentId, cancellationToken);
+
+        var participants = await ApplyPlanParticipantFilter(
+            dbContext.Participants.Where(x => x.TournamentId == tournamentId),
+            tournament)
             .OrderBy(x => x.Seed)
             .ToListAsync(cancellationToken);
 
@@ -463,29 +495,312 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
             .Where(x => x.TournamentId == tournamentId && x.GroupNumber != null)
             .ToListAsync(cancellationToken);
 
+        if (participants.Count == 0)
+            return [];
+
         var groupMatches = await dbContext.Matches.AsNoTracking()
             .Where(x => x.TournamentId == tournamentId && x.Phase == MatchPhase.Group && x.FinishedUtc != null)
             .ToListAsync(cancellationToken);
 
-        var standings = new List<GroupStandingDto>();
-        foreach (var p in participants)
-        {
-            var played = groupMatches.Count(m => m.HomeParticipantId == p.Id || m.AwayParticipantId == p.Id);
-            var won = groupMatches.Count(m => m.WinnerParticipantId == p.Id);
-            var lost = played - won;
-            var legsWon = groupMatches.Where(m => m.HomeParticipantId == p.Id).Sum(m => m.HomeLegs)
-                        + groupMatches.Where(m => m.AwayParticipantId == p.Id).Sum(m => m.AwayLegs);
-            var legsLost = groupMatches.Where(m => m.HomeParticipantId == p.Id).Sum(m => m.AwayLegs)
-                         + groupMatches.Where(m => m.AwayParticipantId == p.Id).Sum(m => m.HomeLegs);
+        var groupMatchIds = groupMatches.Select(x => x.Id).ToList();
+        var statisticsByParticipant = groupMatchIds.Count == 0
+            ? new Dictionary<Guid, List<MatchPlayerStatistic>>()
+            : (await dbContext.MatchPlayerStatistics.AsNoTracking()
+                .Where(x => groupMatchIds.Contains(x.MatchId))
+                .ToListAsync(cancellationToken))
+                .GroupBy(x => x.ParticipantId)
+                .ToDictionary(g => g.Key, g => g.ToList());
 
-            standings.Add(new GroupStandingDto(
-                p.Id, p.DisplayName, p.GroupNumber ?? 0,
-                played, won, lost,
-                won * tournament.WinPoints + legsWon * tournament.LegFactor,
-                legsWon, legsLost, legsWon - legsLost));
+        var enabledCriteria = await dbContext.ScoringCriteria.AsNoTracking()
+            .Where(x => x.TournamentId == tournamentId && x.IsEnabled)
+            .OrderBy(x => x.Priority)
+            .Select(x => x.Type)
+            .ToListAsync(cancellationToken);
+
+        if (enabledCriteria.Count == 0)
+        {
+            enabledCriteria =
+            [
+                ScoringCriterionType.Points,
+                ScoringCriterionType.DirectDuel
+            ];
         }
 
-        return standings.OrderBy(s => s.GroupNumber).ThenByDescending(s => s.Points).ThenByDescending(s => s.LegDifference).ToList();
+        var standings = new List<GroupStandingDto>();
+
+        foreach (var group in participants
+            .GroupBy(x => x.GroupNumber ?? 0)
+            .OrderBy(x => x.Key))
+        {
+            var groupParticipants = group.ToList();
+            var groupNumber = group.Key;
+            var groupMatchSet = groupMatches
+                .Where(m => m.GroupNumber == groupNumber)
+                .ToList();
+
+            var rawStandings = groupParticipants
+                .Select(p => BuildStandingAccumulator(p, groupMatchSet, statisticsByParticipant.GetValueOrDefault(p.Id), tournament))
+                .ToList();
+
+            var tiebreakerAppliedByParticipant = new Dictionary<Guid, string>();
+            var ranked = RankByCriteriaRecursive(
+                rawStandings,
+                enabledCriteria,
+                groupMatchSet,
+                tournament,
+                tiebreakerAppliedByParticipant,
+                criterionIndex: 0);
+
+            for (var i = 0; i < ranked.Count; i++)
+            {
+                var entry = ranked[i];
+                standings.Add(new GroupStandingDto(
+                    entry.ParticipantId,
+                    entry.ParticipantName,
+                    groupNumber,
+                    entry.Played,
+                    entry.Won,
+                    entry.Lost,
+                    entry.Points,
+                    entry.LegsWon,
+                    entry.LegsLost,
+                    entry.LegDifference,
+                    entry.Average,
+                    entry.HighestAverage,
+                    entry.HighestCheckout,
+                    entry.AverageDartsPerLeg,
+                    entry.CheckoutPercent,
+                    entry.Breaks,
+                    i + 1,
+                    tiebreakerAppliedByParticipant.GetValueOrDefault(entry.ParticipantId)));
+            }
+        }
+
+        return standings
+            .OrderBy(s => s.GroupNumber)
+            .ThenBy(s => s.Rank > 0 ? s.Rank : int.MaxValue)
+            .ThenByDescending(s => s.Points)
+            .ThenByDescending(s => s.LegDifference)
+            .ToList();
+    }
+
+    private static StandingAccumulator BuildStandingAccumulator(
+        Participant participant,
+        IReadOnlyList<Match> groupMatches,
+        IReadOnlyList<MatchPlayerStatistic>? statistics,
+        Tournament tournament)
+    {
+        var playedMatches = groupMatches
+            .Where(m => m.HomeParticipantId == participant.Id || m.AwayParticipantId == participant.Id)
+            .ToList();
+
+        var played = playedMatches.Count;
+        var won = playedMatches.Count(m => m.WinnerParticipantId == participant.Id);
+        var lost = played - won;
+
+        var legsWon = playedMatches
+            .Sum(m => m.HomeParticipantId == participant.Id ? m.HomeLegs : m.AwayLegs);
+        var legsLost = playedMatches
+            .Sum(m => m.HomeParticipantId == participant.Id ? m.AwayLegs : m.HomeLegs);
+
+        var participantStats = statistics ?? [];
+        var average = participantStats.Count > 0 ? participantStats.Average(x => x.Average) : 0d;
+        var highestAverage = participantStats.Count > 0 ? participantStats.Max(x => x.Average) : 0d;
+        var highestCheckout = participantStats.Count > 0 ? participantStats.Max(x => x.HighestCheckout) : 0;
+        var averageDartsPerLeg = participantStats.Count > 0 ? participantStats.Average(x => x.AverageDartsPerLeg) : 0d;
+        var checkoutAttempts = participantStats.Sum(x => x.CheckoutAttempts);
+        var checkoutHits = participantStats.Sum(x => x.CheckoutHits);
+        var checkoutPercent = checkoutAttempts > 0
+            ? checkoutHits * 100d / checkoutAttempts
+            : participantStats.Count > 0 ? participantStats.Average(x => x.CheckoutPercent) : 0d;
+        var breaks = participantStats.Sum(x => x.Breaks);
+
+        return new StandingAccumulator
+        {
+            ParticipantId = participant.Id,
+            ParticipantName = participant.DisplayName,
+            Played = played,
+            Won = won,
+            Lost = lost,
+            Points = won * tournament.WinPoints + legsWon * tournament.LegFactor,
+            LegsWon = legsWon,
+            LegsLost = legsLost,
+            LegDifference = legsWon - legsLost,
+            Average = average,
+            HighestAverage = highestAverage,
+            HighestCheckout = highestCheckout,
+            AverageDartsPerLeg = averageDartsPerLeg,
+            CheckoutPercent = checkoutPercent,
+            Breaks = breaks
+        };
+    }
+
+    private static List<StandingAccumulator> RankByCriteriaRecursive(
+        IReadOnlyList<StandingAccumulator> standings,
+        IReadOnlyList<ScoringCriterionType> criteria,
+        IReadOnlyList<Match> groupMatches,
+        Tournament tournament,
+        Dictionary<Guid, string> tiebreakerAppliedByParticipant,
+        int criterionIndex)
+    {
+        if (standings.Count <= 1)
+            return standings.OrderBy(x => x.ParticipantName, StringComparer.OrdinalIgnoreCase).ToList();
+
+        if (criterionIndex >= criteria.Count)
+            return standings.OrderBy(x => x.ParticipantName, StringComparer.OrdinalIgnoreCase).ToList();
+
+        var criterion = criteria[criterionIndex];
+        var criterionScores = BuildCriterionScores(standings, criterion, groupMatches, tournament);
+
+        var ordered = standings
+            .OrderByDescending(s => criterionScores.GetValueOrDefault(s.ParticipantId))
+            .ThenBy(s => s.ParticipantName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var scoreGroups = ordered
+            .GroupBy(s => Math.Round(criterionScores.GetValueOrDefault(s.ParticipantId), 6))
+            .ToList();
+
+        if (scoreGroups.All(g => g.Count() == 1))
+        {
+            if (criterion != ScoringCriterionType.Points)
+            {
+                foreach (var participant in ordered)
+                {
+                    if (!tiebreakerAppliedByParticipant.ContainsKey(participant.ParticipantId))
+                        tiebreakerAppliedByParticipant[participant.ParticipantId] = ScoringCriterionLabel(criterion);
+                }
+            }
+
+            return ordered;
+        }
+
+        var result = new List<StandingAccumulator>(ordered.Count);
+
+        foreach (var scoreGroup in scoreGroups)
+        {
+            var groupEntries = scoreGroup.ToList();
+            if (groupEntries.Count == 1)
+            {
+                result.Add(groupEntries[0]);
+                continue;
+            }
+
+            var rankedWithinTie = RankByCriteriaRecursive(
+                groupEntries,
+                criteria,
+                groupMatches,
+                tournament,
+                tiebreakerAppliedByParticipant,
+                criterionIndex + 1);
+
+            if (criterion != ScoringCriterionType.Points)
+            {
+                foreach (var participant in rankedWithinTie)
+                {
+                    if (!tiebreakerAppliedByParticipant.ContainsKey(participant.ParticipantId))
+                        tiebreakerAppliedByParticipant[participant.ParticipantId] = ScoringCriterionLabel(criterion);
+                }
+            }
+
+            result.AddRange(rankedWithinTie);
+        }
+
+        return result;
+    }
+
+    private static Dictionary<Guid, double> BuildCriterionScores(
+        IReadOnlyList<StandingAccumulator> standings,
+        ScoringCriterionType criterion,
+        IReadOnlyList<Match> groupMatches,
+        Tournament tournament)
+    {
+        return criterion switch
+        {
+            ScoringCriterionType.Points => standings.ToDictionary(x => x.ParticipantId, x => (double)x.Points),
+            ScoringCriterionType.DirectDuel => BuildDirectDuelScores(standings, groupMatches, tournament),
+            ScoringCriterionType.WonLegs => standings.ToDictionary(x => x.ParticipantId, x => (double)x.LegsWon),
+            ScoringCriterionType.LegDifference => standings.ToDictionary(x => x.ParticipantId, x => (double)x.LegDifference),
+            ScoringCriterionType.Average => standings.ToDictionary(x => x.ParticipantId, x => x.Average),
+            ScoringCriterionType.HighestAverage => standings.ToDictionary(x => x.ParticipantId, x => x.HighestAverage),
+            ScoringCriterionType.Breaks => standings.ToDictionary(x => x.ParticipantId, x => (double)x.Breaks),
+            ScoringCriterionType.HighestCheckout => standings.ToDictionary(x => x.ParticipantId, x => (double)x.HighestCheckout),
+            ScoringCriterionType.AverageDartsPerLeg => standings.ToDictionary(x => x.ParticipantId, x => -x.AverageDartsPerLeg),
+            ScoringCriterionType.CheckoutPercentage => standings.ToDictionary(x => x.ParticipantId, x => x.CheckoutPercent),
+            ScoringCriterionType.LotDraw => standings.ToDictionary(x => x.ParticipantId, x => GetLotDrawScore(x.ParticipantId)),
+            _ => standings.ToDictionary(x => x.ParticipantId, _ => 0d)
+        };
+    }
+
+    private static Dictionary<Guid, double> BuildDirectDuelScores(
+        IReadOnlyList<StandingAccumulator> standings,
+        IReadOnlyList<Match> groupMatches,
+        Tournament tournament)
+    {
+        var participantIds = standings.Select(x => x.ParticipantId).ToHashSet();
+        var relevantMatches = groupMatches
+            .Where(m => participantIds.Contains(m.HomeParticipantId) && participantIds.Contains(m.AwayParticipantId))
+            .ToList();
+
+        var scores = standings.ToDictionary(x => x.ParticipantId, _ => 0d);
+
+        foreach (var match in relevantMatches)
+        {
+            var homeScore = (match.HomeLegs > match.AwayLegs ? tournament.WinPoints : 0)
+                + match.HomeLegs * tournament.LegFactor;
+            var awayScore = (match.AwayLegs > match.HomeLegs ? tournament.WinPoints : 0)
+                + match.AwayLegs * tournament.LegFactor;
+
+            if (scores.ContainsKey(match.HomeParticipantId))
+                scores[match.HomeParticipantId] += homeScore;
+
+            if (scores.ContainsKey(match.AwayParticipantId))
+                scores[match.AwayParticipantId] += awayScore;
+        }
+
+        return scores;
+    }
+
+    private static double GetLotDrawScore(Guid participantId)
+    {
+        var bytes = participantId.ToByteArray();
+        return BitConverter.ToUInt32(bytes, 0);
+    }
+
+    private static string ScoringCriterionLabel(ScoringCriterionType criterion)
+        => criterion switch
+        {
+            ScoringCriterionType.Points => "Punkte",
+            ScoringCriterionType.DirectDuel => "Direktes Duell",
+            ScoringCriterionType.WonLegs => "Gewonnene Legs",
+            ScoringCriterionType.LegDifference => "Leg-Differenz",
+            ScoringCriterionType.Average => "Average",
+            ScoringCriterionType.HighestAverage => "Highest Average",
+            ScoringCriterionType.Breaks => "Breaks",
+            ScoringCriterionType.HighestCheckout => "Highest Checkout",
+            ScoringCriterionType.AverageDartsPerLeg => "Average Darts/Leg",
+            ScoringCriterionType.CheckoutPercentage => "Checkout-%",
+            ScoringCriterionType.LotDraw => "Losentscheid",
+            _ => criterion.ToString()
+        };
+
+    private sealed class StandingAccumulator
+    {
+        public Guid ParticipantId { get; init; }
+        public required string ParticipantName { get; init; }
+        public int Played { get; init; }
+        public int Won { get; init; }
+        public int Lost { get; init; }
+        public int Points { get; init; }
+        public int LegsWon { get; init; }
+        public int LegsLost { get; init; }
+        public int LegDifference { get; init; }
+        public double Average { get; init; }
+        public double HighestAverage { get; init; }
+        public int HighestCheckout { get; init; }
+        public double AverageDartsPerLeg { get; init; }
+        public double CheckoutPercent { get; init; }
+        public int Breaks { get; init; }
     }
 
     // ─── Result Reporting ───
@@ -541,6 +856,8 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         var match = await dbContext.Matches.FirstOrDefaultAsync(x => x.Id == matchId, cancellationToken);
         if (match is null) return null;
 
+        await EnsureBoardScopeAsync(match.TournamentId, boardId, cancellationToken);
+
         var previousBoardId = match.BoardId;
         match.BoardId = boardId;
 
@@ -551,12 +868,13 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
 
     public async Task<MatchDto?> SwapParticipantsAsync(Guid matchId, Guid participantId, Guid newParticipantId, CancellationToken cancellationToken = default)
     {
-        var tournamentId = await dbContext.Matches.Where(m => m.Id == matchId).Select(m => m.TournamentId).FirstOrDefaultAsync(cancellationToken);
-        var allMatches = await dbContext.Matches.Where(x => x.TournamentId == tournamentId)
-            .ToListAsync(cancellationToken);
-
-        var targetMatch = allMatches.FirstOrDefault(m => m.Id == matchId);
+        var targetMatch = await dbContext.Matches.FirstOrDefaultAsync(m => m.Id == matchId, cancellationToken);
         if (targetMatch is null) return null;
+
+        await EnsureTournamentStructureEditableAsync(targetMatch.TournamentId, cancellationToken);
+
+        var allMatches = await dbContext.Matches.Where(x => x.TournamentId == targetMatch.TournamentId)
+            .ToListAsync(cancellationToken);
 
         // Find the match containing newParticipantId
         var sourceMatch = allMatches.FirstOrDefault(m =>
@@ -598,14 +916,34 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
             .ToListAsync(cancellationToken);
 
         var boards = await dbContext.Boards.AsNoTracking()
-            .Where(x => x.TournamentId == tournamentId || x.TournamentId == null)
+            .Where(x => x.TournamentId == tournamentId)
+            .OrderBy(x => x.Name)
+            .ThenBy(x => x.Id)
             .ToListAsync(cancellationToken);
+
+        if (boards.Count == 0)
+        {
+            boards = await dbContext.Boards.AsNoTracking()
+                .Where(x => x.TournamentId == null)
+                .OrderBy(x => x.Name)
+                .ThenBy(x => x.Id)
+                .ToListAsync(cancellationToken);
+        }
 
         var startDateTime = tournament.StartDate.ToDateTime(tournament.StartTime.Value);
         var startUtc = ConvertLocalWallTimeToUtc(startDateTime, TimeZoneInfo.Local);
 
+        if (boards.Count == 0)
+            return await GetMatchesAsync(tournamentId, cancellationToken);
+
         // Simple sequential scheduling: assign times based on round settings
         var boardEndTimes = boards.ToDictionary(b => b.Id, _ => startUtc);
+        var boardUsageCounts = boards.ToDictionary(b => b.Id, _ => 0);
+        var boardIds = boards.Select(b => b.Id).ToList();
+        var boardIndexById = boardIds
+            .Select((boardId, index) => new { boardId, index })
+            .ToDictionary(x => x.boardId, x => x.index);
+        var nextRoundRobinBoardIndex = 0;
         var playerLastEnd = new Dictionary<Guid, DateTimeOffset>();
 
         foreach (var match in matches.Where(m => m.Status != MatchStatus.WalkOver))
@@ -615,17 +953,24 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
             {
                 // Still track their board/player end times for subsequent scheduling
                 var roundSettingsExisting = rounds.GetValueOrDefault((match.Phase, match.Round));
-                var durationExisting = TimeSpan.FromMinutes(roundSettingsExisting?.MatchDurationMinutes ?? 10);
+                var legSecsExisting = roundSettingsExisting?.LegDurationSeconds > 0 ? roundSettingsExisting.LegDurationSeconds : 300;
+                var totalSecsExisting = (roundSettingsExisting?.Sets ?? 1) * (roundSettingsExisting?.Legs ?? 3) * legSecsExisting;
+                var durationExisting = TimeSpan.FromSeconds(totalSecsExisting);
                 var endExisting = (match.PlannedStartUtc?.ToUniversalTime() ?? startUtc) + durationExisting;
                 if (match.BoardId.HasValue && boardEndTimes.ContainsKey(match.BoardId.Value))
+                {
                     boardEndTimes[match.BoardId.Value] = endExisting > boardEndTimes[match.BoardId.Value] ? endExisting : boardEndTimes[match.BoardId.Value];
+                    boardUsageCounts[match.BoardId.Value]++;
+                }
                 if (match.HomeParticipantId != Guid.Empty) playerLastEnd[match.HomeParticipantId] = endExisting;
                 if (match.AwayParticipantId != Guid.Empty) playerLastEnd[match.AwayParticipantId] = endExisting;
                 continue;
             }
 
             var roundSettings = rounds.GetValueOrDefault((match.Phase, match.Round));
-            var duration = TimeSpan.FromMinutes(roundSettings?.MatchDurationMinutes ?? 10);
+            var legSecs = roundSettings?.LegDurationSeconds > 0 ? roundSettings.LegDurationSeconds : 300;
+            var totalSecs = (roundSettings?.Sets ?? 1) * (roundSettings?.Legs ?? 3) * legSecs;
+            var duration = TimeSpan.FromSeconds(totalSecs);
             var pause = TimeSpan.FromMinutes(roundSettings?.PauseBetweenMatchesMinutes ?? 2);
             var minPlayerPause = TimeSpan.FromMinutes(roundSettings?.MinPlayerPauseMinutes ?? 0);
 
@@ -646,35 +991,48 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
                 if (!match.IsBoardLocked || match.BoardId is null)
                 {
                     Guid? lockedBestBoard = null;
-                    var lockedBestTime = DateTimeOffset.MaxValue;
-                    if (roundSettings?.BoardAssignment == BoardAssignmentMode.Fixed && roundSettings.FixedBoardId.HasValue)
+                    if (roundSettings?.BoardAssignment == BoardAssignmentMode.Fixed
+                        && roundSettings.FixedBoardId.HasValue
+                        && boardEndTimes.ContainsKey(roundSettings.FixedBoardId.Value))
                     {
                         lockedBestBoard = roundSettings.FixedBoardId.Value;
                     }
                     else
                     {
-                        foreach (var (boardId, endTime) in boardEndTimes)
+                        var freeBoardsAtLockedStart = boardIds
+                            .Where(boardId => boardEndTimes[boardId] <= lockedStart)
+                            .OrderBy(boardId => boardUsageCounts[boardId])
+                            .ThenBy(boardId => GetRoundRobinDistance(boardIndexById[boardId], nextRoundRobinBoardIndex, boardIds.Count))
+                            .ToList();
+
+                        if (freeBoardsAtLockedStart.Count > 0)
                         {
-                            if (endTime <= lockedStart && endTime < lockedBestTime)
-                            { lockedBestTime = endTime; lockedBestBoard = boardId; }
+                            lockedBestBoard = freeBoardsAtLockedStart[0];
+                            nextRoundRobinBoardIndex = (boardIndexById[lockedBestBoard.Value] + 1) % boardIds.Count;
                         }
+
                         // If no board is free at locked time, pick earliest available
                         if (lockedBestBoard is null)
                         {
-                            foreach (var (boardId, endTime) in boardEndTimes)
-                            {
-                                if (endTime < lockedBestTime) { lockedBestTime = endTime; lockedBestBoard = boardId; }
-                            }
+                            lockedBestBoard = SelectBestDynamicBoard(
+                                boardIds,
+                                boardIndexById,
+                                boardEndTimes,
+                                boardUsageCounts,
+                                lockedStart,
+                                ref nextRoundRobinBoardIndex);
                         }
                     }
                     if (lockedBestBoard.HasValue)
                     {
-                        match.BoardId ??= lockedBestBoard;
+                        match.BoardId = lockedBestBoard;
+                        boardUsageCounts[match.BoardId.Value]++;
                         boardEndTimes[match.BoardId!.Value] = lockedStart + duration + pause;
                     }
                 }
                 else if (match.BoardId.HasValue && boardEndTimes.ContainsKey(match.BoardId.Value))
                 {
+                    boardUsageCounts[match.BoardId.Value]++;
                     boardEndTimes[match.BoardId.Value] = lockedStart + duration + pause;
                 }
 
@@ -695,29 +1053,33 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
                 bestTime = boardEndTimes.GetValueOrDefault(match.BoardId.Value, startUtc);
             }
             // Use fixed board from round settings if specified
-            else if (roundSettings?.BoardAssignment == BoardAssignmentMode.Fixed && roundSettings.FixedBoardId.HasValue)
+            else if (roundSettings?.BoardAssignment == BoardAssignmentMode.Fixed
+                && roundSettings.FixedBoardId.HasValue
+                && boardEndTimes.ContainsKey(roundSettings.FixedBoardId.Value))
             {
                 bestBoard = roundSettings.FixedBoardId.Value;
                 bestTime = boardEndTimes.GetValueOrDefault(bestBoard.Value, startUtc);
             }
-            else if (match.BoardId.HasValue)
-            {
-                bestBoard = match.BoardId;
-                bestTime = boardEndTimes.GetValueOrDefault(match.BoardId.Value, startUtc);
-            }
             else
             {
-                foreach (var (boardId, endTime) in boardEndTimes)
-                {
-                    if (endTime < bestTime) { bestTime = endTime; bestBoard = boardId; }
-                }
+                bestBoard = SelectBestDynamicBoard(
+                    boardIds,
+                    boardIndexById,
+                    boardEndTimes,
+                    boardUsageCounts,
+                    earliest,
+                    ref nextRoundRobinBoardIndex);
+                bestTime = bestBoard.HasValue
+                    ? boardEndTimes.GetValueOrDefault(bestBoard.Value, startUtc)
+                    : startUtc;
             }
 
             var matchStart = bestTime > earliest ? bestTime : earliest;
             match.PlannedStartUtc = matchStart.ToUniversalTime();
             if (bestBoard.HasValue)
             {
-                match.BoardId ??= bestBoard;
+                match.BoardId = bestBoard;
+                boardUsageCounts[bestBoard.Value]++;
                 boardEndTimes[bestBoard.Value] = matchStart + duration + pause;
             }
 
@@ -730,12 +1092,59 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         return await GetMatchesAsync(tournamentId, cancellationToken);
     }
 
+    private static Guid? SelectBestDynamicBoard(
+        IReadOnlyList<Guid> boardIds,
+        IReadOnlyDictionary<Guid, int> boardIndexById,
+        IReadOnlyDictionary<Guid, DateTimeOffset> boardEndTimes,
+        IReadOnlyDictionary<Guid, int> boardUsageCounts,
+        DateTimeOffset earliestStart,
+        ref int nextRoundRobinBoardIndex)
+    {
+        if (boardIds.Count == 0)
+            return null;
+
+        Guid? bestBoardId = null;
+        DateTimeOffset bestBoardStart = default;
+        var bestUsage = int.MaxValue;
+        var bestDistance = int.MaxValue;
+
+        foreach (var boardId in boardIds)
+        {
+            var boardAvailableAt = boardEndTimes.GetValueOrDefault(boardId, earliestStart);
+            var boardStart = boardAvailableAt > earliestStart ? boardAvailableAt : earliestStart;
+            var usage = boardUsageCounts.GetValueOrDefault(boardId);
+            var distance = GetRoundRobinDistance(boardIndexById[boardId], nextRoundRobinBoardIndex, boardIds.Count);
+
+            if (bestBoardId is null
+                || boardStart < bestBoardStart
+                || (boardStart == bestBoardStart && usage < bestUsage)
+                || (boardStart == bestBoardStart && usage == bestUsage && distance < bestDistance))
+            {
+                bestBoardId = boardId;
+                bestBoardStart = boardStart;
+                bestUsage = usage;
+                bestDistance = distance;
+            }
+        }
+
+        if (bestBoardId.HasValue)
+            nextRoundRobinBoardIndex = (boardIndexById[bestBoardId.Value] + 1) % boardIds.Count;
+
+        return bestBoardId;
+    }
+
+    private static int GetRoundRobinDistance(int boardIndex, int nextBoardIndex, int boardCount)
+        => (boardIndex - nextBoardIndex + boardCount) % boardCount;
+
     // ─── Prediction ───
 
     public async Task<MatchDto?> UpdateMatchScheduleAsync(Guid matchId, DateTimeOffset? startTime, bool lockTime, Guid? boardId, bool lockBoard, CancellationToken cancellationToken = default)
     {
         var match = await dbContext.Matches.FirstOrDefaultAsync(x => x.Id == matchId, cancellationToken);
         if (match is null) return null;
+
+        if (boardId.HasValue)
+            await EnsureBoardScopeAsync(match.TournamentId, boardId.Value, cancellationToken);
 
         var previousBoardId = match.BoardId;
 
@@ -748,6 +1157,21 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return ToDto(match);
+    }
+
+    private async Task EnsureBoardScopeAsync(Guid tournamentId, Guid boardId, CancellationToken cancellationToken)
+    {
+        var boardScope = await dbContext.Boards
+            .AsNoTracking()
+            .Where(x => x.Id == boardId)
+            .Select(x => new { x.TournamentId })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (boardScope is null)
+            throw new InvalidOperationException("Board nicht gefunden.");
+
+        if (boardScope.TournamentId.HasValue && boardScope.TournamentId.Value != tournamentId)
+            throw new InvalidOperationException("Board gehoert zu einem anderen Turnier.");
     }
 
     public async Task<MatchDto?> ToggleMatchTimeLockAsync(Guid matchId, bool locked, CancellationToken cancellationToken = default)
@@ -817,6 +1241,11 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         match.RecomputeStatus();
 
         await CleanupBoardCurrentMatchPointersAsync(new HashSet<Guid> { match.Id }, cancellationToken);
+
+        var statsToDelete = await dbContext.MatchPlayerStatistics
+            .Where(x => x.MatchId == matchId)
+            .ToListAsync(cancellationToken);
+        dbContext.MatchPlayerStatistics.RemoveRange(statsToDelete);
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return ToDto(match);

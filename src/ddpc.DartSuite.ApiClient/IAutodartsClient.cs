@@ -10,9 +10,9 @@ public interface IAutodartsClient
     Task<AutodartsProfile> GetProfileAsync(string accessToken, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<AutodartsBoard>> GetBoardsAsync(string accessToken, string? userId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<AutodartsFriend>> GetFriendsAsync(string accessToken, CancellationToken cancellationToken = default);
-    Task<AutodartsMatchDetail?> GetMatchAsync(string accessToken, string matchId, CancellationToken cancellationToken = default);
+    Task<AutodartsMatchDetail?> GetMatchAsync(string accessToken, string matchId, bool allowLobbyFallback = true, CancellationToken cancellationToken = default);
     Task<AutodartsLobby?> GetLobbyAsync(string accessToken, string lobbyId, CancellationToken cancellationToken = default);
-    IAsyncEnumerable<AutodartsEvent> ReadEventsAsync(string boardExternalId, CancellationToken cancellationToken = default);
+    IAsyncEnumerable<AutodartsEvent> ReadEventsAsync(string accessToken, string boardExternalId, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Lightweight password-grant authentication with optional audience override.

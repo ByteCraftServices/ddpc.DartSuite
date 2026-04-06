@@ -14,7 +14,7 @@ public sealed record TournamentRoundDto(
     int MaxRounds,
     string BullMode,
     string BullOffMode,
-    int MatchDurationMinutes,
+    int LegDurationSeconds,
     int PauseBetweenMatchesMinutes,
     int MinPlayerPauseMinutes,
     string BoardAssignment,

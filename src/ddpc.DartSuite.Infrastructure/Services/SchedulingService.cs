@@ -46,7 +46,7 @@ public sealed class SchedulingService(DartSuiteDbContext dbContext) : ISchedulin
             }
 
             var roundDef = roundDefs.FirstOrDefault(r => r.RoundNumber == match.Round && r.Phase == match.Phase);
-            var estimatedMinutes = EstimateMatchDuration(roundDef?.Sets ?? 1, roundDef?.Legs ?? 3);
+            var estimatedMinutes = EstimateMatchDuration(roundDef?.Sets ?? 1, roundDef?.Legs ?? 3, roundDef?.LegDurationSeconds ?? 0);
 
             match.PlannedStartUtc = boardSlots[earliestIdx];
             match.PlannedEndUtc = boardSlots[earliestIdx].AddMinutes(estimatedMinutes);
@@ -125,11 +125,12 @@ public sealed class SchedulingService(DartSuiteDbContext dbContext) : ISchedulin
         return matches.Select(ToDto).ToList();
     }
 
-    private static int EstimateMatchDuration(int sets, int legs)
+    private static int EstimateMatchDuration(int sets, int legs, int legDurationSeconds)
     {
-        // Average leg takes ~5 minutes, add 2 min set breaks
-        var totalLegs = sets * legs;
-        return (int)(totalLegs * 5 + (sets - 1) * 2);
+        // If LegDurationSeconds is configured, use it; otherwise fall back to 5 min/leg
+        var secondsPerLeg = legDurationSeconds > 0 ? legDurationSeconds : 300;
+        var totalSeconds = sets * legs * secondsPerLeg;
+        return (int)Math.Ceiling(totalSeconds / 60.0);
     }
 
     private static MatchDto ToDto(Domain.Entities.Match m) => new(

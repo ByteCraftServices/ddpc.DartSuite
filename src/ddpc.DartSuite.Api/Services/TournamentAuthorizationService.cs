@@ -110,6 +110,17 @@ public sealed class TournamentAuthorizationService(
             : AccessCheckResult.Forbidden("Nur eigene Daten sind erlaubt.");
     }
 
+    public AccessCheckResult EnsureAuthenticatedOrIntegration(HttpContext context)
+    {
+        if (IsIntegrationRequest(context))
+            return AccessCheckResult.Allow("integration");
+
+        var actorName = GetActiveActorName();
+        return string.IsNullOrWhiteSpace(actorName)
+            ? AccessCheckResult.Unauthorized("Autodarts-Login erforderlich.")
+            : AccessCheckResult.Allow("authenticated");
+    }
+
     public bool IsIntegrationRequest(HttpContext context)
     {
         if (string.IsNullOrWhiteSpace(_integrationApiKey))

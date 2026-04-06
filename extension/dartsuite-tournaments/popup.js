@@ -8,13 +8,17 @@ const SETTINGS_KEYS = {
     defaultHost: "",
     hostInput: "",
     tournamentId: "",
+    dartsuiteEnabled: true,
     autoManaged: true,
     fullscreen: false,
     statusPollSeconds: 30,
-    statusBarMode: "always"
+    statusBarMode: "always",
+    debugMode: false
 };
 
 let currentTournament = null;
+const lastBoardTransferOutcomes = new Map();
+let dartsuiteEnabled = true;
 
 // ─── Initialization ───
 
@@ -22,10 +26,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadSettings();
     setupTabs();
     setupEventListeners();
+    applyExtensionEnabledUi();
     await updateHeaderStatus();
     await checkApiStatus();
     await updateApiErrorDisplay();
-    await loadTournamentState();
+    if (dartsuiteEnabled) {
+        await loadTournamentState();
+    }
 });
 
 // ─── Header Status Display ───
@@ -68,6 +75,10 @@ async function updateHeaderStatus() {
 function setupTabs() {
     for (const btn of document.querySelectorAll(".tabs button")) {
         btn.addEventListener("click", () => {
+            if (!dartsuiteEnabled && btn.dataset.tab !== "settings") {
+                return;
+            }
+
             document.querySelectorAll(".tabs button").forEach(b => b.classList.remove("active"));
             document.querySelectorAll(".tab-content").forEach(t => t.classList.remove("active"));
             btn.classList.add("active");
@@ -132,13 +143,17 @@ async function checkApiStatus() {
         if (response.ok) {
             setDot("apiDot", "online");
             document.getElementById("apiStatus").textContent = "DartSuite API: online";
-            chrome.runtime.sendMessage({ action: "setDstStatus", status: "ready" });
+            if (dartsuiteEnabled) {
+                chrome.runtime.sendMessage({ action: "setDstStatus", status: "ready" });
+            }
             setConnectState("connected");
             await updateApiErrorDisplay();
         } else {
             setDot("apiDot", "offline");
             document.getElementById("apiStatus").textContent = `API: Fehler (${response.status})`;
-            chrome.runtime.sendMessage({ action: "setDstStatus", status: "offline" });
+            if (dartsuiteEnabled) {
+                chrome.runtime.sendMessage({ action: "setDstStatus", status: "offline" });
+            }
             setConnectState("offline");
             openTab("settings");
             focusApiUrl();
@@ -147,7 +162,9 @@ async function checkApiStatus() {
     } catch {
         setDot("apiDot", "offline");
         document.getElementById("apiStatus").textContent = "DartSuite API: nicht erreichbar";
-        chrome.runtime.sendMessage({ action: "setDstStatus", status: "offline" });
+        if (dartsuiteEnabled) {
+            chrome.runtime.sendMessage({ action: "setDstStatus", status: "offline" });
+        }
         setConnectState("offline");
         openTab("settings");
         focusApiUrl();
@@ -231,7 +248,7 @@ async function lookupTournamentByCode() {
             successEl.style.display = "block";
 
             await saveTournamentSelection(tournament);
-            showActiveTournament(tournament);
+            await showActiveTournament(tournament);
             chrome.runtime.sendMessage({ action: "setDstStatus", status: "connected" });
             chrome.runtime.sendMessage({ action: "tournamentSelected", tournament });
         } else if (response.status === 404) {
@@ -258,7 +275,7 @@ async function selectTournamentById(id) {
 
         document.getElementById("codeInput").value = tournament.joinCode || "";
         await saveTournamentSelection(tournament);
-        showActiveTournament(tournament);
+        await showActiveTournament(tournament);
         chrome.runtime.sendMessage({ action: "setDstStatus", status: "connected" });
         chrome.runtime.sendMessage({ action: "tournamentSelected", tournament });
     } catch {
@@ -266,7 +283,7 @@ async function selectTournamentById(id) {
     }
 }
 
-function showActiveTournament(tournament) {
+async function showActiveTournament(tournament) {
     const section = document.getElementById("activeTournamentSection");
     const info = document.getElementById("activeTournamentInfo");
     if (!section || !info) return;
@@ -286,10 +303,11 @@ function showActiveTournament(tournament) {
     const startDate = new Date(tournament.startDate);
     const isActive = startDate <= new Date();
     if (isActive) {
-        loadActiveBoardOptions();
+        await loadActiveBoardOptions();
     } else {
         const boardSection = document.getElementById("boardSelectSection");
         if (boardSection) boardSection.style.display = "none";
+        await synchronizeTournamentContext({ showMessage: false, source: "initial-load" });
     }
 }
 
@@ -316,7 +334,7 @@ async function loadTournamentState() {
                 currentTournament = tournament;
                 document.getElementById("codeInput").value = tournament.joinCode || "";
                 document.getElementById("tournamentSelect").value = tournament.id;
-                showActiveTournament(tournament);
+                await showActiveTournament(tournament);
             }
         } catch { /* API offline, silent */ }
     }
@@ -331,9 +349,16 @@ async function loadBoards() {
     // Get local Autodarts boards from content script
     const localResult = await getFromActiveTab("getLocalBoards");
     const localBoards = localResult?.boards || [];
+    const localBoardError = localResult?.boardError || null;
 
     if (localBoards.length === 0) {
-        list.innerHTML = '<div class="info">Keine lokalen Boards gefunden. Bitte play.autodarts.io/boards öffnen.</div>';
+        const reason = localBoardError?.message
+            ? escapeHtml(localBoardError.message)
+            : "Keine lokalen Boards gefunden. Bitte play.autodarts.io/boards öffnen.";
+        const extra = localBoardError?.status
+            ? `<div class="info" style="color:#ffcc80">Status: ${escapeHtml(String(localBoardError.status))}</div>`
+            : "";
+        list.innerHTML = `<div class="error">${reason}</div>${extra}`;
         if (transferBtn) transferBtn.disabled = true;
         return;
     }
@@ -349,7 +374,7 @@ async function loadBoards() {
     // Map DartSuite boards by externalBoardId for lookup
     const dsMap = new Map();
     for (const b of dartsuiteBoards) {
-        dsMap.set(b.externalBoardId, b);
+        dsMap.set(normalizeBoardId(b.externalBoardId), b);
     }
 
     // Check current tournament boards
@@ -362,23 +387,27 @@ async function loadBoards() {
         const boardId = board.id || board.externalBoardId;
         const boardName = board.name || boardId;
         const boardIp = board.ip || board.localIpAddress || "";
-        const dsBoard = dsMap.get(boardId);
+        const dsBoard = dsMap.get(normalizeBoardId(boardId));
         const isInTournament = dsBoard && dsBoard.tournamentId && tournamentId &&
-            dsBoard.tournamentId === tournamentId;
+            sameId(dsBoard.tournamentId, tournamentId);
+        const lastOutcome = lastBoardTransferOutcomes.get(normalizeBoardId(boardId));
 
         const item = document.createElement("div");
         item.className = "board-item";
         item.style.flexWrap = "wrap";
 
         if (isInTournament) {
-            // Board is already in the tournament — show Teilnehmen/Verlassen
+            // Board is already in the tournament — show green check + Teilnehmen/Verlassen
             const isManaged = dsBoard.managedMode === "Auto";
             const reachable = boardIp ? await pingBoard(boardIp) : false;
 
             item.innerHTML = `
-                <div style="flex:1">
-                    <div class="board-name">${escapeHtml(boardName)}</div>
-                    <div class="board-status" style="color:#4caf50;font-size:10px">Im Turnier | ${dsBoard.managedMode}</div>
+                <div style="flex:1;display:flex;gap:6px;align-items:flex-start">
+                    <span style="color:#4caf50;font-weight:bold;font-size:13px;line-height:1">✓</span>
+                    <div>
+                        <div class="board-name">${escapeHtml(boardName)}</div>
+                        <div class="board-status" style="color:#4caf50;font-size:10px">Im Turnier | ${dsBoard.managedMode}</div>
+                    </div>
                 </div>
                 ${reachable
                     ? (isManaged
@@ -390,6 +419,9 @@ async function loadBoards() {
             // Board not in tournament — show checkbox for transfer
             hasTransferable = true;
             const inDartSuite = !!dsBoard;
+            const outcomeHint = lastOutcome && !lastOutcome.ok
+                ? `<div class="board-status" style="color:#ffb74d;font-size:10px">Zuordnung fehlgeschlagen: ${escapeHtml(lastOutcome.reason || "Unbekannter Fehler")}</div>`
+                : "";
             item.innerHTML = `
                 <div class="checkbox-row" style="flex:1">
                     <input type="checkbox" data-board-ext-id="${escapeHtml(boardId)}"
@@ -398,8 +430,9 @@ async function loadBoards() {
                     <div>
                         <div class="board-name">${escapeHtml(boardName)}</div>
                         <div class="board-status" style="color:#aaa;font-size:10px">
-                            ${inDartSuite ? 'In DartSuite' : 'Neu'} | ${boardIp || 'Keine IP'}
+                            ${inDartSuite ? 'In DartSuite, nicht im Turnier' : 'Neu'} | ${boardIp || 'Keine IP'}
                         </div>
+                        ${outcomeHint}
                     </div>
                 </div>
             `;
@@ -465,60 +498,35 @@ async function transferSelectedBoards() {
         const name = cb.dataset.boardName;
         const ip = cb.dataset.boardIp;
         try {
-            const response = await fetch(`${apiBaseUrl}/api/boards`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    externalBoardId: extId,
-                    name: name,
-                    localIpAddress: ip || null,
-                    boardManagerUrl: null
-                })
-            });
-            if (response.ok) {
-                const board = await response.json();
-                // Verify: re-read from API to confirm the board is persisted
-                const verifyResp = await fetch(`${apiBaseUrl}/api/boards/${board.id}`);
-                if (verifyResp.ok) {
-                    transferred++;
-                    results.push({ extId, name, ok: true });
-                } else {
-                    failed++;
-                    results.push({ extId, name, ok: false });
-                }
-            } else if (response.status === 409) {
-                // Already exists — verify it's actually there
-                const allResp = await fetch(`${apiBaseUrl}/api/boards`);
-                if (allResp.ok) {
-                    const allBoards = await allResp.json();
-                    const existing = allBoards.find(b => b.externalBoardId === extId);
-                    if (existing) {
-                        transferred++;
-                        results.push({ extId, name, ok: true });
-                    } else {
-                        failed++;
-                        results.push({ extId, name, ok: false });
-                    }
-                } else {
-                    failed++;
-                    results.push({ extId, name, ok: false });
-                }
+            const result = await ensureBoardRegisteredInTournament({ apiBaseUrl, extId, name, ip, tournamentId: currentTournament.id });
+            results.push(result);
+            lastBoardTransferOutcomes.set(normalizeBoardId(extId), result);
+
+            if (result.ok) {
+                transferred++;
             } else {
                 failed++;
-                results.push({ extId, name, ok: false });
             }
-        } catch {
+        } catch (error) {
             failed++;
-            results.push({ extId, name, ok: false });
+            const fallback = { extId, name, ok: false, reason: error?.message || "Unbekannter Fehler" };
+            results.push(fallback);
+            lastBoardTransferOutcomes.set(normalizeBoardId(extId), fallback);
         }
     }
 
     if (failed > 0) {
-        setMessage(`${transferred} Board(s) übertragen, ${failed} fehlgeschlagen.`, "error");
+        const firstIssues = results
+            .filter(x => !x.ok)
+            .slice(0, 2)
+            .map(x => `${x.name}: ${x.reason || "Fehler"}`)
+            .join(" | ");
+        const more = failed > 2 ? ` (+${failed - 2} weitere)` : "";
+        setMessage(`${transferred} Board(s) im Turnier registriert, ${failed} fehlgeschlagen. ${firstIssues}${more}`, "error");
     } else {
-        setMessage(`${transferred} Board(s) verifiziert übertragen. ✓`);
+        setMessage(`${transferred} Board(s) im Turnier registriert. ✓`);
     }
-    await loadBoards(); // Refresh to show verified status
+    await loadBoards(); // Refresh to show verified tournament state
 }
 
 async function setManagedMode(boardId, mode) {
@@ -529,12 +537,12 @@ async function setManagedMode(boardId, mode) {
     try {
         const url = `${apiBaseUrl}/api/boards/${boardId}/managed?mode=${mode}` +
             (mode === "Auto" && tournamentId ? `&tournamentId=${tournamentId}` : "");
-        const response = await fetch(url, { method: "PATCH" });
+        const response = await apiFetchWithAutodartsRetry(apiBaseUrl, url, { method: "PATCH" });
         if (response.ok) {
             // Resolve board name from the boards list
             let boardName = boardId;
             try {
-                const bResp = await fetch(`${apiBaseUrl}/api/boards`);
+                const bResp = await apiFetchWithAutodartsRetry(apiBaseUrl, `${apiBaseUrl}/api/boards`);
                 if (bResp.ok) {
                     const boards = await bResp.json();
                     const b = boards.find(x => x.id === boardId);
@@ -548,9 +556,12 @@ async function setManagedMode(boardId, mode) {
                 boardId, mode, tournamentId, tournamentName, host, boardName
             });
             await loadBoards();
+        } else {
+            const errorMessage = await readApiErrorResponse(response, "Managed Mode konnte nicht gesetzt werden.");
+            setMessage(errorMessage, "error");
         }
-    } catch {
-        setMessage("Fehler beim Setzen des Managed Mode.");
+    } catch (error) {
+        setMessage(error?.message || "Fehler beim Setzen des Managed Mode.", "error");
     }
 }
 // Make accessible from inline onclick
@@ -769,58 +780,28 @@ async function loadActiveBoardOptions() {
         boardSelect.appendChild(opt);
     }
 
-    // Restore previously selected board
-    const stored = await chrome.storage.sync.get(["managedBoardId"]);
-    if (stored.managedBoardId) {
+    // Restore previously selected board only if it belongs to the currently selected tournament context
+    const stored = await chrome.storage.sync.get(["managedBoardId", "managedTournamentId"]);
+    if (stored.managedBoardId && sameId(stored.managedTournamentId, tournamentId)) {
         boardSelect.value = stored.managedBoardId;
+    } else {
+        boardSelect.value = "";
     }
 
     // Show warning if no board selected yet
     updateBoardSelectionHint(boardSelect);
 
-    // On change: save selection and notify both content script AND background
-    boardSelect.addEventListener("change", async () => {
-        const selectedValue = boardSelect.value;
-        const selectedOption = boardSelect.selectedOptions[0];
-        const boardName = selectedOption?.dataset.name || selectedValue;
+    // On change: keep managed context in sync across popup/content/background
+    boardSelect.onchange = async () => {
         updateBoardSelectionHint(boardSelect);
-        if (selectedValue && currentTournament) {
-            await chrome.storage.sync.set({ managedBoardId: selectedValue, managedBoardName: boardName });
-            // Notify content script with DartSuite internal board ID
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (tab?.id && tab.url?.startsWith("https://play.autodarts.io/")) {
-                chrome.tabs.sendMessage(tab.id, {
-                    action: "setManagedMode",
-                    payload: {
-                        mode: "Auto",
-                        boardId: selectedValue,
-                        tournamentId: currentTournament.id,
-                        tournamentName: currentTournament.name,
-                        host: currentTournament.organizerAccount,
-                        boardName: boardName
-                    }
-                });
-            }
-            // Notify background to start polling
-            chrome.runtime.sendMessage({
-                action: "managedModeChanged",
-                boardId: selectedValue,
-                mode: "Auto",
-                tournamentId: currentTournament.id,
-                tournamentName: currentTournament.name,
-                host: currentTournament.organizerAccount,
-                boardName: boardName
-            });
-            setMessage("Board ausgewählt: " + boardName);
-        } else if (!selectedValue) {
-            // Board deselected
-            await chrome.storage.sync.remove(["managedBoardId", "managedBoardName"]);
-        }
-    });
+        await synchronizeTournamentContext({ showMessage: true, source: "user-change" });
+    };
+
+    await synchronizeTournamentContext({ showMessage: false, source: "initial-load" });
 
     // Refresh button — manually re-fetch schedule
     if (refreshBtn) {
-        refreshBtn.addEventListener("click", async () => {
+        refreshBtn.onclick = async () => {
             refreshBtn.disabled = true;
             refreshBtn.textContent = "⟳";
             // Trigger content script to re-poll schedule
@@ -829,8 +810,119 @@ async function loadActiveBoardOptions() {
                 await chrome.tabs.sendMessage(tab.id, { action: "refreshSchedule" });
             }
             setTimeout(() => { refreshBtn.disabled = false; refreshBtn.textContent = "🔄"; }, 2000);
-        });
+        };
     }
+}
+
+async function synchronizeTournamentContext(options) {
+    const showMessage = !!options?.showMessage;
+    const source = options?.source || "system";
+    if (!currentTournament) return;
+
+    const boardSelect = document.getElementById("activeBoardSelect");
+    const selectedBoardId = boardSelect?.value || "";
+    const selectedOption = boardSelect?.selectedOptions?.[0] || null;
+    const selectedBoardName = selectedOption?.dataset?.name || selectedBoardId;
+
+    const stored = await chrome.storage.sync.get(["managedBoardId", "managedTournamentId"]);
+
+    await chrome.storage.sync.set({
+        managedTournamentId: currentTournament.id,
+        managedTournamentName: currentTournament.name,
+        managedHost: currentTournament.organizerAccount
+    });
+
+    if (selectedBoardId) {
+        const isSameManagedContext =
+            sameId(stored.managedBoardId, selectedBoardId)
+            && sameId(stored.managedTournamentId, currentTournament.id);
+
+        await chrome.storage.sync.set({
+            managedBoardId: selectedBoardId,
+            managedBoardName: selectedBoardName
+        });
+
+        // Popup öffnen darf niemals ungewollt einen Start-Flow triggern.
+        // Deshalb nur bei echter Änderung oder expliziter Benutzeraktion Auto-Mode melden.
+        if (!isSameManagedContext || source === "user-change") {
+            await notifyManagedModeAuto(selectedBoardId, selectedBoardName);
+        } else {
+            await notifyTournamentContextChanged();
+        }
+
+        if (showMessage) {
+            setMessage(`Aktives Turnier: ${currentTournament.name} | Board: ${selectedBoardName}`);
+        }
+        return;
+    }
+
+    if (stored.managedBoardId && !sameId(stored.managedTournamentId, currentTournament.id)) {
+        await notifyManagedModeManual(stored.managedBoardId, true);
+        await chrome.storage.sync.remove(["managedBoardId", "managedBoardName"]);
+    }
+
+    await notifyTournamentContextChanged();
+
+    if (showMessage) {
+        setMessage(`Aktives Turnier: ${currentTournament.name}`);
+    }
+}
+
+async function notifyManagedModeAuto(boardId, boardName) {
+    if (!currentTournament) return;
+
+    const payload = {
+        mode: "Auto",
+        boardId,
+        tournamentId: currentTournament.id,
+        tournamentName: currentTournament.name,
+        host: currentTournament.organizerAccount,
+        boardName
+    };
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id && tab.url?.startsWith("https://play.autodarts.io/")) {
+        chrome.tabs.sendMessage(tab.id, { action: "setManagedMode", payload });
+    }
+
+    chrome.runtime.sendMessage({ action: "managedModeChanged", ...payload });
+}
+
+async function notifyManagedModeManual(boardId, keepTournamentContext) {
+    if (!boardId) return;
+
+    const payload = {
+        mode: "Manual",
+        boardId,
+        keepTournamentContext: !!keepTournamentContext,
+        tournamentId: currentTournament?.id || null,
+        tournamentName: currentTournament?.name || "",
+        host: currentTournament?.organizerAccount || ""
+    };
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id && tab.url?.startsWith("https://play.autodarts.io/")) {
+        chrome.tabs.sendMessage(tab.id, { action: "setManagedMode", payload });
+    }
+
+    chrome.runtime.sendMessage({ action: "managedModeChanged", ...payload });
+}
+
+async function notifyTournamentContextChanged() {
+    if (!currentTournament) return;
+
+    const payload = {
+        tournamentId: currentTournament.id,
+        tournamentName: currentTournament.name,
+        host: currentTournament.organizerAccount
+    };
+
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id && tab.url?.startsWith("https://play.autodarts.io/")) {
+        chrome.tabs.sendMessage(tab.id, { action: "tournamentContextChanged", payload });
+    }
+
+    chrome.runtime.sendMessage({ action: "tournamentContextChanged", payload });
 }
 
 function updateBoardSelectionHint(boardSelect) {
@@ -854,12 +946,15 @@ function updateBoardSelectionHint(boardSelect) {
 
 async function loadSettings() {
     const stored = await chrome.storage.sync.get(SETTINGS_KEYS);
+    dartsuiteEnabled = stored.dartsuiteEnabled !== false;
     document.getElementById("apiBaseUrl").value = stored.apiBaseUrl || DEFAULT_API_BASE_URL;
     document.getElementById("defaultHost").value = stored.defaultHost || "";
+    document.getElementById("dartsuiteEnabled").checked = dartsuiteEnabled;
     document.getElementById("autoManaged").checked = stored.autoManaged !== false;
     document.getElementById("fullscreen").checked = !!stored.fullscreen;
     document.getElementById("statusPollSeconds").value = stored.statusPollSeconds || 30;
     document.getElementById("statusBarMode").value = stored.statusBarMode || "always";
+    document.getElementById("debugModeEnabled").checked = !!stored.debugMode;
 
     // Apply defaults
     if (stored.defaultHost && !stored.hostInput) {
@@ -868,15 +963,26 @@ async function loadSettings() {
 }
 
 async function saveSettings() {
+    dartsuiteEnabled = document.getElementById("dartsuiteEnabled").checked;
+
     const settings = {
         apiBaseUrl: document.getElementById("apiBaseUrl").value.trim() || DEFAULT_API_BASE_URL,
         defaultHost: document.getElementById("defaultHost").value.trim(),
+        dartsuiteEnabled,
         autoManaged: document.getElementById("autoManaged").checked,
         fullscreen: document.getElementById("fullscreen").checked,
         statusPollSeconds: Number(document.getElementById("statusPollSeconds").value || 30),
-        statusBarMode: document.getElementById("statusBarMode").value || "always"
+        statusBarMode: document.getElementById("statusBarMode").value || "always",
+        debugMode: document.getElementById("debugModeEnabled").checked
     };
     await chrome.storage.sync.set(settings);
+    applyExtensionEnabledUi();
+    // Propagate debug mode to all open autodarts.io tabs
+    const debugEnabled = settings.debugMode;
+    const tabs = await chrome.tabs.query({ url: "https://play.autodarts.io/*" });
+    for (const tab of tabs) {
+        chrome.tabs.sendMessage(tab.id, { action: "setDebugMode", enabled: debugEnabled }).catch(() => { });
+    }
     chrome.runtime.sendMessage({ action: "updateStatusPolling" });
     setMessage("Einstellungen gespeichert.");
     await checkApiStatus();
@@ -902,6 +1008,8 @@ async function getFromActiveTab(action, payload) {
 // ─── Tab Observer: load tab-specific data when switching ───
 
 const tabObserver = new MutationObserver(() => {
+    if (!dartsuiteEnabled) return;
+
     const activeTab = document.querySelector(".tabs button.active");
     if (!activeTab) return;
     const tab = activeTab.dataset.tab;
@@ -909,6 +1017,25 @@ const tabObserver = new MutationObserver(() => {
     if (tab === "friends") loadFriends();
 });
 tabObserver.observe(document.querySelector(".tabs") || document.body, { subtree: true, attributes: true, attributeFilter: ["class"] });
+
+function applyExtensionEnabledUi() {
+    const tabButtons = document.querySelectorAll(".tabs button");
+    for (const btn of tabButtons) {
+        const isSettings = btn.dataset.tab === "settings";
+        btn.style.display = dartsuiteEnabled || isSettings ? "" : "none";
+    }
+
+    const tabContents = document.querySelectorAll(".tab-content");
+    for (const content of tabContents) {
+        const isSettings = content.id === "tab-settings";
+        content.style.display = dartsuiteEnabled || isSettings ? "" : "none";
+    }
+
+    if (!dartsuiteEnabled) {
+        openTab("settings");
+        setMessage("DartSuite ist deaktiviert. Nur Einstellungen sind sichtbar.");
+    }
+}
 
 // ─── UI Helpers ───
 
@@ -1021,4 +1148,162 @@ function showPopupStatusToast(dstStatus, matchStatus) {
         el.style.borderRadius = "";
         el.style.padding = "";
     }, 3000);
+}
+
+function normalizeBoardId(id) {
+    return (id || "").trim().toLowerCase();
+}
+
+function sameId(a, b) {
+    return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+}
+
+async function readApiErrorResponse(response, fallbackMessage) {
+    let text = "";
+    try {
+        text = await response.text();
+    } catch {
+        text = "";
+    }
+
+    let message = "";
+    if (text) {
+        try {
+            const payload = JSON.parse(text);
+            message =
+                payload?.message
+                || payload?.error?.message
+                || payload?.error_description
+                || payload?.title
+                || payload?.detail
+                || "";
+        } catch {
+            message = text;
+        }
+    }
+
+    if (!message) {
+        message = fallbackMessage || `HTTP ${response.status}`;
+    }
+
+    if (/token has invalid claims|token is expired/i.test(message)) {
+        return "Autodarts Token ist abgelaufen. Bitte in Autodarts neu anmelden und die Boards-Seite neu laden.";
+    }
+
+    if (/autodarts-login erforderlich/i.test(message)) {
+        return "API fordert Autodarts-Login. Bitte play.autodarts.io offen lassen und im Popup erneut versuchen.";
+    }
+
+    return message;
+}
+
+async function findExistingBoardByExternalId(apiBaseUrl, externalBoardId) {
+    const allResp = await apiFetchWithAutodartsRetry(apiBaseUrl, `${apiBaseUrl}/api/boards`);
+    if (!allResp.ok) {
+        const reason = await readApiErrorResponse(allResp, "Boards konnten nicht geladen werden.");
+        return { ok: false, reason };
+    }
+
+    const allBoards = await allResp.json();
+    const existing = allBoards.find(b => sameId(b.externalBoardId, externalBoardId));
+    if (!existing) {
+        return { ok: false, reason: "Board wurde in DartSuite nicht gefunden." };
+    }
+
+    return { ok: true, board: existing };
+}
+
+async function ensureBoardRegisteredInTournament({ apiBaseUrl, extId, name, ip, tournamentId }) {
+    let board = null;
+
+    const createResp = await apiFetchWithAutodartsRetry(apiBaseUrl, `${apiBaseUrl}/api/boards`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            externalBoardId: extId,
+            name,
+            localIpAddress: ip || null,
+            boardManagerUrl: null
+        })
+    });
+
+    if (createResp.ok) {
+        board = await createResp.json();
+        if (!board?.id) {
+            return { extId, name, ok: false, reason: "API-Antwort ohne Board-ID." };
+        }
+    } else if (createResp.status === 409) {
+        const existing = await findExistingBoardByExternalId(apiBaseUrl, extId);
+        if (!existing.ok) {
+            return { extId, name, ok: false, reason: existing.reason };
+        }
+        board = existing.board;
+    } else {
+        const reason = await readApiErrorResponse(createResp, "Board konnte nicht angelegt werden.");
+        return { extId, name, ok: false, reason };
+    }
+
+    const assignUrl = `${apiBaseUrl}/api/boards/${board.id}/managed?mode=Auto&tournamentId=${encodeURIComponent(tournamentId)}`;
+    const assignResp = await apiFetchWithAutodartsRetry(apiBaseUrl, assignUrl, { method: "PATCH" });
+    if (!assignResp.ok) {
+        const reason = await readApiErrorResponse(assignResp, "Board konnte dem Turnier nicht zugewiesen werden.");
+        return { extId, name, ok: false, reason };
+    }
+
+    const verifyResp = await apiFetchWithAutodartsRetry(apiBaseUrl, `${apiBaseUrl}/api/boards/${board.id}`);
+    if (!verifyResp.ok) {
+        const reason = await readApiErrorResponse(verifyResp, "Board-Verifikation fehlgeschlagen.");
+        return { extId, name, ok: false, reason };
+    }
+
+    const verified = await verifyResp.json();
+    if (!sameId(verified?.tournamentId, tournamentId)) {
+        return {
+            extId,
+            name,
+            ok: false,
+            reason: "Board angelegt, aber nicht im ausgewählten Turnier registriert."
+        };
+    }
+
+    return { extId, name, ok: true, boardId: verified.id };
+}
+
+async function apiFetchWithAutodartsRetry(apiBaseUrl, url, options) {
+    let response = await fetch(url, options || {});
+    if (!isAutodartsLoginRequiredResponse(response)) {
+        return response;
+    }
+
+    const restored = await ensureApiAutodartsSession(apiBaseUrl);
+    if (!restored) {
+        return response;
+    }
+
+    response = await fetch(url, options || {});
+    return response;
+}
+
+function isAutodartsLoginRequiredResponse(response) {
+    if (!response) return false;
+    return response.status === 401;
+}
+
+async function ensureApiAutodartsSession(apiBaseUrl) {
+    const tokenResult = await getFromActiveTab("getAutodartsAccessToken");
+    const accessToken = tokenResult?.accessToken;
+    if (!accessToken) {
+        return false;
+    }
+
+    try {
+        const loginResp = await fetch(`${apiBaseUrl}/api/autodarts/token-login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accessToken })
+        });
+        return loginResp.ok;
+    } catch {
+        return false;
+    }
 }

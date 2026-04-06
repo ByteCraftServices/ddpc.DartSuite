@@ -4,11 +4,12 @@
 @inject DartSuiteApiService Api
 @inject AppStateService AppState
 @inject BoardHubService BoardHubService
+@inject IUiHelpService UiHelp
 @implements IDisposable
 
 <PageTitle>Boards</PageTitle>
 
-<h1>Boards</h1>
+<h1>Boards <UiHelpIcon HelpKey="page.boards" /></h1>
 @if (isRealtimeConnected)
 {
     <div class="alert alert-success py-2">Echtzeit aktiv: Board-Updates werden direkt ueber SignalR empfangen.</div>
@@ -23,13 +24,15 @@ else
         <EditForm Model="this" OnValidSubmit="CreateBoardAsync" FormName="create-board">
             <div class="row g-2">
                 <div class="col-md-4">
-                    <InputText @bind-Value="newBoardExternalId" class="form-control" placeholder="Board ID" />
+                    <InputText @bind-Value="newBoardExternalId" class="form-control" placeholder="Board ID"
+                               title="@UiHelp.GetTooltip("boards.external-id")" />
                 </div>
                 <div class="col-md-4">
-                    <InputText @bind-Value="newBoardName" class="form-control" placeholder="Board Name" />
+                    <InputText @bind-Value="newBoardName" class="form-control" placeholder="Board Name"
+                               title="@UiHelp.GetTooltip("boards.name")" />
                 </div>
                 <div class="col-md-4">
-                    <button class="btn btn-primary w-100" type="submit">Add Board</button>
+                    <button class="btn btn-primary w-100" type="submit" title="@UiHelp.GetTooltip("boards.create")">Add Board</button>
                 </div>
             </div>
         </EditForm>
@@ -122,7 +125,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         AppState.OnChange += OnAppStateChanged;
-        boards = (await Api.GetBoardsAsync()).ToList();
+        await LoadBoardsForCurrentScopeAsync();
 
         try
         {
@@ -153,6 +156,13 @@ else
     {
         await InvokeAsync(() =>
         {
+            if (!IsBoardInCurrentScope(board))
+            {
+                boards.RemoveAll(b => b.Id == board.Id);
+                StateHasChanged();
+                return;
+            }
+
             var index = boards.FindIndex(b => b.Id == board.Id);
             if (index >= 0)
                 boards[index] = board;
@@ -176,7 +186,7 @@ else
     {
         await InvokeAsync(async () =>
         {
-            boards = (await Api.GetBoardsAsync()).ToList();
+            await LoadBoardsForCurrentScopeAsync();
             StateHasChanged();
         });
     }
@@ -192,7 +202,7 @@ else
             await Api.AddBoardAsync(new CreateBoardRequest(newBoardExternalId, newBoardName, null, null));
             newBoardExternalId = string.Empty;
             newBoardName = string.Empty;
-            boards = (await Api.GetBoardsAsync()).ToList();
+            await LoadBoardsForCurrentScopeAsync();
         }
         catch (InvalidOperationException ex)
         {
@@ -202,6 +212,27 @@ else
         {
             boardError = "An unexpected error occurred. Please try again.";
         }
+    }
+
+    private async Task LoadBoardsForCurrentScopeAsync()
+    {
+        if (AppState.SelectedTournament is not null)
+        {
+            boards = (await Api.GetBoardsByTournamentAsync(AppState.SelectedTournament.Id)).ToList();
+            return;
+        }
+
+        boards = (await Api.GetBoardsAsync())
+            .Where(b => !b.TournamentId.HasValue)
+            .ToList();
+    }
+
+    private bool IsBoardInCurrentScope(BoardDto board)
+    {
+        if (AppState.SelectedTournament is null)
+            return !board.TournamentId.HasValue;
+
+        return !board.TournamentId.HasValue || board.TournamentId == AppState.SelectedTournament.Id;
     }
 
     private static string StatusBadge(string status) => status switch

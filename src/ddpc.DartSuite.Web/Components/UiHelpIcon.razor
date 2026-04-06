@@ -1,0 +1,16 @@
+@inject IUiHelpService UiHelp
+
+<details class="ui-help-details @CssClass">
+    <summary class="ui-help-summary" title="@Tooltip" aria-label="@AriaLabel">?</summary>
+    <div class="ui-help-content" role="note">@Content</div>
+</details>
+
+@code {
+    [Parameter, EditorRequired] public string HelpKey { get; set; } = string.Empty;
+    [Parameter] public string? Fallback { get; set; }
+    [Parameter] public string CssClass { get; set; } = string.Empty;
+    [Parameter] public string AriaLabel { get; set; } = "Kontextbezogene Hilfe";
+
+    private string Content => UiHelp.GetContent(HelpKey, Fallback);
+    private string Tooltip => UiHelp.GetTooltip(HelpKey, Fallback);
+}

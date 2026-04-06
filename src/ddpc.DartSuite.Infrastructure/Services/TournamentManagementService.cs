@@ -46,6 +46,30 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         return changed;
     }
 
+    private async Task<bool> HasProgressedMatchesAsync(Guid tournamentId, CancellationToken cancellationToken)
+    {
+        return await dbContext.Matches.AsNoTracking().AnyAsync(
+            x => x.TournamentId == tournamentId
+                && x.Status != MatchStatus.WalkOver
+                && (x.StartedUtc != null || x.FinishedUtc != null),
+            cancellationToken);
+    }
+
+    private async Task EnsureTournamentStructureEditableAsync(Guid tournamentId, CancellationToken cancellationToken)
+    {
+        var tournament = await dbContext.Tournaments.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == tournamentId, cancellationToken);
+
+        if (tournament is null)
+            throw new InvalidOperationException("Turnier nicht gefunden.");
+
+        if (tournament.IsLocked)
+            throw new InvalidOperationException("Das Turnier ist gesperrt. Bitte entsperren Sie es, bevor Sie Änderungen vornehmen.");
+
+        if (await HasProgressedMatchesAsync(tournamentId, cancellationToken))
+            throw new InvalidOperationException("Die Turnierstruktur ist gesperrt, da bereits Matches gestartet oder beendet wurden.");
+    }
+
     // ─── Tournaments ───
 
     public async Task<IReadOnlyList<TournamentDto>> GetTournamentsAsync(CancellationToken cancellationToken = default)
@@ -134,6 +158,29 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
 
         var mode = Enum.TryParse<TournamentMode>(request.Mode, true, out var parsedMode) ? parsedMode : TournamentMode.Knockout;
         var variant = Enum.TryParse<TournamentVariant>(request.Variant, true, out var parsedVariant) ? parsedVariant : TournamentVariant.Online;
+        var requestedGroupMode = Enum.TryParse<GroupMode>(request.GroupMode, true, out var gm) ? gm : tournament.GroupMode;
+        var requestedGroupDrawMode = Enum.TryParse<GroupDrawMode>(request.GroupDrawMode, true, out var gd) ? gd : tournament.GroupDrawMode;
+        var requestedPlanningVariant = Enum.TryParse<PlanningVariant>(request.PlanningVariant, true, out var pv) ? pv : tournament.PlanningVariant;
+        var requestedGroupOrderMode = Enum.TryParse<GroupOrderMode>(request.GroupOrderMode, true, out var go) ? go : tournament.GroupOrderMode;
+
+        var requestChangesStructure =
+            tournament.Mode != mode
+            || tournament.TeamplayEnabled != request.TeamplayEnabled
+            || tournament.GroupCount != request.GroupCount
+            || tournament.PlayoffAdvancers != request.PlayoffAdvancers
+            || tournament.KnockoutsPerRound != request.KnockoutsPerRound
+            || tournament.MatchesPerOpponent != request.MatchesPerOpponent
+            || tournament.GroupMode != requestedGroupMode
+            || tournament.GroupDrawMode != requestedGroupDrawMode
+            || tournament.PlanningVariant != requestedPlanningVariant
+            || tournament.GroupOrderMode != requestedGroupOrderMode
+            || tournament.ThirdPlaceMatch != request.ThirdPlaceMatch
+            || tournament.PlayersPerTeam != request.PlayersPerTeam
+            || tournament.SeedingEnabled != request.SeedingEnabled
+            || tournament.SeedTopCount != request.SeedTopCount;
+
+        if (requestChangesStructure && await HasProgressedMatchesAsync(request.Id, cancellationToken))
+            throw new InvalidOperationException("Die Turnierstruktur kann nicht mehr geändert werden, da bereits Matches gestartet oder beendet wurden.");
 
         tournament.Name = request.Name;
         tournament.OrganizerAccount = request.OrganizerAccount;
@@ -153,10 +200,10 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         tournament.PlayoffAdvancers = request.PlayoffAdvancers;
         tournament.KnockoutsPerRound = request.KnockoutsPerRound;
         tournament.MatchesPerOpponent = request.MatchesPerOpponent;
-        if (Enum.TryParse<GroupMode>(request.GroupMode, true, out var gm)) tournament.GroupMode = gm;
-        if (Enum.TryParse<GroupDrawMode>(request.GroupDrawMode, true, out var gd)) tournament.GroupDrawMode = gd;
-        if (Enum.TryParse<PlanningVariant>(request.PlanningVariant, true, out var pv)) tournament.PlanningVariant = pv;
-        if (Enum.TryParse<GroupOrderMode>(request.GroupOrderMode, true, out var go)) tournament.GroupOrderMode = go;
+        tournament.GroupMode = requestedGroupMode;
+        tournament.GroupDrawMode = requestedGroupDrawMode;
+        tournament.PlanningVariant = requestedPlanningVariant;
+        tournament.GroupOrderMode = requestedGroupOrderMode;
 
         // KO settings
         tournament.ThirdPlaceMatch = request.ThirdPlaceMatch;
@@ -199,7 +246,7 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         return await dbContext.Participants.AsNoTracking()
             .Where(x => x.TournamentId == tournamentId)
             .OrderBy(x => x.Seed)
-            .Select(x => new ParticipantDto(x.Id, x.DisplayName, x.AccountName, x.IsAutodartsAccount, x.IsManager, x.Seed, x.SeedPot, x.GroupNumber, x.TeamId, x.NotificationPreference.ToString()))
+                .Select(x => new ParticipantDto(x.Id, x.DisplayName, x.AccountName, x.IsAutodartsAccount, x.IsManager, x.Seed, x.SeedPot, x.GroupNumber, x.TeamId, x.NotificationPreference.ToString(), x.Type.ToString()))
             .ToListAsync(cancellationToken);
     }
 
@@ -214,13 +261,15 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         return results
             .GroupBy(x => x.AccountName.ToLowerInvariant())
             .Select(g => g.First())
-            .Select(x => new ParticipantDto(x.Id, x.DisplayName, x.AccountName, x.IsAutodartsAccount, x.IsManager, x.Seed, x.SeedPot, x.GroupNumber, x.TeamId, x.NotificationPreference.ToString()))
+            .Select(x => new ParticipantDto(x.Id, x.DisplayName, x.AccountName, x.IsAutodartsAccount, x.IsManager, x.Seed, x.SeedPot, x.GroupNumber, x.TeamId, x.NotificationPreference.ToString(), x.Type.ToString()))
             .Take(20)
             .ToList();
     }
 
     public async Task<ParticipantDto> AddParticipantAsync(AddParticipantRequest request, CancellationToken cancellationToken = default)
     {
+        await EnsureTournamentStructureEditableAsync(request.TournamentId, cancellationToken);
+
         var exists = await dbContext.Participants.AnyAsync(
             x => x.TournamentId == request.TournamentId && x.AccountName == request.AccountName,
             cancellationToken);
@@ -238,7 +287,7 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
 
         dbContext.Participants.Add(participant);
         await dbContext.SaveChangesAsync(cancellationToken);
-        return new ParticipantDto(participant.Id, participant.DisplayName, participant.AccountName, participant.IsAutodartsAccount, participant.IsManager, participant.Seed, participant.SeedPot, participant.GroupNumber, participant.TeamId, participant.NotificationPreference.ToString());
+        return new ParticipantDto(participant.Id, participant.DisplayName, participant.AccountName, participant.IsAutodartsAccount, participant.IsManager, participant.Seed, participant.SeedPot, participant.GroupNumber, participant.TeamId, participant.NotificationPreference.ToString(), participant.Type.ToString());
     }
 
     public async Task<ParticipantDto?> UpdateParticipantAsync(UpdateParticipantRequest request, CancellationToken cancellationToken = default)
@@ -246,6 +295,13 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         var participant = await dbContext.Participants
             .FirstOrDefaultAsync(x => x.Id == request.ParticipantId && x.TournamentId == request.TournamentId, cancellationToken);
         if (participant is null) return null;
+
+        var changesStructure = participant.GroupNumber != request.GroupNumber
+            || participant.Seed != request.Seed
+            || participant.SeedPot != request.SeedPot;
+
+        if (changesStructure)
+            await EnsureTournamentStructureEditableAsync(request.TournamentId, cancellationToken);
 
         // Enforce at least 1 manager if removing manager flag
         if (participant.IsManager && !request.IsManager)
@@ -265,11 +321,13 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         participant.GroupNumber = request.GroupNumber;
 
         await dbContext.SaveChangesAsync(cancellationToken);
-        return new ParticipantDto(participant.Id, participant.DisplayName, participant.AccountName, participant.IsAutodartsAccount, participant.IsManager, participant.Seed, participant.SeedPot, participant.GroupNumber, participant.TeamId, participant.NotificationPreference.ToString());
+            return new ParticipantDto(participant.Id, participant.DisplayName, participant.AccountName, participant.IsAutodartsAccount, participant.IsManager, participant.Seed, participant.SeedPot, participant.GroupNumber, participant.TeamId, participant.NotificationPreference.ToString(), participant.Type.ToString());
     }
 
     public async Task<bool> RemoveParticipantAsync(Guid tournamentId, Guid participantId, CancellationToken cancellationToken = default)
     {
+        await EnsureTournamentStructureEditableAsync(tournamentId, cancellationToken);
+
         var participant = await dbContext.Participants
             .FirstOrDefaultAsync(x => x.Id == participantId && x.TournamentId == tournamentId, cancellationToken);
         if (participant is null) return false;
@@ -290,6 +348,8 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
 
     public async Task<IReadOnlyList<ParticipantDto>> AssignSeedPotsAsync(Guid tournamentId, CancellationToken cancellationToken = default)
     {
+        await EnsureTournamentStructureEditableAsync(tournamentId, cancellationToken);
+
         var tournament = await dbContext.Tournaments.FindAsync([tournamentId], cancellationToken);
         if (tournament is null) return [];
 
@@ -326,7 +386,7 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return participants
-            .Select(x => new ParticipantDto(x.Id, x.DisplayName, x.AccountName, x.IsAutodartsAccount, x.IsManager, x.Seed, x.SeedPot, x.GroupNumber, x.TeamId, x.NotificationPreference.ToString()))
+              .Select(x => new ParticipantDto(x.Id, x.DisplayName, x.AccountName, x.IsAutodartsAccount, x.IsManager, x.Seed, x.SeedPot, x.GroupNumber, x.TeamId, x.NotificationPreference.ToString(), x.Type.ToString()))
             .ToList();
     }
 
@@ -339,13 +399,15 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
             .OrderBy(x => x.Phase).ThenBy(x => x.RoundNumber)
             .Select(x => new TournamentRoundDto(x.Id, x.TournamentId, x.Phase.ToString(), x.RoundNumber,
                 x.BaseScore, x.InMode, x.OutMode, x.GameMode.ToString(), x.Legs, x.Sets, x.MaxRounds, x.BullMode, x.BullOffMode,
-                x.MatchDurationMinutes, x.PauseBetweenMatchesMinutes, x.MinPlayerPauseMinutes,
+                x.LegDurationSeconds, x.PauseBetweenMatchesMinutes, x.MinPlayerPauseMinutes,
                 x.BoardAssignment.ToString(), x.FixedBoardId))
             .ToListAsync(cancellationToken);
     }
 
     public async Task<TournamentRoundDto> SaveRoundAsync(SaveTournamentRoundRequest request, CancellationToken cancellationToken = default)
     {
+        await EnsureTournamentStructureEditableAsync(request.TournamentId, cancellationToken);
+
         var phase = Enum.TryParse<MatchPhase>(request.Phase, true, out var p) ? p : MatchPhase.Knockout;
         var existing = await dbContext.TournamentRounds
             .FirstOrDefaultAsync(x => x.TournamentId == request.TournamentId && x.Phase == phase && x.RoundNumber == request.RoundNumber, cancellationToken);
@@ -365,7 +427,7 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         existing.MaxRounds = request.MaxRounds;
         existing.BullMode = request.BullMode;
         existing.BullOffMode = request.BullOffMode;
-        existing.MatchDurationMinutes = request.MatchDurationMinutes;
+        existing.LegDurationSeconds = request.LegDurationSeconds;
         existing.PauseBetweenMatchesMinutes = request.PauseBetweenMatchesMinutes;
         existing.MinPlayerPauseMinutes = request.MinPlayerPauseMinutes;
         if (Enum.TryParse<BoardAssignmentMode>(request.BoardAssignment, true, out var ba)) existing.BoardAssignment = ba;
@@ -375,12 +437,14 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
 
         return new TournamentRoundDto(existing.Id, existing.TournamentId, existing.Phase.ToString(), existing.RoundNumber,
             existing.BaseScore, existing.InMode, existing.OutMode, existing.GameMode.ToString(), existing.Legs, existing.Sets, existing.MaxRounds,
-            existing.BullMode, existing.BullOffMode, existing.MatchDurationMinutes, existing.PauseBetweenMatchesMinutes,
+            existing.BullMode, existing.BullOffMode, existing.LegDurationSeconds, existing.PauseBetweenMatchesMinutes,
             existing.MinPlayerPauseMinutes, existing.BoardAssignment.ToString(), existing.FixedBoardId);
     }
 
     public async Task<bool> DeleteRoundAsync(Guid tournamentId, string phase, int roundNumber, CancellationToken cancellationToken = default)
     {
+        await EnsureTournamentStructureEditableAsync(tournamentId, cancellationToken);
+
         if (!Enum.TryParse<MatchPhase>(phase, true, out var matchPhase))
             return false;
 
@@ -508,7 +572,7 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         return teams.Select(t =>
         {
             var teamMembers = members.Where(m => m.TeamId == t.Id)
-                .Select(m => new ParticipantDto(m.Id, m.DisplayName, m.AccountName, m.IsAutodartsAccount, m.IsManager, m.Seed, m.SeedPot, m.GroupNumber, m.TeamId, m.NotificationPreference.ToString()))
+                .Select(m => new ParticipantDto(m.Id, m.DisplayName, m.AccountName, m.IsAutodartsAccount, m.IsManager, m.Seed, m.SeedPot, m.GroupNumber, m.TeamId, m.NotificationPreference.ToString(), m.Type.ToString()))
                 .ToList();
             return new TeamDto(t.Id, t.TournamentId, t.Name, t.GroupNumber, teamMembers);
         }).ToList();
@@ -516,6 +580,8 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
 
     public async Task<TeamDto> CreateTeamAsync(CreateTeamRequest request, CancellationToken cancellationToken = default)
     {
+        await EnsureTournamentStructureEditableAsync(request.TournamentId, cancellationToken);
+
         var participants = await dbContext.Participants
             .Where(x => x.TournamentId == request.TournamentId && request.MemberParticipantIds.Contains(x.Id))
             .ToListAsync(cancellationToken);
@@ -528,27 +594,137 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         var team = new Team { TournamentId = request.TournamentId, Name = teamName };
         dbContext.Teams.Add(team);
 
-        foreach (var p in participants) p.TeamId = team.Id;
+        foreach (var p in participants)
+        {
+            p.TeamId = team.Id;
+            p.Type = ParticipantType.TeamMember;
+        }
 
         await dbContext.SaveChangesAsync(cancellationToken);
 
         var memberDtos = participants
-            .Select(m => new ParticipantDto(m.Id, m.DisplayName, m.AccountName, m.IsAutodartsAccount, m.IsManager, m.Seed, m.SeedPot, m.GroupNumber, m.TeamId, m.NotificationPreference.ToString()))
+            .Select(m => new ParticipantDto(m.Id, m.DisplayName, m.AccountName, m.IsAutodartsAccount, m.IsManager, m.Seed, m.SeedPot, m.GroupNumber, m.TeamId, m.NotificationPreference.ToString(), m.Type.ToString()))
             .ToList();
         return new TeamDto(team.Id, team.TournamentId, team.Name, team.GroupNumber, memberDtos);
     }
 
+    public async Task<IReadOnlyList<TeamDto>> SaveTeamsAsync(SaveTeamsRequest request, CancellationToken cancellationToken = default)
+    {
+        await EnsureTournamentStructureEditableAsync(request.TournamentId, cancellationToken);
+
+        var tournament = await dbContext.Tournaments.FirstOrDefaultAsync(x => x.Id == request.TournamentId, cancellationToken);
+        if (tournament is null) return [];
+
+        var participants = await dbContext.Participants
+            .Where(x => x.TournamentId == request.TournamentId)
+            .ToListAsync(cancellationToken);
+        var participantsById = participants.ToDictionary(x => x.Id);
+
+        var requestedTeams = request.Teams
+            .Where(x => x.MemberParticipantIds.Count > 0)
+            .ToList();
+
+        var duplicateMember = requestedTeams
+            .SelectMany(x => x.MemberParticipantIds)
+            .GroupBy(x => x)
+            .FirstOrDefault(g => g.Count() > 1);
+        if (duplicateMember is not null)
+            throw new InvalidOperationException("Ein Teilnehmer ist mehrfach in verschiedenen Teams zugewiesen.");
+
+        var hasInvalidMembers = requestedTeams
+            .SelectMany(x => x.MemberParticipantIds)
+            .Any(id => !participantsById.ContainsKey(id));
+        if (hasInvalidMembers)
+            throw new InvalidOperationException("Mindestens ein Teammitglied gehört nicht zum Turnier.");
+
+        if (tournament.TeamplayEnabled)
+        {
+            var playersPerTeam = Math.Max(1, tournament.PlayersPerTeam);
+            if (participants.Count % playersPerTeam != 0)
+                throw new InvalidOperationException("Die Teilnehmeranzahl ist nicht durch die Teamgröße teilbar.");
+
+            var expectedTeamCount = participants.Count / playersPerTeam;
+            if (requestedTeams.Count != expectedTeamCount)
+                throw new InvalidOperationException("Die Anzahl der Teams ist unvollständig.");
+
+            if (requestedTeams.Any(x => x.MemberParticipantIds.Count != playersPerTeam))
+                throw new InvalidOperationException("Jedes Team muss die konfigurierte Spieleranzahl enthalten.");
+
+            var assignedCount = requestedTeams.SelectMany(x => x.MemberParticipantIds).Distinct().Count();
+            if (assignedCount != participants.Count)
+                throw new InvalidOperationException("Alle Teilnehmer müssen genau einem Team zugewiesen sein.");
+        }
+
+        var existingTeams = await dbContext.Teams.Where(x => x.TournamentId == request.TournamentId).ToListAsync(cancellationToken);
+        dbContext.Teams.RemoveRange(existingTeams);
+        foreach (var participant in participants)
+            {
+                participant.TeamId = null;
+                participant.Type = ParticipantType.Spieler;
+            }
+
+        var usedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var teamRequest in requestedTeams)
+        {
+            var members = teamRequest.MemberParticipantIds
+                .Select(id => participantsById[id])
+                .ToList();
+
+            var rawName = string.IsNullOrWhiteSpace(teamRequest.Name)
+                ? string.Join("/", members.Select(m => m.DisplayName))
+                : teamRequest.Name.Trim();
+            var teamName = EnsureUniqueTeamName(rawName, usedNames);
+
+            var team = new Team
+            {
+                TournamentId = request.TournamentId,
+                Name = teamName
+            };
+
+            dbContext.Teams.Add(team);
+            foreach (var member in members)
+                {
+                    member.TeamId = team.Id;
+                    member.Type = ParticipantType.TeamMember;
+                }
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await GetTeamsAsync(request.TournamentId, cancellationToken);
+    }
+
     public async Task<bool> DeleteTeamAsync(Guid tournamentId, Guid teamId, CancellationToken cancellationToken = default)
     {
+        await EnsureTournamentStructureEditableAsync(tournamentId, cancellationToken);
+
         var team = await dbContext.Teams.FirstOrDefaultAsync(x => x.Id == teamId && x.TournamentId == tournamentId, cancellationToken);
         if (team is null) return false;
 
         var members = await dbContext.Participants.Where(x => x.TeamId == teamId).ToListAsync(cancellationToken);
-        foreach (var m in members) m.TeamId = null;
+        foreach (var m in members)
+        {
+            m.TeamId = null;
+            m.Type = ParticipantType.Spieler;
+        }
 
         dbContext.Teams.Remove(team);
         await dbContext.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    private static string EnsureUniqueTeamName(string requestedName, ISet<string> usedNames)
+    {
+        var baseName = string.IsNullOrWhiteSpace(requestedName) ? "Team" : requestedName.Trim();
+        var candidate = baseName;
+        var suffix = 2;
+
+        while (!usedNames.Add(candidate))
+        {
+            candidate = $"{baseName} ({suffix})";
+            suffix++;
+        }
+
+        return candidate;
     }
 
     // ─── Scoring Criteria ───
@@ -564,6 +740,8 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
 
     public async Task<IReadOnlyList<ScoringCriterionDto>> SaveScoringCriteriaAsync(SaveScoringCriteriaRequest request, CancellationToken cancellationToken = default)
     {
+        await EnsureTournamentStructureEditableAsync(request.TournamentId, cancellationToken);
+
         var existing = await dbContext.ScoringCriteria.Where(x => x.TournamentId == request.TournamentId).ToListAsync(cancellationToken);
         dbContext.ScoringCriteria.RemoveRange(existing);
 
@@ -580,11 +758,9 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
                 });
             }
         }
-
         await dbContext.SaveChangesAsync(cancellationToken);
         return await GetScoringCriteriaAsync(request.TournamentId, cancellationToken);
     }
-
     private async Task<string> GenerateUniqueJoinCodeAsync(CancellationToken cancellationToken)
     {
         for (var attempt = 0; attempt < 100; attempt++)
@@ -628,8 +804,7 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
                 Endpoint = request.Endpoint,
                 P256dh = request.P256dh,
                 Auth = request.Auth,
-                NotificationPreference = Enum.TryParse<NotificationPreference>(request.NotificationPreference, true, out var np) ? np : NotificationPreference.OwnMatches,
-                CreatedUtc = DateTimeOffset.UtcNow
+                NotificationPreference = Enum.TryParse<NotificationPreference>(request.NotificationPreference, true, out var np2) ? np2 : NotificationPreference.OwnMatches
             };
             dbContext.NotificationSubscriptions.Add(existing);
         }

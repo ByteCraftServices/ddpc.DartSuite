@@ -9,9 +9,25 @@
 dotnet build ddpc.DartSuite.slnx
 ```
 
+Hinweis bei lokalen File-Locks (laufendes `dotnet watch`):
+```bash
+dotnet build ddpc.DartSuite.slnx /p:UseAppHost=false
+```
+
 ## Tests
 ```bash
 dotnet test ddpc.DartSuite.slnx
+```
+
+## Migrationen
+Migration erzeugen:
+```bash
+dotnet ef migrations add AddParticipantType --project src/ddpc.DartSuite.Infrastructure --startup-project src/ddpc.DartSuite.Api
+```
+
+Migration anwenden:
+```bash
+dotnet ef database update --project src/ddpc.DartSuite.Infrastructure --startup-project src/ddpc.DartSuite.Api
 ```
 
 ## Start API

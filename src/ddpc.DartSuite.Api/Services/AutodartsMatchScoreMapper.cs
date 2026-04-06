@@ -101,7 +101,7 @@ internal static class AutodartsMatchScoreMapper
                 continue;
             }
 
-            var slot = TryGetInt(player, "index") ?? arrayIndex;
+            var slot = arrayIndex;
             var points = TryGetInt(player, "score")
                          ?? TryGetInt(player, "points")
                          ?? TryGetInt(player, "remaining")
@@ -192,7 +192,7 @@ internal static class AutodartsMatchScoreMapper
             var score = TryGetInt(gameScores[arrayIndex]);
             if (score.HasValue)
             {
-                UpsertSlotScore(scores, arrayIndex, slotScore => slotScore with { Legs = score.Value });
+                UpsertSlotScore(scores, arrayIndex, slotScore => slotScore with { Points = score.Value });
             }
         }
     }
@@ -252,10 +252,10 @@ internal static class AutodartsMatchScoreMapper
         if (value.ValueKind == JsonValueKind.Number)
         {
             var numericValue = value.GetInt32();
-            if (numericValue is 0 or 1)
+            if (numericValue >= 0 && numericValue < players.Count)
                 return numericValue;
 
-            var byIndex = players.FirstOrDefault(player => player.Index == numericValue || player.Slot == numericValue);
+            var byIndex = players.FirstOrDefault(player => player.Index == numericValue);
             return byIndex?.Slot;
         }
 
@@ -266,8 +266,15 @@ internal static class AutodartsMatchScoreMapper
         if (string.IsNullOrWhiteSpace(rawValue))
             return null;
 
-        if (int.TryParse(rawValue, out var numericString) && numericString is 0 or 1)
-            return numericString;
+        if (int.TryParse(rawValue, out var numericString))
+        {
+            if (numericString >= 0 && numericString < players.Count)
+                return numericString;
+
+            var byNumericIndex = players.FirstOrDefault(player => player.Index == numericString);
+            if (byNumericIndex is not null)
+                return byNumericIndex.Slot;
+        }
 
         var normalized = NormalizeName(rawValue);
         var byIdentity = players.FirstOrDefault(player =>
@@ -310,16 +317,13 @@ internal static class AutodartsMatchScoreMapper
                 continue;
 
             var index = TryGetInt(player, "index") ?? fallbackSlot;
-            var slot = index is 0 or 1 ? index : fallbackSlot;
+            var slot = fallbackSlot;
             var aliases = ExtractAliases(player);
             players.Add(new ExternalPlayerSlot(slot, index, TryGetString(player, "id"), aliases.FirstOrDefault(), aliases));
             fallbackSlot++;
         }
 
-        return players
-            .OrderBy(player => player.Slot)
-            .ThenBy(player => player.Index)
-            .ToArray();
+        return players.ToArray();
     }
 
     private static string[] ExtractAliases(JsonElement player)

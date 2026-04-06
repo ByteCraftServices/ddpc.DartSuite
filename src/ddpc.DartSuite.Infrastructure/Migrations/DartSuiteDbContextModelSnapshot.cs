@@ -76,9 +76,6 @@ namespace ddpc.DartSuite.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ExternalBoardId")
-                        .IsUnique();
-
                     b.ToTable("Boards");
                 });
 
@@ -377,6 +374,9 @@ namespace ddpc.DartSuite.Infrastructure.Migrations
                     b.Property<Guid>("TournamentId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("TournamentId", "AccountName")
@@ -581,10 +581,10 @@ namespace ddpc.DartSuite.Infrastructure.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
-                    b.Property<int>("Legs")
+                    b.Property<int>("LegDurationSeconds")
                         .HasColumnType("integer");
 
-                    b.Property<int>("MatchDurationMinutes")
+                    b.Property<int>("Legs")
                         .HasColumnType("integer");
 
                     b.Property<int>("MaxRounds")

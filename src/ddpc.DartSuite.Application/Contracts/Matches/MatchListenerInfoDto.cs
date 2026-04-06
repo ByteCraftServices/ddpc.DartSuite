@@ -6,4 +6,8 @@ public sealed record MatchListenerInfoDto(
     Guid? BoardId,
     bool IsRunning,
     DateTimeOffset? LastUpdateUtc,
-    string? LastError);
+    string? LastError,
+    bool IsWebSocketActive,
+    string TransportMode,
+    bool IsFallbackActive,
+    DateTimeOffset? LastRealtimeEventUtc);

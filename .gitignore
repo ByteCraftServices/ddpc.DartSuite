@@ -5,6 +5,7 @@ ai/
 **/obj/
 .vs/
 .vscode/
+artifacts/
 .idea/
 # User-specific files
 *.user

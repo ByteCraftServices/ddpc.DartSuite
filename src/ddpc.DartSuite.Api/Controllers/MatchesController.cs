@@ -36,9 +36,16 @@ public sealed class MatchesController(
         var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
         if (denied is not null) return denied;
 
-        var result = await matchService.GenerateKnockoutPlanAsync(tournamentId, cancellationToken);
-        await NotifyTournamentAsync(tournamentId, "MatchUpdated");
-        return Ok(result);
+        try
+        {
+            var result = await matchService.GenerateKnockoutPlanAsync(tournamentId, cancellationToken);
+            await NotifyTournamentAsync(tournamentId, "MatchUpdated");
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     [HttpPost("{tournamentId:guid}/generate-groups")]
@@ -47,9 +54,16 @@ public sealed class MatchesController(
         var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
         if (denied is not null) return denied;
 
-        var result = await matchService.GenerateGroupPhaseAsync(tournamentId, cancellationToken);
-        await NotifyTournamentAsync(tournamentId, "MatchUpdated");
-        return Ok(result);
+        try
+        {
+            var result = await matchService.GenerateGroupPhaseAsync(tournamentId, cancellationToken);
+            await NotifyTournamentAsync(tournamentId, "MatchUpdated");
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     [HttpGet("{tournamentId:guid}/group-standings")]
@@ -64,9 +78,16 @@ public sealed class MatchesController(
         var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
         if (denied is not null) return denied;
 
-        var result = await matchService.GenerateScheduleAsync(tournamentId, cancellationToken);
-        await NotifyTournamentAsync(tournamentId, "ScheduleUpdated");
-        return Ok(result);
+        try
+        {
+            var result = await matchService.GenerateScheduleAsync(tournamentId, cancellationToken);
+            await NotifyTournamentAsync(tournamentId, "ScheduleUpdated");
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     [HttpPatch("{matchId:guid}/swap")]
@@ -75,8 +96,15 @@ public sealed class MatchesController(
         var access = await RequireManagerForMatchAsync(matchId, cancellationToken);
         if (access.Denied is not null) return access.Denied;
 
-        await matchService.SwapParticipantsAsync(matchId, participantId, targetParticipantId, cancellationToken);
-        return NoContent();
+        try
+        {
+            await matchService.SwapParticipantsAsync(matchId, participantId, targetParticipantId, cancellationToken);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     [HttpPatch("{matchId:guid}/board")]
@@ -85,8 +113,15 @@ public sealed class MatchesController(
         var access = await RequireManagerForMatchAsync(matchId, cancellationToken);
         if (access.Denied is not null) return access.Denied;
 
-        var match = await matchService.AssignBoardAsync(matchId, boardId, cancellationToken);
-        return match is null ? NotFound() : Ok(match);
+        try
+        {
+            var match = await matchService.AssignBoardAsync(matchId, boardId, cancellationToken);
+            return match is null ? NotFound() : Ok(match);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     [HttpPatch("{matchId:guid}/schedule")]
@@ -101,8 +136,15 @@ public sealed class MatchesController(
         var access = await RequireManagerForMatchAsync(matchId, cancellationToken);
         if (access.Denied is not null) return access.Denied;
 
-        var match = await matchService.UpdateMatchScheduleAsync(matchId, startTime, lockTime, boardId, lockBoard, cancellationToken);
-        return match is null ? NotFound() : Ok(match);
+        try
+        {
+            var match = await matchService.UpdateMatchScheduleAsync(matchId, startTime, lockTime, boardId, lockBoard, cancellationToken);
+            return match is null ? NotFound() : Ok(match);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     [HttpPatch("{matchId:guid}/lock-time")]
@@ -165,7 +207,7 @@ public sealed class MatchesController(
         AutodartsMatchDetail? adMatch;
         try
         {
-            adMatch = await autodartsClient.GetMatchAsync(accessToken, existingMatch.ExternalMatchId, cancellationToken);
+            adMatch = await autodartsClient.GetMatchAsync(accessToken, existingMatch.ExternalMatchId, allowLobbyFallback: false, cancellationToken: cancellationToken);
         }
         catch (HttpRequestException ex)
         {
@@ -278,7 +320,17 @@ public sealed class MatchesController(
     {
         var listeners = listenerService.GetActiveListeners()
             .Values
-            .Select(l => new MatchListenerInfoDto(l.MatchId, l.ExternalMatchId, l.BoardId, l.IsRunning, l.LastUpdateUtc, l.LastError))
+            .Select(l => new MatchListenerInfoDto(
+                l.MatchId,
+                l.ExternalMatchId,
+                l.BoardId,
+                l.IsRunning,
+                l.LastUpdateUtc,
+                l.LastError,
+                l.IsWebSocketActive,
+                l.TransportMode,
+                l.IsFallbackActive,
+                l.LastRealtimeEventUtc))
             .ToList();
         return Ok(listeners);
     }
@@ -295,8 +347,21 @@ public sealed class MatchesController(
         if (string.IsNullOrEmpty(match.ExternalMatchId))
             return BadRequest(new { message = "Match has no ExternalMatchId." });
 
-        listenerService.EnsureListener(matchId, match.ExternalMatchId, match.BoardId);
+        if (match.StartedUtc is null || match.FinishedUtc is not null)
+            return BadRequest(new { message = "Monitoring darf nur fuer aktive Matches gestartet werden." });
+
+        await listenerService.EnsureListenerAsync(matchId, match.ExternalMatchId, match.BoardId, cancellationToken: cancellationToken);
         return Ok(new { message = "Listener ensured." });
+    }
+
+    [HttpPost("{tournamentId:guid}/monitoring/reconcile")]
+    public async Task<IActionResult> ReconcileMonitoring(Guid tournamentId, CancellationToken cancellationToken)
+    {
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
+        await listenerService.ReconcileTournamentMonitoringAsync(tournamentId, cancellationToken);
+        return Ok(new { message = "Monitoring reconciled." });
     }
 
     [HttpDelete("{matchId:guid}/listener")]
@@ -370,6 +435,7 @@ public sealed class MatchesController(
         if (denied is not null) return denied;
 
         var result = await matchService.CleanupStaleMatchesAsync(tournamentId, staleMinutes, cancellationToken);
+        await listenerService.ReconcileTournamentMonitoringAsync(tournamentId, cancellationToken);
         await NotifyTournamentAsync(tournamentId, "MatchUpdated");
         await NotifyTournamentAsync(tournamentId, "BoardsUpdated");
         return Ok(result);
@@ -393,7 +459,7 @@ public sealed class MatchesController(
         {
             try
             {
-                await autodartsClient.GetMatchAsync(accessToken, m.ExternalMatchId!, cancellationToken);
+                await autodartsClient.GetMatchAsync(accessToken, m.ExternalMatchId!, allowLobbyFallback: false, cancellationToken: cancellationToken);
             }
             catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
@@ -459,7 +525,7 @@ public sealed class MatchesController(
         AutodartsMatchDetail? adMatch;
         try
         {
-            adMatch = await autodartsClient.GetMatchAsync(accessToken, existingMatch.ExternalMatchId, cancellationToken);
+            adMatch = await autodartsClient.GetMatchAsync(accessToken, existingMatch.ExternalMatchId, allowLobbyFallback: false, cancellationToken: cancellationToken);
         }
         catch (HttpRequestException ex)
         {
@@ -477,13 +543,22 @@ public sealed class MatchesController(
             existingMatch.HomeParticipantId,
             existingMatch.AwayParticipantId,
             adMatch.RawJson,
+            AutodartsMatchStatisticsSyncService.ResolveSenderUtc(adMatch.RawJson, DateTimeOffset.UtcNow),
+            existingMatch.HomeParticipantName,
+            existingMatch.AwayParticipantName,
             cancellationToken);
 
         if (syncResult.Changed)
         {
             await tournamentHub.Clients.Group($"tournament-{existingMatch.TournamentId}").SendAsync(
                 "MatchStatisticsUpdated",
-                new { tournamentId = existingMatch.TournamentId, matchId, timestamp = DateTimeOffset.UtcNow },
+                new
+                {
+                    tournamentId = existingMatch.TournamentId,
+                    matchId,
+                    sourceTimestamp = syncResult.SenderUtc,
+                    timestamp = DateTimeOffset.UtcNow
+                },
                 cancellationToken);
         }
 

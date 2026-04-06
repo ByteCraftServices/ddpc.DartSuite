@@ -168,7 +168,14 @@ public sealed class TournamentsController(
         var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
         if (denied is not null) return denied;
 
-        return Ok(await tournamentService.AssignSeedPotsAsync(tournamentId, cancellationToken));
+        try
+        {
+            return Ok(await tournamentService.AssignSeedPotsAsync(tournamentId, cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     // ─── Rounds ───
@@ -188,7 +195,14 @@ public sealed class TournamentsController(
         var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
         if (denied is not null) return denied;
 
-        return Ok(await tournamentService.SaveRoundAsync(request, cancellationToken));
+        try
+        {
+            return Ok(await tournamentService.SaveRoundAsync(request, cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     [HttpDelete("{tournamentId:guid}/rounds/{phase}/{roundNumber:int}")]
@@ -197,8 +211,15 @@ public sealed class TournamentsController(
         var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
         if (denied is not null) return denied;
 
-        var deleted = await tournamentService.DeleteRoundAsync(tournamentId, phase, roundNumber, cancellationToken);
-        return deleted ? NoContent() : NotFound();
+        try
+        {
+            var deleted = await tournamentService.DeleteRoundAsync(tournamentId, phase, roundNumber, cancellationToken);
+            return deleted ? NoContent() : NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     // ─── Status ───
@@ -254,7 +275,33 @@ public sealed class TournamentsController(
         var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
         if (denied is not null) return denied;
 
-        return Ok(await tournamentService.CreateTeamAsync(request, cancellationToken));
+        try
+        {
+            return Ok(await tournamentService.CreateTeamAsync(request, cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("{tournamentId:guid}/teams/save")]
+    public async Task<ActionResult<IReadOnlyList<TeamDto>>> SaveTeams(Guid tournamentId, [FromBody] SaveTeamsRequest request, CancellationToken cancellationToken)
+    {
+        if (request.TournamentId != tournamentId)
+            return BadRequest("Tournament id mismatch.");
+
+        var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
+        if (denied is not null) return denied;
+
+        try
+        {
+            return Ok(await tournamentService.SaveTeamsAsync(request, cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     [HttpDelete("{tournamentId:guid}/teams/{teamId:guid}")]
@@ -263,8 +310,15 @@ public sealed class TournamentsController(
         var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
         if (denied is not null) return denied;
 
-        var deleted = await tournamentService.DeleteTeamAsync(tournamentId, teamId, cancellationToken);
-        return deleted ? NoContent() : NotFound();
+        try
+        {
+            var deleted = await tournamentService.DeleteTeamAsync(tournamentId, teamId, cancellationToken);
+            return deleted ? NoContent() : NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     // ─── Scoring Criteria ───
@@ -284,7 +338,14 @@ public sealed class TournamentsController(
         var denied = await RequireManagerAccessAsync(tournamentId, cancellationToken);
         if (denied is not null) return denied;
 
-        return Ok(await tournamentService.SaveScoringCriteriaAsync(request, cancellationToken));
+        try
+        {
+            return Ok(await tournamentService.SaveScoringCriteriaAsync(request, cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 
     // ─── Notifications (#14) ───

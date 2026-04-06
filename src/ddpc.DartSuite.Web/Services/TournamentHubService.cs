@@ -9,6 +9,7 @@ public sealed class TournamentHubService : IAsyncDisposable
     private readonly string _hubUrl;
 
     public event Func<string, Task>? OnMatchUpdated;
+    public event Func<MatchUpdatedTimestampedDto, Task>? OnMatchUpdatedTimestamped;
     public event Func<string, Task>? OnBoardsUpdated;
     public event Func<string, Task>? OnParticipantsUpdated;
     public event Func<string, Task>? OnTournamentUpdated;
@@ -38,6 +39,11 @@ public sealed class TournamentHubService : IAsyncDisposable
         _connection.On<string>("MatchUpdated", async tournamentId =>
         {
             if (OnMatchUpdated is not null) await OnMatchUpdated.Invoke(tournamentId);
+        });
+
+        _connection.On<MatchUpdatedTimestampedDto>("MatchUpdatedTimestamped", async payload =>
+        {
+            if (OnMatchUpdatedTimestamped is not null) await OnMatchUpdatedTimestamped.Invoke(payload);
         });
 
         _connection.On<string>("BoardsUpdated", async tournamentId =>
@@ -101,14 +107,30 @@ public sealed class TournamentHubService : IAsyncDisposable
         [property: JsonPropertyName("awaySets")] int AwaySets,
         [property: JsonPropertyName("homePoints")] int? HomePoints,
         [property: JsonPropertyName("awayPoints")] int? AwayPoints,
+        [property: JsonPropertyName("activePlayerIndex")] int? ActivePlayerIndex,
+        [property: JsonPropertyName("activePlayerId")] string? ActivePlayerId,
+        [property: JsonPropertyName("round")] int? Round,
+        [property: JsonPropertyName("turn")] int? Turn,
+        [property: JsonPropertyName("turnScore")] int? TurnScore,
+        [property: JsonPropertyName("turnBusted")] bool? TurnBusted,
+        [property: JsonPropertyName("currentTurnId")] string? CurrentTurnId,
+        [property: JsonPropertyName("currentTurnThrowCount")] int CurrentTurnThrowCount,
         [property: JsonPropertyName("finished")] bool Finished,
         [property: JsonPropertyName("statisticsChanged")] bool StatisticsChanged,
         [property: JsonPropertyName("rawJson")] string? RawJson,
+        [property: JsonPropertyName("sourceTimestamp")] DateTimeOffset? SourceTimestamp,
+        [property: JsonPropertyName("timestamp")] DateTimeOffset Timestamp,
+        [property: JsonPropertyName("sequence")] long Sequence);
+
+    public sealed record MatchUpdatedTimestampedDto(
+        [property: JsonPropertyName("tournamentId")] Guid TournamentId,
+        [property: JsonPropertyName("matchId")] Guid MatchId,
         [property: JsonPropertyName("timestamp")] DateTimeOffset Timestamp);
 
     public sealed record MatchStatisticsUpdatedDto(
         [property: JsonPropertyName("tournamentId")] Guid TournamentId,
         [property: JsonPropertyName("matchId")] Guid MatchId,
+        [property: JsonPropertyName("sourceTimestamp")] DateTimeOffset? SourceTimestamp,
         [property: JsonPropertyName("timestamp")] DateTimeOffset Timestamp);
 
     public async Task JoinTournamentAsync(string tournamentId)

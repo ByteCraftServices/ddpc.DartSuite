@@ -4,6 +4,7 @@
 @inject DartSuiteApiService Api
 @inject ProtectedLocalStorage LocalStorage
 @inject AppStateService AppState
+@inject NavigationManager Navigation
 
 <PageTitle>Login</PageTitle>
 
@@ -95,7 +96,9 @@
     private string? connectionStatus;
     private string statusAlertClass = "alert-info";
     private const string StorageKeyEmail = "autodarts.email";
+    private const string StorageKeyPassword = "autodarts.password";
     private const string StorageKeyRefreshToken = "autodarts.refreshToken";
+    private const string StorageKeyRememberLogin = "autodarts.rememberLogin";
     private AutodartsProfileDto? profile;
     private List<AutodartsBoardInfoDto> boards = new();
     private bool rememberLogin = true;
@@ -104,6 +107,9 @@
     private bool showPassword;
     private string? emailInput;
     private string? passwordInput;
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -134,6 +140,7 @@
         isLoading = true;
         connectionStatus = null;
         StateHasChanged();
+        var passwordToPersist = passwordInput;
 
         try
         {
@@ -147,7 +154,17 @@
             if (rememberLogin)
             {
                 await LocalStorage.SetAsync(StorageKeyEmail, emailInput);
+                await LocalStorage.SetAsync(StorageKeyPassword, passwordToPersist);
+                await LocalStorage.SetAsync(StorageKeyRememberLogin, true);
             }
+            else
+            {
+                await LocalStorage.DeleteAsync(StorageKeyEmail);
+                await LocalStorage.DeleteAsync(StorageKeyPassword);
+                await LocalStorage.SetAsync(StorageKeyRememberLogin, false);
+            }
+
+            NavigateToReturnUrlIfAvailable();
         }
         catch (Exception ex)
         {
@@ -167,6 +184,12 @@
     {
         try
         {
+            var rememberSetting = await LocalStorage.GetAsync<bool>(StorageKeyRememberLogin);
+            if (rememberSetting.Success)
+            {
+                rememberLogin = rememberSetting.Value;
+            }
+
             var status = await Api.GetAutodartsStatusAsync();
             if (status.IsConnected && status.Profile is not null)
             {
@@ -179,10 +202,31 @@
                 catch { /* boards optional */ }
             }
 
-            var stored = await LocalStorage.GetAsync<string>(StorageKeyEmail);
-            if (stored.Success && !string.IsNullOrWhiteSpace(stored.Value))
+            var storedEmail = await LocalStorage.GetAsync<string>(StorageKeyEmail);
+            if (storedEmail.Success && !string.IsNullOrWhiteSpace(storedEmail.Value))
             {
-                emailInput = stored.Value;
+                emailInput = storedEmail.Value;
+            }
+
+            if (profile is null && rememberLogin && !string.IsNullOrWhiteSpace(emailInput))
+            {
+                var storedPassword = await LocalStorage.GetAsync<string>(StorageKeyPassword);
+                if (storedPassword.Success && !string.IsNullOrWhiteSpace(storedPassword.Value))
+                {
+                    try
+                    {
+                        var response = await Api.LoginAutodartsAsync(emailInput, storedPassword.Value);
+                        profile = response.Profile;
+                        boards = response.Boards.ToList();
+                        connectionStatus = "Sitzung automatisch wiederhergestellt";
+                        statusAlertClass = "alert-success";
+                        AppState.SetAutodartsProfile(profile, true);
+                    }
+                    catch
+                    {
+                        // Stored credentials might be outdated; keep login page interactive.
+                    }
+                }
             }
         }
         catch
@@ -191,9 +235,26 @@
         }
     }
 
+    private void NavigateToReturnUrlIfAvailable()
+    {
+        if (string.IsNullOrWhiteSpace(ReturnUrl))
+            return;
+
+        if (Uri.TryCreate(ReturnUrl, UriKind.Absolute, out _))
+            return;
+
+        var target = ReturnUrl.StartsWith('/') ? ReturnUrl : $"/{ReturnUrl}";
+        if (target.StartsWith("/login", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        Navigation.NavigateTo(target, replace: true);
+    }
+
     private async Task LogoutAsync()
     {
         await LocalStorage.DeleteAsync(StorageKeyEmail);
+        await LocalStorage.DeleteAsync(StorageKeyPassword);
+        await LocalStorage.SetAsync(StorageKeyRememberLogin, false);
         await LocalStorage.DeleteAsync(StorageKeyRefreshToken);
         profile = null;
         boards = new();

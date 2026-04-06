@@ -33,6 +33,7 @@ public interface ITournamentManagementService
     // Teams
     Task<IReadOnlyList<TeamDto>> GetTeamsAsync(Guid tournamentId, CancellationToken cancellationToken = default);
     Task<TeamDto> CreateTeamAsync(CreateTeamRequest request, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<TeamDto>> SaveTeamsAsync(SaveTeamsRequest request, CancellationToken cancellationToken = default);
     Task<bool> DeleteTeamAsync(Guid tournamentId, Guid teamId, CancellationToken cancellationToken = default);
 
     // Scoring

@@ -262,7 +262,7 @@ public sealed class AutodartsController(
 
         try
         {
-            var match = await autodartsClient.GetMatchAsync(accessToken, matchId, cancellationToken);
+            var match = await autodartsClient.GetMatchAsync(accessToken, matchId, allowLobbyFallback: false, cancellationToken: cancellationToken);
             if (match is null)
             {
                 return NotFound(new { message = $"Match {matchId} not found." });
@@ -322,7 +322,7 @@ public sealed class AutodartsController(
         {
             if (!string.IsNullOrWhiteSpace(request.MatchId))
             {
-                var match = await autodartsClient.GetMatchAsync(accessToken, request.MatchId!, cancellationToken);
+                var match = await autodartsClient.GetMatchAsync(accessToken, request.MatchId!, allowLobbyFallback: false, cancellationToken: cancellationToken);
                 matchData = match is not null
                     ? new { match.Id, match.Variant, match.GameMode, match.Finished }
                     : null;
@@ -491,10 +491,15 @@ public sealed class AutodartsController(
             boards = Array.Empty<AutodartsBoard>();
         }
 
-        var sessionId = Guid.NewGuid().ToString("N");
-        sessionStore.Create(sessionId, string.Empty);
-        sessionStore.UpdateTokens(sessionId, request.AccessToken, null,
-            DateTimeOffset.UtcNow.AddMinutes(55));
+        var existingSession = sessionStore.GetActive();
+        var sessionId = existingSession?.SessionId ?? Guid.NewGuid().ToString("N");
+        if (existingSession is null)
+        {
+            sessionStore.Create(sessionId, string.Empty);
+        }
+
+        var expiresAt = TryGetJwtExpiryUtc(request.AccessToken) ?? DateTimeOffset.UtcNow.AddMinutes(55);
+        sessionStore.UpdateTokens(sessionId, request.AccessToken, existingSession?.RefreshToken, expiresAt);
         sessionStore.SetProfile(sessionId, profile);
 
         await SyncBoardsAsync(boards, cancellationToken);
@@ -607,4 +612,57 @@ public sealed class AutodartsController(
 
     private static bool HasPayload(JsonElement? element)
         => element.HasValue && element.Value.ValueKind != JsonValueKind.Null && element.Value.ValueKind != JsonValueKind.Undefined;
+
+    private static DateTimeOffset? TryGetJwtExpiryUtc(string accessToken)
+    {
+        try
+        {
+            var parts = accessToken.Split('.');
+            if (parts.Length < 2)
+            {
+                return null;
+            }
+
+            var payload = parts[1]
+                .Replace('-', '+')
+                .Replace('_', '/');
+
+            switch (payload.Length % 4)
+            {
+                case 2:
+                    payload += "==";
+                    break;
+                case 3:
+                    payload += "=";
+                    break;
+            }
+
+            var payloadBytes = Convert.FromBase64String(payload);
+            using var doc = JsonDocument.Parse(payloadBytes);
+            if (!doc.RootElement.TryGetProperty("exp", out var expElement))
+            {
+                return null;
+            }
+
+            long expSeconds;
+            if (expElement.ValueKind == JsonValueKind.Number && expElement.TryGetInt64(out var num))
+            {
+                expSeconds = num;
+            }
+            else if (expElement.ValueKind == JsonValueKind.String && long.TryParse(expElement.GetString(), out var parsed))
+            {
+                expSeconds = parsed;
+            }
+            else
+            {
+                return null;
+            }
+
+            return DateTimeOffset.FromUnixTimeSeconds(expSeconds);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }

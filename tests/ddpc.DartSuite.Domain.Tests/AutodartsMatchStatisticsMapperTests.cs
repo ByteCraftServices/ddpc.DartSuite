@@ -92,4 +92,46 @@ public sealed class AutodartsMatchStatisticsMapperTests
         away.Plus140.Should().Be(1);
         away.TotalPoints.Should().Be(221);
     }
+
+    [Fact]
+    public void Map_UsesScoresFallback_ForLegsAndSets()
+    {
+        const string json = """
+        {
+          "scores": [
+            { "legs": 2, "sets": 1 },
+            { "legs": 1, "sets": 0 }
+          ],
+          "stats": [
+            {
+              "matchStats": {
+                "dartsThrown": 18,
+                "average": 45.0
+              }
+            },
+            {
+              "matchStats": {
+                "dartsThrown": 15,
+                "average": 52.0
+              }
+            }
+          ]
+        }
+        """;
+
+        using var doc = JsonDocument.Parse(json);
+
+        var result = AutodartsMatchStatisticsMapper.Map(doc.RootElement);
+
+        result.Should().HaveCount(2);
+        result[0].LegsWon.Should().Be(2);
+        result[0].LegsLost.Should().Be(1);
+        result[0].SetsWon.Should().Be(1);
+        result[0].SetsLost.Should().Be(0);
+
+        result[1].LegsWon.Should().Be(1);
+        result[1].LegsLost.Should().Be(2);
+        result[1].SetsWon.Should().Be(0);
+        result[1].SetsLost.Should().Be(1);
+    }
 }

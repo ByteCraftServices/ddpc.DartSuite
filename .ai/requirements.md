@@ -1,4 +1,4 @@
-<!-- Implementation Status Update: 03. April 2026 -->
+<!-- Implementation Status Update: 04. April 2026 -->
 
 # Implementierungsstatus (Issues #10–#18)
 
@@ -9,19 +9,49 @@
 | #12 | Scheduling Engine | ✅ | ✅ Spielplan-Tab | ✅ | SignalR-Echtzeit statt reinem Polling |
 | #13 | Seeding/Walkover/Bye | ✅ Felder + Config + Lostopf | ✅ Seeding-UI | — | Lostopf-Verfahren vollständig implementiert (pot-basierte Gruppenauslosung) |
 | #14 | Live Eventing | ✅ TournamentHub, Discord, Notifications, WebPush | ✅ Follow-Button, Discord-Config, Service Worker | ✅ | Browser Push mit VAPID vollständig (Service Worker + Backend) |
-| #15 | Roles & Policies | ✅ TournamentRole Enum, ViewPreferences | ✅ IsCurrentUserManager | — | Keine API-seitige Authorization Policy Enforcement; nur UI-basierte Sichtbarkeitskontrolle |
+| #15 | Roles & Policies | ✅ TournamentRole Enum, ViewPreferences, TournamentAuthorizationService | ✅ IsCurrentUserManager + read-only Hinweise | ✅ Scope-Regressionen | Einzelne Read-Endpunkte weiterhin bewusst oeffentlich |
 | #16 | Tiebreaker & Statistics | ✅ Erweiterte ScoringCriterionType, GroupStandingDto | ✅ GroupTable mit ext. Stats | ✅ | Automatische Tiebreaker-Berechnung noch nicht serverseitig |
-| #17 | Interactive UI (SplitButton) | — | ✅ SplitButton-Komponente | — | Integration in bestehende Pages teilweise |
+| #17 | Interactive UI (SplitButton) | — | ✅ SplitButton-Komponente + Status/Board-Integration | ✅ UI-Regression (manuell) | — |
 | #18 | Match Statistics | ✅ Entity, Services, Endpoints | ✅ MatchStatistics-Panel, Sync | ✅ | — |
 
 ## Bekannte Abweichungen von Spezifikation
 
-1. **Rollen-Enforcement (#15):** Keine serverseitige Authorization-Policy. Aktuell nur UI-basierte Kontrolle via `IsCurrentUserManager`. **→ Geplant für kommende Releases.**
+1. **Rollen-Enforcement (#15):** Serverseitige Turnierpruefungen sind fuer kritische Mutationen aktiv, einige Read-Endpunkte bleiben oeffentlich. **→ Weitere Verfeinerung fuer feinere Read-Policies geplant.**
 2. ~~**Browser Push (#14):** Backend-Infrastruktur (NotificationSubscription, Endpoints) vollständig. Frontend Service Worker für Push-API fehlt.~~ **→ Umgesetzt am 03.04.2026:** Service Worker, Push-Interop JS, VAPID-Konfiguration, WebPush-Library-Integration.
 3. ~~**Lostopf-Verfahren (#13):** Nur einfaches Top-N Seeding implementiert.~~ **→ Umgesetzt am 03.04.2026:** Pot-basierte Gruppenauslosung mit SeedPot-Feld, automatischer Pot-Zuweisung und randomisierter Verteilung innerhalb der Töpfe.
 4. ~~**Matchkomponente (#10/11):** MatchCard nur eine Variante.~~ **→ Umgesetzt am 03.04.2026:** 4 Varianten (compact, detailed, board, live) mit StatusBadge-RenderFragment und Live-Puls-Animation.
 5. **Infowall/Streaming:** Nicht implementiert. **→ Geplant für kommende Releases.**
 6. ~~**Echtzeit-Synchronisierung:** TournamentHub existiert, aber Clients subscriben noch nicht aktiv.~~ **→ Umgesetzt am 03.04.2026:** SignalR-Client (TournamentHubService) mit automatischer Reconnect-Logik, Event-Handlers, Hub-Group-Management. Timer als Fallback auf 30s erhöht.
+
+## Statusupdate 04. April 2026 (Ergaenzungen)
+
+### 1) Integrierte Onlinehilfe und Tooltips
+- Umgesetzt: Markdown-basierter Help-Katalog (`docs/06-ui-help.md`) mit eindeutigen Keys.
+- Umgesetzt: `UiHelpService` + `UiHelpIcon` in der Web-UI.
+- Umgesetzt: Tooltip-Bindings in Kernseiten (Dashboard, Landing, Register, Matches, Boards, Settings, Profile, MyTournaments).
+
+### 2) Anwenderdokumentation mit UI-Verknuepfung
+- Umgesetzt: Einheitliche MD-Notation `### [help:key]` bzw. `### help:key`.
+- Umgesetzt: Klare Zuordnung pro UI-Element ueber help-Key.
+
+### 3) End-to-End-Pruefung Datenkonsistenz (tournamentId/boardId)
+- Umgesetzt: Serverseitige Guard-Checks verhindern Cross-Tournament-Boardzuweisungen.
+- Umgesetzt: Scheduling ignoriert Fixed-Board-Konfigurationen ausserhalb des Turnier-Scopes.
+- Umgesetzt: UI-Boardlisten laden kontextbezogen nach aktivem Turnier.
+
+### 4) Automatisierte Dokumentationspflege
+- Umgesetzt: Verbindlicher Pflegeprozess in `docs/09-documentation-maintenance.md` dokumentiert.
+
+### 5) Testabdeckung und Regressionstests
+- Umgesetzt: Neue Regressionstests fuer Board/Tournament-Consistency in Infrastructure-Tests.
+- Umgesetzt: Parser-Tests fuer den UI-Hilfekatalog in Web-Tests.
+
+### 6) Erweiterung REST-API-Dokumentation
+- Umgesetzt: Vollstaendige Endpoint-Uebersicht in `docs/07-rest-api.md` inkl. Beispiel-Requests und Fehlerfaellen.
+
+### 7) UI/UX-Review und Barrierefreiheit
+- Umgesetzt: Review-Dokument und Checkliste in `docs/08-ui-ux-accessibility-review.md`.
+- Offen (naechste Iteration): Vertiefte Keyboard-/Screenreader-Feinabstimmung fuer komplexe Dialog- und DnD-Flows.
 
 ---
 
@@ -800,17 +830,31 @@ Folgende Bedienung ist vorzusehen:
 - Details können pro Match aufgeklappt werden.
 - Es gibt je Seite eine Funktion zum globalen Auf- und Zuklappen aller Matchdetails.
 
-### Akzeptanzkriterien
-
-- Alle Matchansichten verwenden eine gemeinsame Matchkomponente.
-- Die Komponente unterstützt horizontale, vertikale und gemischte Darstellung.
-- Die Darstellung reagiert korrekt auf Gameplay und SetMode.
-- Livescore ist standardmäßig aktiv, aber konfigurierbar.
-- Matchdetails sind je Ansicht konfigurierbar.
-- Benutzerspezifische Einstellungen überschreiben die Default-Einstellungen dauerhaft.
-- Auf kleinen Bildschirmen sind Zusatzdetails standardmäßig collapsed.
 
 ---
+
+## Ergänzung: Echtzeitdatenversorgung der Matchkomponente (Consumer/SignalR)
+
+**Ziel:**
+Die Matchkomponente soll für Live-Ansichten (z. B. Livescore, MatchDetail) die aktuellen Score-Daten ausschließlich über einen Echtzeit-Consumer (z. B. SignalR, WebSocket) beziehen. Persistente Felder für den Score sind nicht notwendig, da der Score nur für Live-Ansichten relevant ist. In allen anderen Ansichten (z. B. Turnierplan, Gruppenphase, KO-Phase) reichen die Anzeige von Sets und Legs aus.
+
+**Anforderungen:**
+- Die Matchkomponente muss einen Consumer (SignalR/WebSocket/EventBus) nutzen, um Score- und Statusdaten in Echtzeit zu empfangen.
+- Es werden keine Score-Daten persistiert, sondern nur für die Dauer der Live-Ansicht im UI gehalten.
+- In Nicht-Live-Ansichten werden nur Sets und Legs angezeigt, Score und Live-Statistiken sind dort ausgeblendet.
+- Die Architektur muss sicherstellen, dass keine doppelten oder veralteten Score-Daten angezeigt werden.
+- Die Consumer-Logik ist so zu gestalten, dass ein sofortiges UI-Update bei neuen Events erfolgt (StateHasChanged/EventCallback).
+- Fallback: Bei fehlender Verbindung kann optional ein Polling aktiviert werden, aber nur solange kein aktiver Consumer verfügbar ist.
+
+**Akzeptanzkriterien:**
+- Score-Daten werden in Live-Ansichten ausschließlich über den Consumer bereitgestellt.
+- In allen anderen Ansichten werden nur Sets und Legs angezeigt.
+- Kein persistentes Score-Feld im Datenmodell notwendig.
+- UI-Updates erfolgen unmittelbar nach Event-Empfang.
+- Fallback-Polling wird nur bei fehlender Verbindung aktiviert.
+
+**Hinweis:**
+Diese Ergänzung konkretisiert die Anforderungen aus Abschnitt 10 (Gemeinsame Matchkomponente) und stellt sicher, dass die Echtzeitfähigkeit und Datenkonsistenz in allen Live-Ansichten gewährleistet ist.
 
 ## 11. Spielplan-Engine und operative Spielplan-UI
 
@@ -1255,8 +1299,111 @@ Serverseitig sind mindestens folgende Prüfungen verpflichtend:
     - Auslosung wird durchgeführt
   - Status = Geplant: Sobald der Spielplan erstellt wurde
   - Status = Aktiv: Sobald das erste Match startet
-  - Status = Beendet: Sobald alle Matches beendet sind
+
+---
+
+## Neuer Issue: Echtzeit-Update der MatchPlayerStatistics aus Autodarts-API mit UI-Trigger
+
+**Ziel:**
+Die MatchPlayerStatistics sollen direkt und ereignisbasiert aus der Autodarts-API aktualisiert werden. Jede Änderung (Insert/Update/Delete) triggert ein UI-Refresh der Live-Komponenten (z. B. Match/Livescore), um echtes Echtzeit-Feedback zu gewährleisten. Polling bleibt als Fallback, falls kein aktiver Listener verfügbar ist.
+
+### 1. API-Integration & JSON-Struktur
+
+- **API-URL:**  
+  https://api.autodarts.io/gs/v0/matches/{matchId}/state
+
+- **Beispiel-JSON (gekürzt & relevante Felder):**
+  ```json
+  {
+    "id": "...",
+    "players": [ ... ],
+    "scores": [ ... ],
+    "turns": [ ... ],
+    "stats": [
+      {
+        "matchStats": {
+          "dartsThrown": 11,
+          "average": 43.36,
+          "first9Average": 43.36,
+          "checkouts": 2,
+          "checkoutPoints": 48,
+          "less60": 3,
+          "plus60": 1,
+          "plus100": 0,
+          "plus140": 0,
+          "plus170": 0,
+          "total180": 0,
+          "score": 159,
+          "checkoutsHit": 1,
+          "checkoutPercent": 0.5
+        },
+        "legStats": { ... }
+      }
+    ]
+  }
+  ```
+
+- **Mapping zu MatchPlayerStatistic.cs:**  
+  Die Felder aus `stats[].matchStats` werden auf das Modell MatchPlayerStatistic gemappt, z. B.:
+  - `average` → `Average`
+  - `first9Average` → `First9Average`
+  - `dartsThrown` → `DartsThrown`
+  - `plus100` → `Plus100`
+  - `plus140` → `Plus140`
+  - `plus170` → `Plus170`
+  - `total180` → `Plus180`
+  - `checkoutsHit` → `CheckoutHits`
+  - `checkoutPercent` → `CheckoutPercent`
+  - usw.
+
+### 2. Event-Engine & Trigger
+
+- Entwickle eine Engine, die auf neue/aktualisierte Match-Events (z. B. per SignalR, WebSocket, oder Extension-Callback) reagiert.
+- Bei jedem Event: Aktualisiere die MatchPlayerStatistics und triggere ein UI-Refresh der betroffenen Razor-Komponenten (z. B. MatchDetail, LiveScore).
+- Die Engine erkennt, ob ein aktiver Listener vorhanden ist (ansonsten Fallback auf Polling).
+
+### 3. UI-Refresh & Echtzeit-Feedback
+
+- Nach jeder Statistik-Änderung (Insert/Update/Delete) wird die betroffene Razor-Komponente (Match/Livescore) neu gerendert (StateHasChanged, EventCallback, o. ä.).
+- Die Engine sorgt für ein unmittelbares, sichtbares Update im Frontend.
+
+### 4. Fallback-Mechanismus
+
+- Optionales Polling als Backup, falls kein aktiver Listener oder keine Verbindung zur Extension besteht.
+- Polling wird nur aktiviert, wenn keine Echtzeit-Events empfangen werden.
+
+### Relevante Dateien
+
+- src/ddpc.DartSuite.Domain/Entities/MatchPlayerStatistic.cs — Datenmodell für Statistiken
+- Backend-Service für API-Integration (z. B. MatchStatisticsService)
+- Razor-Komponenten für Live-Ansicht (z. B. MatchDetail, LiveScore)
+- Event-/State-Engine (z. B. SignalR-Handler, EventDispatcher)
+
+### Verifikation
+
+1. Nach jedem API-Event werden die MatchPlayerStatistics korrekt aktualisiert.
+2. Die UI-Komponenten führen unmittelbar nach Datenänderung ein Refresh durch.
+3. Bei Ausfall des Listeners springt das Polling korrekt ein.
+4. Statistikdaten stimmen mit der API-Response überein.
+
+### Entscheidungen & Hinweise
+
+- Primär werden nur MatchPlayerStatistics aktualisiert; andere Daten nur bei Bedarf.
+- UI-Refresh ist zwingend nach jedem Insert/Update/Delete.
+- Polling ist nur Backup, nicht Standard.
+- Die Engine muss Listener-Status erkennen und entsprechend umschalten.
+
+### Weitere Überlegungen
+
+1. Welche Events dienen als Trigger? (Empfehlung: alle relevanten Match-Events, z. B. Score, Leg/Set-Ende, Checkout)
+2. Wie wird die Synchronisation bei Verbindungsabbrüchen sichergestellt?
+3. Wie werden Fehlerfälle (z. B. API-Timeouts) behandelt?
+
+**Akzeptanzkriterien:**  
+- Statistiken werden nach jedem Event korrekt aktualisiert  
+- UI-Refresh erfolgt unmittelbar nach Datenänderung  
+- Polling wird nur als Fallback genutzt  
+- Fehlerfälle werden robust behandelt
 
 
 
-- Razor Komponenten

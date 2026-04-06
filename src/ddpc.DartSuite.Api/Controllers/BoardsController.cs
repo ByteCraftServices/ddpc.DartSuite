@@ -23,6 +23,7 @@ public sealed class BoardsController(
     IAutodartsClient autodartsClient,
     AutodartsSessionStore sessionStore,
     AutodartsMatchListenerService listenerService,
+    TournamentAuthorizationService tournamentAuthorization,
     BoardExtensionSyncRequestStore syncRequestStore,
     DartSuiteDbContext dbContext,
     IHubContext<BoardStatusHub> hubContext,
@@ -38,6 +39,9 @@ public sealed class BoardsController(
     [HttpPost]
     public async Task<ActionResult<BoardDto>> Create([FromBody] CreateBoardRequest request, CancellationToken cancellationToken)
     {
+        var denied = ToDeniedResult(tournamentAuthorization.EnsureAuthenticatedOrIntegration(HttpContext));
+        if (denied is not null) return denied;
+
         try
         {
             var board = await boardService.CreateBoardAsync(request, cancellationToken);
@@ -54,6 +58,10 @@ public sealed class BoardsController(
     public async Task<ActionResult<BoardDto>> Update(Guid id, [FromBody] UpdateBoardRequest request, CancellationToken cancellationToken)
     {
         if (request.Id != id) return BadRequest("Id mismatch.");
+
+        var denied = await RequireBoardManagerAccessAsync(id, cancellationToken);
+        if (denied is not null) return denied;
+
         var board = await boardService.UpdateBoardAsync(request, cancellationToken);
         return board is null ? NotFound() : Ok(board);
     }
@@ -61,6 +69,9 @@ public sealed class BoardsController(
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
+        var denied = await RequireBoardManagerAccessAsync(id, cancellationToken);
+        if (denied is not null) return denied;
+
         try
         {
             var deleted = await boardService.DeleteBoardAsync(id, cancellationToken);
@@ -76,6 +87,9 @@ public sealed class BoardsController(
     [HttpPatch("{id:guid}/status")]
     public async Task<ActionResult<BoardDto>> UpdateStatus(Guid id, [FromQuery] string status, [FromQuery] string? externalMatchId, CancellationToken cancellationToken)
     {
+        var denied = await RequireBoardManagerAccessAsync(id, cancellationToken);
+        if (denied is not null) return denied;
+
         var board = await boardService.UpdateBoardStatusAsync(id, status, externalMatchId, cancellationToken);
         if (board is null) return NotFound();
         await hubContext.Clients.All.SendAsync("BoardStatusChanged", board, cancellationToken);
@@ -86,17 +100,19 @@ public sealed class BoardsController(
         {
             if (!string.IsNullOrEmpty(externalMatchId))
             {
-                listenerService.EnsureListener(board.CurrentMatchId.Value, externalMatchId, board.Id);
+                await listenerService.EnsureListenerAsync(board.CurrentMatchId.Value, externalMatchId, board.Id, board.ExternalBoardId, cancellationToken);
             }
             else
             {
                 var match = await matchService.GetMatchAsync(board.CurrentMatchId.Value, cancellationToken);
-                if (match is not null && !string.IsNullOrEmpty(match.ExternalMatchId) && match.FinishedUtc is null)
+                if (match is not null)
                 {
-                    listenerService.EnsureListener(match.Id, match.ExternalMatchId, board.Id);
+                    await listenerService.EnsureListenerAsync(match.Id, match.ExternalMatchId ?? string.Empty, board.Id, board.ExternalBoardId, cancellationToken);
                 }
             }
         }
+
+        await listenerService.ReconcileBoardMonitoringAsync(id, cancellationToken);
 
         return Ok(board);
     }
@@ -104,6 +120,9 @@ public sealed class BoardsController(
     [HttpPatch("{id:guid}/managed")]
     public async Task<ActionResult<BoardDto>> SetManagedMode(Guid id, [FromQuery] string mode, [FromQuery] Guid? tournamentId, CancellationToken cancellationToken)
     {
+        var denied = await RequireBoardManagerAccessAsync(id, cancellationToken, targetTournamentId: tournamentId);
+        if (denied is not null) return denied;
+
         var board = await boardService.SetManagedModeAsync(id, mode, tournamentId, cancellationToken);
         if (board is null) return NotFound();
         await hubContext.Clients.All.SendAsync("BoardManagedModeChanged", board, cancellationToken);
@@ -113,15 +132,22 @@ public sealed class BoardsController(
     [HttpPatch("{id:guid}/current-match")]
     public async Task<ActionResult<BoardDto>> SetCurrentMatch(Guid id, [FromQuery] Guid? matchId, [FromQuery] string? matchLabel, CancellationToken cancellationToken)
     {
+        var denied = await RequireBoardManagerAccessAsync(id, cancellationToken);
+        if (denied is not null) return denied;
+
         var board = await boardService.SetCurrentMatchAsync(id, matchId, matchLabel, cancellationToken);
         if (board is null) return NotFound();
         await hubContext.Clients.All.SendAsync("BoardCurrentMatchChanged", board, cancellationToken);
+        await listenerService.ReconcileBoardMonitoringAsync(id, cancellationToken);
         return Ok(board);
     }
 
     [HttpPatch("{id:guid}/heartbeat")]
     public async Task<IActionResult> Heartbeat(Guid id, CancellationToken cancellationToken)
     {
+        var denied = await RequireBoardManagerAccessAsync(id, cancellationToken);
+        if (denied is not null) return denied;
+
         var result = await boardService.HeartbeatAsync(id, cancellationToken);
         return result ? Ok() : NotFound();
     }
@@ -133,9 +159,22 @@ public sealed class BoardsController(
         return board is null ? NotFound() : Ok(board);
     }
 
+    [HttpPost("{id:guid}/monitoring/reconcile")]
+    public async Task<IActionResult> ReconcileBoardMonitoring(Guid id, CancellationToken cancellationToken)
+    {
+        var denied = await RequireBoardManagerAccessAsync(id, cancellationToken);
+        if (denied is not null) return denied;
+
+        await listenerService.ReconcileBoardMonitoringAsync(id, cancellationToken);
+        return Ok(new { message = "Board monitoring reconciled." });
+    }
+
     [HttpPatch("{id:guid}/connection-state")]
     public async Task<ActionResult<BoardDto>> UpdateConnectionState(Guid id, [FromQuery] string state, CancellationToken cancellationToken)
     {
+        var denied = await RequireBoardManagerAccessAsync(id, cancellationToken);
+        if (denied is not null) return denied;
+
         var board = await boardService.UpdateConnectionStateAsync(id, state, cancellationToken);
         if (board is null) return NotFound();
         await hubContext.Clients.All.SendAsync("BoardConnectionChanged", board, cancellationToken);
@@ -146,6 +185,9 @@ public sealed class BoardsController(
     [HttpPatch("{id:guid}/extension-status")]
     public async Task<ActionResult<BoardDto>> UpdateExtensionStatus(Guid id, [FromQuery] string status, CancellationToken cancellationToken)
     {
+        var denied = await RequireBoardManagerAccessAsync(id, cancellationToken);
+        if (denied is not null) return denied;
+
         var board = await boardService.UpdateExtensionStatusAsync(id, status, cancellationToken);
         if (board is null) return NotFound();
         await hubContext.Clients.All.SendAsync("BoardExtensionStatusChanged", board, cancellationToken);
@@ -156,6 +198,9 @@ public sealed class BoardsController(
     [HttpPost("{id:guid}/extension-sync/request")]
     public async Task<IActionResult> RequestExtensionSync(Guid id, CancellationToken cancellationToken)
     {
+        var denied = await RequireBoardManagerAccessAsync(id, cancellationToken);
+        if (denied is not null) return denied;
+
         var board = await boardService.GetBoardAsync(id, cancellationToken);
         if (board is null) return NotFound();
 
@@ -173,8 +218,11 @@ public sealed class BoardsController(
     }
 
     [HttpPost("{id:guid}/extension-sync/consume")]
-    public ActionResult<ExtensionSyncConsumeResponse> ConsumeExtensionSync(Guid id)
+    public async Task<ActionResult<ExtensionSyncConsumeResponse>> ConsumeExtensionSync(Guid id, CancellationToken cancellationToken)
     {
+        var denied = await RequireBoardManagerAccessAsync(id, cancellationToken);
+        if (denied is not null) return denied;
+
         var consume = syncRequestStore.Consume(id);
 
         logger.LogInformation(
@@ -190,6 +238,9 @@ public sealed class BoardsController(
     [HttpPost("{id:guid}/extension-sync/report")]
     public async Task<IActionResult> ReportExtensionSync(Guid id, [FromBody] BoardExtensionSyncReportRequest request, CancellationToken cancellationToken)
     {
+        var denied = await RequireBoardManagerAccessAsync(id, cancellationToken, targetTournamentId: request.TournamentId);
+        if (denied is not null) return denied;
+
         var board = await dbContext.Boards.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (board is null) return NotFound();
 
@@ -204,6 +255,8 @@ public sealed class BoardsController(
             request.Player2,
             request.MatchStatus);
 
+        var resolvedExternalMatchId = ResolveExternalMatchId(request.SourceUrl, request.ExternalMatchId);
+
         var now = DateTimeOffset.UtcNow;
         board.LastExtensionPollUtc = now;
         board.UpdatedUtc = now;
@@ -216,9 +269,9 @@ public sealed class BoardsController(
         var resolvedPlayer2 = request.Player2;
 
         if ((string.IsNullOrWhiteSpace(resolvedPlayer1) || string.IsNullOrWhiteSpace(resolvedPlayer2))
-            && !string.IsNullOrWhiteSpace(request.ExternalMatchId))
+            && !string.IsNullOrWhiteSpace(resolvedExternalMatchId))
         {
-            var externalPlayers = await TryResolvePlayersFromExternalMatchAsync(request.ExternalMatchId.Trim(), cancellationToken);
+            var externalPlayers = await TryResolvePlayersFromExternalMatchAsync(resolvedExternalMatchId, cancellationToken);
             if (externalPlayers is not null)
             {
                 resolvedPlayer1 ??= externalPlayers.Value.Player1;
@@ -228,7 +281,7 @@ public sealed class BoardsController(
                     "Extension sync player fallback board={BoardId} requestId={RequestId} externalMatchId={ExternalMatchId} player1={Player1} player2={Player2}",
                     id,
                     request.RequestId,
-                    request.ExternalMatchId,
+                    resolvedExternalMatchId,
                     resolvedPlayer1,
                     resolvedPlayer2);
             }
@@ -240,12 +293,11 @@ public sealed class BoardsController(
         var matchedBy = "none";
         if (tournamentId.HasValue)
         {
-            if (!string.IsNullOrWhiteSpace(request.ExternalMatchId))
+            if (!string.IsNullOrWhiteSpace(resolvedExternalMatchId))
             {
-                var externalMatchId = request.ExternalMatchId.Trim();
                 match = await dbContext.Matches
                     .Where(x => x.TournamentId == tournamentId.Value && x.FinishedUtc == null)
-                    .FirstOrDefaultAsync(x => x.ExternalMatchId == externalMatchId, cancellationToken);
+                    .FirstOrDefaultAsync(x => x.ExternalMatchId == resolvedExternalMatchId, cancellationToken);
                 if (match is not null)
                     matchedBy = "externalMatchId";
             }
@@ -261,6 +313,17 @@ public sealed class BoardsController(
                     cancellationToken);
                 if (match is not null)
                     matchedBy = "players";
+            }
+
+            if (match is null)
+            {
+                match = await FindOpenMatchByBoardAsync(
+                    tournamentId.Value,
+                    board.Id,
+                    board.CurrentMatchId,
+                    cancellationToken);
+                if (match is not null)
+                    matchedBy = "boardId";
             }
 
             if (match is null && board.CurrentMatchId.HasValue)
@@ -282,8 +345,8 @@ public sealed class BoardsController(
             var awayName = await ResolveParticipantNameAsync(match.AwayParticipantId, cancellationToken);
             board.CurrentMatchLabel = $"{homeName} vs {awayName}";
 
-            if (!string.IsNullOrWhiteSpace(request.ExternalMatchId))
-                match.ExternalMatchId = request.ExternalMatchId.Trim();
+            if (!string.IsNullOrWhiteSpace(resolvedExternalMatchId))
+                match.ExternalMatchId = resolvedExternalMatchId;
 
             if (match.FinishedUtc is null)
             {
@@ -330,9 +393,11 @@ public sealed class BoardsController(
         {
             await NotifyTournamentAsync(match.TournamentId, "MatchUpdated", cancellationToken);
 
-            if (!string.IsNullOrWhiteSpace(match.ExternalMatchId) && match.FinishedUtc is null)
-                listenerService.EnsureListener(match.Id, match.ExternalMatchId!, board.Id);
+            if (!string.IsNullOrWhiteSpace(match.ExternalMatchId))
+                await listenerService.EnsureListenerAsync(match.Id, match.ExternalMatchId!, board.Id, board.ExternalBoardId, cancellationToken);
         }
+
+        await listenerService.ReconcileBoardMonitoringAsync(id, cancellationToken);
 
         var response = new ExtensionSyncReportResponse(
             Matched: match is not null,
@@ -344,7 +409,7 @@ public sealed class BoardsController(
             BoardCurrentMatchLabel: board.CurrentMatchLabel,
             DerivedStatus: derivedStatus.ToString(),
             TournamentId: tournamentId,
-            ExternalMatchId: request.ExternalMatchId,
+            ExternalMatchId: resolvedExternalMatchId,
             Player1: resolvedPlayer1,
             Player2: resolvedPlayer2,
             MatchStatus: request.MatchStatus,
@@ -385,8 +450,11 @@ public sealed class BoardsController(
     }
 
     [HttpGet("{id:guid}/extension-sync/last")]
-    public ActionResult<ExtensionSyncDebugResponse> GetLastExtensionSync(Guid id)
+    public async Task<ActionResult<ExtensionSyncDebugResponse>> GetLastExtensionSync(Guid id, CancellationToken cancellationToken)
     {
+        var denied = await RequireBoardManagerAccessAsync(id, cancellationToken);
+        if (denied is not null) return denied;
+
         var telemetry = syncRequestStore.GetLatest(id);
         if (telemetry is null) return NotFound();
 
@@ -414,7 +482,30 @@ public sealed class BoardsController(
     [HttpGet("tournament/{tournamentId:guid}")]
     public async Task<ActionResult<IReadOnlyList<BoardDto>>> GetByTournament(Guid tournamentId, CancellationToken cancellationToken)
     {
+        var denied = ToDeniedResult(await tournamentAuthorization.EnsureMemberOrManagerOrIntegrationAsync(HttpContext, tournamentId, cancellationToken));
+        if (denied is not null) return denied;
+
         return Ok(await boardService.GetBoardsByTournamentAsync(tournamentId, cancellationToken));
+    }
+
+    private async Task<ActionResult?> RequireBoardManagerAccessAsync(Guid boardId, CancellationToken cancellationToken, Guid? targetTournamentId = null)
+    {
+        var board = await boardService.GetBoardAsync(boardId, cancellationToken);
+        if (board is null)
+            return NotFound();
+
+        var effectiveTournamentId = targetTournamentId ?? board.TournamentId;
+        if (!effectiveTournamentId.HasValue)
+            return ToDeniedResult(tournamentAuthorization.EnsureAuthenticatedOrIntegration(HttpContext));
+
+        return ToDeniedResult(await tournamentAuthorization.EnsureManagerOrIntegrationAsync(HttpContext, effectiveTournamentId.Value, cancellationToken));
+    }
+
+    private static ActionResult? ToDeniedResult(AccessCheckResult access)
+    {
+        return access.Allowed
+            ? null
+            : new ObjectResult(new { message = access.Message }) { StatusCode = access.StatusCode };
     }
 
     private async Task<Match?> FindOpenMatchByPlayersAsync(
@@ -453,6 +544,23 @@ public sealed class BoardsController(
             .FirstOrDefaultAsync(cancellationToken);
     }
 
+    private async Task<Match?> FindOpenMatchByBoardAsync(
+        Guid tournamentId,
+        Guid boardId,
+        Guid? preferredMatchId,
+        CancellationToken cancellationToken)
+    {
+        return await dbContext.Matches
+            .Where(x => x.TournamentId == tournamentId && x.FinishedUtc == null && x.Status != MatchStatus.WalkOver)
+            .Where(x => x.BoardId.HasValue && x.BoardId.Value == boardId)
+            .OrderByDescending(x => preferredMatchId.HasValue && x.Id == preferredMatchId.Value)
+            .ThenByDescending(x => x.Status == MatchStatus.Aktiv || x.Status == MatchStatus.Warten)
+            .ThenByDescending(x => x.StartedUtc.HasValue)
+            .ThenBy(x => x.PlannedStartUtc ?? DateTimeOffset.MaxValue)
+            .ThenBy(x => x.MatchNumber)
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
     private async Task<string> ResolveParticipantNameAsync(Guid participantId, CancellationToken cancellationToken)
     {
         var participant = await dbContext.Participants.FirstOrDefaultAsync(x => x.Id == participantId, cancellationToken);
@@ -468,7 +576,7 @@ public sealed class BoardsController(
 
         try
         {
-            var match = await autodartsClient.GetMatchAsync(accessToken, externalMatchId, cancellationToken);
+            var match = await autodartsClient.GetMatchAsync(accessToken, externalMatchId, allowLobbyFallback: false, cancellationToken: cancellationToken);
             if (match is null)
                 return null;
 
@@ -571,6 +679,38 @@ public sealed class BoardsController(
             return MatchStatus.Warten;
 
         return MatchStatus.Geplant;
+    }
+
+    private static string? ResolveExternalMatchId(string? sourceUrl, string? reportedExternalMatchId)
+    {
+        var fromUrl = TryExtractMatchIdFromUrl(sourceUrl);
+        if (!string.IsNullOrWhiteSpace(fromUrl))
+            return fromUrl;
+
+        return string.IsNullOrWhiteSpace(reportedExternalMatchId)
+            ? null
+            : reportedExternalMatchId.Trim();
+    }
+
+    private static string? TryExtractMatchIdFromUrl(string? sourceUrl)
+    {
+        if (string.IsNullOrWhiteSpace(sourceUrl))
+            return null;
+
+        var marker = "/matches/";
+        var idx = sourceUrl.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0)
+            return null;
+
+        var start = idx + marker.Length;
+        if (start >= sourceUrl.Length)
+            return null;
+
+        var remaining = sourceUrl[start..];
+        var stop = remaining.IndexOfAny(['/', '?', '#']);
+        var candidate = (stop >= 0 ? remaining[..stop] : remaining).Trim();
+
+        return string.IsNullOrWhiteSpace(candidate) ? null : candidate;
     }
 
     private Task NotifyTournamentAsync(Guid tournamentId, string method, CancellationToken cancellationToken)

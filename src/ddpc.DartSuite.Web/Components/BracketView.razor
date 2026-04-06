@@ -27,16 +27,24 @@
                                 <div class="bracket-match mb-2 @(isRunning ? "bracket-match-live" : "") @(isBye ? "bracket-match-bye" : "")"
                                      style="cursor:pointer" @onclick="() => OnMatchClick.InvokeAsync(match)">
                                     <div class="bracket-slot @(match.WinnerParticipantId == match.HomeParticipantId ? "bracket-slot-winner" : "")">
-                                        <span class="bracket-player">@GetPlayerName(match.HomeParticipantId, match, true)</span>
+                                        <PlayerName Name="@GetPlayerName(match.HomeParticipantId, match, true)"
+                                                    CssClass="bracket-player"
+                                                    HighlightWinner="@(match.WinnerParticipantId == match.HomeParticipantId)" />
                                         <span class="bracket-score">@GetScore(match, true)</span>
                                     </div>
                                     <div class="bracket-slot @(match.WinnerParticipantId == match.AwayParticipantId ? "bracket-slot-winner" : "")">
-                                        <span class="bracket-player">@GetPlayerName(match.AwayParticipantId, match, false)</span>
+                                        <PlayerName Name="@GetPlayerName(match.AwayParticipantId, match, false)"
+                                                    CssClass="bracket-player"
+                                                    HighlightWinner="@(match.WinnerParticipantId == match.AwayParticipantId)" />
                                         <span class="bracket-score">@GetScore(match, false)</span>
                                     </div>
                                     @if (match.BoardName is not null)
                                     {
-                                        <div class="bracket-board-label">@match.BoardName</div>
+                                        <div class="bracket-board-label">
+                                            <BoardName Name="@match.BoardName"
+                                                       BadgeCssClass="text-bg-light border text-muted"
+                                                       OnClick="() => HandleBoardClickAsync(match)" />
+                                        </div>
                                     }
                                 </div>
                             }
@@ -128,11 +136,14 @@
     }
 
     .bracket-board-label {
-        font-size: 0.65rem;
-        color: #6c757d;
         text-align: center;
         padding: 0 0.25rem 0.15rem;
         background: #f8f9fa;
+    }
+
+    .bracket-board-label .badge {
+        font-size: 0.65rem;
+        font-weight: 500;
     }
 </style>
 
@@ -140,6 +151,7 @@
     [Parameter, EditorRequired] public IReadOnlyList<MatchDto> Matches { get; set; } = [];
     [Parameter] public Func<Guid, string>? ResolvePlayerName { get; set; }
     [Parameter] public EventCallback<MatchDto> OnMatchClick { get; set; }
+    [Parameter] public EventCallback<MatchDto> OnBoardClick { get; set; }
 
     private string GetPlayerName(Guid participantId, MatchDto match, bool isHome)
     {
@@ -180,4 +192,7 @@
             _ => $"Runde {round}"
         };
     }
+
+    private Task HandleBoardClickAsync(MatchDto match)
+        => OnBoardClick.HasDelegate ? OnBoardClick.InvokeAsync(match) : Task.CompletedTask;
 }

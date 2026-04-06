@@ -13,7 +13,7 @@ public sealed record SaveTournamentRoundRequest(
     int MaxRounds = 50,
     string BullMode = "25/50",
     string BullOffMode = "Normal",
-    int MatchDurationMinutes = 0,
+    int LegDurationSeconds = 0,
     int PauseBetweenMatchesMinutes = 0,
     int MinPlayerPauseMinutes = 0,
     string BoardAssignment = "Dynamic",

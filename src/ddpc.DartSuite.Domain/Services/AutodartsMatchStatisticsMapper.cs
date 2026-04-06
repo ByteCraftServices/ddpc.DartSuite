@@ -9,6 +9,7 @@ public static class AutodartsMatchStatisticsMapper
         if (!rawJson.TryGetProperty("stats", out var statsElement) || statsElement.ValueKind != JsonValueKind.Array)
             return [];
 
+        var scoreSnapshots = ReadScoreSnapshots(rawJson);
         var result = new List<MappedMatchPlayerStatistic>();
         var slot = 0;
 
@@ -25,8 +26,13 @@ public static class AutodartsMatchStatisticsMapper
                 : statsEntry;
 
             var dartsThrown = ReadInt(matchStats, "dartsThrown");
-            var legsWon = ReadInt(matchStats, "legsWon", "wonLegs");
-            var legsLost = ReadInt(matchStats, "legsLost", "lostLegs");
+            var ownScore = scoreSnapshots.TryGetValue(slot, out var slotScore) ? slotScore : (ScoreSnapshot?)null;
+            var opponentScore = TryGetOpponentScore(scoreSnapshots, slot);
+
+            var legsWon = ReadNullableInt(matchStats, "legsWon", "wonLegs") ?? ownScore?.Legs ?? 0;
+            var legsLost = ReadNullableInt(matchStats, "legsLost", "lostLegs") ?? opponentScore?.Legs ?? 0;
+            var setsWon = ReadNullableInt(matchStats, "setsWon", "wonSets") ?? ownScore?.Sets ?? 0;
+            var setsLost = ReadNullableInt(matchStats, "setsLost", "lostSets") ?? opponentScore?.Sets ?? 0;
             var totalLegs = Math.Max(0, legsWon + legsLost);
 
             var checkoutHits = ReadInt(matchStats, "checkoutsHit");
@@ -40,8 +46,8 @@ public static class AutodartsMatchStatisticsMapper
                 DartsThrown: dartsThrown,
                 LegsWon: legsWon,
                 LegsLost: legsLost,
-                SetsWon: ReadInt(matchStats, "setsWon", "wonSets"),
-                SetsLost: ReadInt(matchStats, "setsLost", "lostSets"),
+                SetsWon: setsWon,
+                SetsLost: setsLost,
                 HighestCheckout: ReadInt(matchStats, "checkoutPoints", "highestCheckout"),
                 CheckoutPercent: checkoutPercent,
                 CheckoutHits: checkoutHits,
@@ -63,6 +69,40 @@ public static class AutodartsMatchStatisticsMapper
         }
 
         return result;
+    }
+
+    private static Dictionary<int, ScoreSnapshot> ReadScoreSnapshots(JsonElement rawJson)
+    {
+        var snapshots = new Dictionary<int, ScoreSnapshot>();
+
+        if (!rawJson.TryGetProperty("scores", out var scoresElement) || scoresElement.ValueKind != JsonValueKind.Array)
+            return snapshots;
+
+        var index = 0;
+        foreach (var scoreEntry in scoresElement.EnumerateArray())
+        {
+            if (scoreEntry.ValueKind == JsonValueKind.Object)
+            {
+                snapshots[index] = new ScoreSnapshot(
+                    ReadInt(scoreEntry, "legs"),
+                    ReadInt(scoreEntry, "sets"));
+            }
+
+            index++;
+        }
+
+        return snapshots;
+    }
+
+    private static ScoreSnapshot? TryGetOpponentScore(IReadOnlyDictionary<int, ScoreSnapshot> scoreSnapshots, int slot)
+    {
+        foreach (var entry in scoreSnapshots)
+        {
+            if (entry.Key != slot)
+                return entry.Value;
+        }
+
+        return null;
     }
 
     private static int ReadInt(JsonElement source, params string[] names)
@@ -116,6 +156,8 @@ public static class AutodartsMatchStatisticsMapper
         return 0;
     }
 }
+
+internal readonly record struct ScoreSnapshot(int Legs, int Sets);
 
 public sealed record MappedMatchPlayerStatistic(
     int Slot,

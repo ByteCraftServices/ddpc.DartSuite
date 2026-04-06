@@ -1,6 +1,7 @@
 using ddpc.DartSuite.Domain.Entities;
 using ddpc.DartSuite.Domain.Services;
 using ddpc.DartSuite.Infrastructure.Persistence;
+using ddpc.DartSuite.ApiClient.Contracts;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 
@@ -8,32 +9,47 @@ namespace ddpc.DartSuite.Api.Services;
 
 public static class AutodartsMatchStatisticsSyncService
 {
+    private static readonly string[] TimestampPropertyCandidates =
+    [
+        "updatedAt",
+        "lastUpdatedAt",
+        "timestamp",
+        "eventTimestamp",
+        "occurredAt",
+        "createdAt"
+    ];
+
     public static async Task<StatisticsSyncResult> UpsertFromRawAsync(
         DartSuiteDbContext dbContext,
         Guid matchId,
         Guid homeParticipantId,
         Guid awayParticipantId,
         JsonElement rawJson,
+        DateTimeOffset senderUtc,
+        string? homeParticipantName,
+        string? awayParticipantName,
         CancellationToken cancellationToken)
     {
         var mapped = AutodartsMatchStatisticsMapper.Map(rawJson);
         var changed = false;
-        var now = DateTimeOffset.UtcNow;
+        var effectiveSenderUtc = senderUtc.ToUniversalTime();
         var trackedParticipantIds = new[] { homeParticipantId, awayParticipantId };
 
         var existingStatistics = await dbContext.MatchPlayerStatistics
             .Where(x => x.MatchId == matchId && trackedParticipantIds.Contains(x.ParticipantId))
             .ToDictionaryAsync(x => x.ParticipantId, cancellationToken);
 
+        var slotToParticipantId = ResolveSlotToParticipantMap(
+            rawJson,
+            homeParticipantId,
+            awayParticipantId,
+            homeParticipantName,
+            awayParticipantName);
+
         var incomingByParticipant = mapped
             .Select(item => new
             {
-                ParticipantId = item.Slot switch
-                {
-                    0 => homeParticipantId,
-                    1 => awayParticipantId,
-                    _ => Guid.Empty
-                },
+                ParticipantId = slotToParticipantId.TryGetValue(item.Slot, out var participantId) ? participantId : Guid.Empty,
                 Item = item
             })
             .Where(x => x.ParticipantId != Guid.Empty)
@@ -42,11 +58,19 @@ public static class AutodartsMatchStatisticsSyncService
         if (incomingByParticipant.Count == 0)
         {
             if (existingStatistics.Count == 0)
-                return new StatisticsSyncResult(0, false);
+                return new StatisticsSyncResult(0, false, effectiveSenderUtc);
 
-            dbContext.MatchPlayerStatistics.RemoveRange(existingStatistics.Values);
+            var removable = existingStatistics
+                .Values
+                .Where(x => x.CreatedUtc <= effectiveSenderUtc)
+                .ToList();
+
+            if (removable.Count == 0)
+                return new StatisticsSyncResult(0, false, effectiveSenderUtc);
+
+            dbContext.MatchPlayerStatistics.RemoveRange(removable);
             await dbContext.SaveChangesAsync(cancellationToken);
-            return new StatisticsSyncResult(0, true);
+            return new StatisticsSyncResult(0, true, effectiveSenderUtc);
         }
 
         foreach (var incoming in incomingByParticipant)
@@ -62,17 +86,27 @@ public static class AutodartsMatchStatisticsSyncService
                 {
                     MatchId = matchId,
                     ParticipantId = participantId,
-                    CreatedUtc = now
+                    CreatedUtc = effectiveSenderUtc
                 };
                 dbContext.MatchPlayerStatistics.Add(existing);
                 changed = true;
             }
 
-            changed |= Apply(existing, item);
+            if (existing.CreatedUtc > effectiveSenderUtc)
+                continue;
+
+            var applied = Apply(existing, item);
+            if (existing.CreatedUtc != effectiveSenderUtc)
+            {
+                existing.CreatedUtc = effectiveSenderUtc;
+                applied = true;
+            }
+
+            changed |= applied;
         }
 
         var staleStatistics = existingStatistics
-            .Where(x => !incomingByParticipant.ContainsKey(x.Key))
+            .Where(x => !incomingByParticipant.ContainsKey(x.Key) && x.Value.CreatedUtc <= effectiveSenderUtc)
             .Select(x => x.Value)
             .ToList();
         if (staleStatistics.Count > 0)
@@ -84,7 +118,138 @@ public static class AutodartsMatchStatisticsSyncService
         if (changed)
             await dbContext.SaveChangesAsync(cancellationToken);
 
-        return new StatisticsSyncResult(incomingByParticipant.Count, changed);
+        return new StatisticsSyncResult(incomingByParticipant.Count, changed, effectiveSenderUtc);
+    }
+
+    public static DateTimeOffset ResolveSenderUtc(JsonElement rawJson, DateTimeOffset fallbackUtc)
+    {
+        var fallback = fallbackUtc.ToUniversalTime();
+
+        if (TryReadTimestamp(rawJson, out var timestampUtc))
+            return timestampUtc;
+
+        if (rawJson.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var candidate in new[] { "meta", "event", "match", "state", "data" })
+            {
+                if (!rawJson.TryGetProperty(candidate, out var nested))
+                    continue;
+
+                if (TryReadTimestamp(nested, out timestampUtc))
+                    return timestampUtc;
+            }
+        }
+
+        return fallback;
+    }
+
+    private static bool TryReadTimestamp(JsonElement element, out DateTimeOffset timestampUtc)
+    {
+        timestampUtc = default;
+
+        if (element.ValueKind != JsonValueKind.Object)
+            return false;
+
+        foreach (var propertyName in TimestampPropertyCandidates)
+        {
+            if (!element.TryGetProperty(propertyName, out var value))
+                continue;
+
+            if (value.ValueKind == JsonValueKind.String
+                && DateTimeOffset.TryParse(value.GetString(), out var parsedString))
+            {
+                timestampUtc = parsedString.ToUniversalTime();
+                return true;
+            }
+
+            if (value.ValueKind == JsonValueKind.Number)
+            {
+                if (value.TryGetInt64(out var unixCandidate))
+                {
+                    timestampUtc = unixCandidate > 1_000_000_000_000
+                        ? DateTimeOffset.FromUnixTimeMilliseconds(unixCandidate).ToUniversalTime()
+                        : DateTimeOffset.FromUnixTimeSeconds(unixCandidate).ToUniversalTime();
+                    return true;
+                }
+
+                if (value.TryGetDouble(out var unixDouble))
+                {
+                    var ms = (long)Math.Round(unixDouble * 1000d, MidpointRounding.AwayFromZero);
+                    timestampUtc = DateTimeOffset.FromUnixTimeMilliseconds(ms).ToUniversalTime();
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static IReadOnlyDictionary<int, Guid> ResolveSlotToParticipantMap(
+        JsonElement rawJson,
+        Guid homeParticipantId,
+        Guid awayParticipantId,
+        string? homeParticipantName,
+        string? awayParticipantName)
+    {
+        var fallback = new Dictionary<int, Guid>
+        {
+            [0] = homeParticipantId,
+            [1] = awayParticipantId
+        };
+
+        var match = TryBuildMatchDetail(rawJson);
+        if (match is null)
+            return fallback;
+
+        var mappedScores = AutodartsMatchScoreMapper.MapScores(match, homeParticipantName, awayParticipantName);
+        if (mappedScores.HomeSlot == mappedScores.AwaySlot)
+            return fallback;
+
+        return new Dictionary<int, Guid>
+        {
+            [mappedScores.HomeSlot] = homeParticipantId,
+            [mappedScores.AwaySlot] = awayParticipantId
+        };
+    }
+
+    private static AutodartsMatchDetail? TryBuildMatchDetail(JsonElement rawJson)
+    {
+        if (rawJson.ValueKind != JsonValueKind.Object)
+            return null;
+
+        try
+        {
+            return new AutodartsMatchDetail(
+                TryGetString(rawJson, "id") ?? string.Empty,
+                TryGetString(rawJson, "variant"),
+                TryGetString(rawJson, "gameMode"),
+                rawJson.TryGetProperty("finished", out var finishedElement) && finishedElement.ValueKind == JsonValueKind.True,
+                GetElementOrNull(rawJson, "players"),
+                GetElementOrNull(rawJson, "turns"),
+                GetElementOrNull(rawJson, "legs"),
+                GetElementOrNull(rawJson, "sets"),
+                GetElementOrNull(rawJson, "stats"),
+                rawJson.Clone());
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static JsonElement? GetElementOrNull(JsonElement element, string name)
+    {
+        if (element.TryGetProperty(name, out var value) && value.ValueKind is not JsonValueKind.Null and not JsonValueKind.Undefined)
+            return value.Clone();
+
+        return null;
+    }
+
+    private static string? TryGetString(JsonElement element, string property)
+    {
+        return element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
     }
 
     private static bool Apply(MatchPlayerStatistic target, MappedMatchPlayerStatistic source)
@@ -139,4 +304,4 @@ public static class AutodartsMatchStatisticsSyncService
     }
 }
 
-public sealed record StatisticsSyncResult(int ProcessedEntries, bool Changed);
+public sealed record StatisticsSyncResult(int ProcessedEntries, bool Changed, DateTimeOffset SenderUtc);

@@ -2,14 +2,18 @@
 @using ddpc.DartSuite.Application.Contracts.Boards
 @using ddpc.DartSuite.Application.Contracts.Matches
 @using ddpc.DartSuite.Application.Contracts.Tournaments
+@using System.Text.Json
+@using ddpc.DartSuite.Web.Components
 @inject DartSuiteApiService Api
 @inject AppStateService AppState
 @inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject IUiHelpService UiHelp
 @implements IDisposable
 
 <PageTitle>Matches</PageTitle>
 
-<h1 class="mb-3">Matches</h1>
+<h1 class="mb-3">Matches <UiHelpIcon HelpKey="page.matches" /></h1>
 
 @if (AppState.SelectedTournament is null)
 {
@@ -27,6 +31,139 @@ else
         <div class="alert alert-info py-2">Read-only: Verwaltungsaktionen sind nur fuer Spielleiter verfuegbar.</div>
     }
 
+    <details id="section-matches-fallback-polling" class="card shadow-sm mb-3" open>
+        <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
+            <span class="fw-semibold">Benutzer-Einstellung: Fallback-Polling</span>
+            <a href="/settings?tab=general&edit=fallback&context=MatchesRealtime"
+               class="btn btn-outline-secondary btn-sm"
+               title="In zentralen Einstellungen bearbeiten"
+               @onclick:stopPropagation>⚙</a>
+        </summary>
+        <div class="card-body py-3">
+            <div class="d-flex flex-wrap align-items-center gap-2 small">
+                <label for="matchesFallbackPollingSelect" class="fw-semibold mb-0">Fallback-Polling</label>
+                <select id="matchesFallbackPollingSelect" class="form-select form-select-sm" style="width:auto"
+                        value="@fallbackPollingIntervalSeconds" @onchange="OnFallbackPollingIntervalChanged" disabled="@isSavingRealtimePreference">
+                    <option value="2">2s</option>
+                    <option value="3">3s</option>
+                    <option value="5">5s (Standard)</option>
+                    <option value="10">10s</option>
+                    <option value="15">15s</option>
+                    <option value="30">30s</option>
+                </select>
+                @if (isSavingRealtimePreference)
+                {
+                    <span class="text-muted">Speichere ...</span>
+                }
+                else
+                {
+                    <span class="text-muted">Wird pro Benutzer gespeichert.</span>
+                }
+            </div>
+
+            @if (realtimePreferenceError is not null)
+            {
+                <div class="alert alert-danger py-2 mt-2 mb-0">@realtimePreferenceError</div>
+            }
+        </div>
+    </details>
+
+    <details id="section-matches-matchcard-config" class="card shadow-sm mb-3" open>
+        <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
+            <span class="fw-semibold">MatchCard Konfiguration (Matches)</span>
+            <a href="/settings?tab=general&edit=matchcard&scope=matches::detail"
+               class="btn btn-outline-secondary btn-sm"
+               title="In zentralen Einstellungen bearbeiten"
+               @onclick:stopPropagation>⚙</a>
+        </summary>
+        <div class="card-body py-3">
+            <div class="d-flex flex-wrap gap-2 mb-2">
+                <button class="btn btn-outline-secondary btn-sm" @onclick="() => SetGlobalDetailsExpansionAsync(true)">Alle Details auf</button>
+                <button class="btn btn-outline-secondary btn-sm" @onclick="() => SetGlobalDetailsExpansionAsync(false)">Alle Details zu</button>
+                <button class="btn btn-outline-secondary btn-sm" @onclick="() => SetGlobalDetailsExpansionAsync(null)">Lokal steuern</button>
+            </div>
+
+            <div class="row g-2 small">
+                <div class="col-lg-2 col-md-3">
+                    <label class="form-label mb-1">Layout</label>
+                    <select class="form-select form-select-sm"
+                            value="@DetailMatchCardSettings.Layout"
+                            @onchange="UpdateDetailMatchCardLayoutAsync"
+                            disabled="@isSavingMatchCardPreferences">
+                        <option value="Horizontal">Horizontal</option>
+                        <option value="Vertical">Vertical</option>
+                        <option value="Card">Karte</option>
+                    </select>
+                </div>
+                <div class="col-lg-2 col-md-3">
+                    <label class="form-label mb-1">Spielstand</label>
+                    <select class="form-select form-select-sm"
+                            value="@DetailMatchCardSettings.ScoreMode"
+                            @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.ScoreMode = MatchCardViewSettings.NormalizeScoreMode(args.Value?.ToString()))"
+                            disabled="@isSavingMatchCardPreferences">
+                        <option value="FinalOnly">Nur Endresultat</option>
+                        <option value="CurrentNoPoints">Aktuell (ohne Punkte)</option>
+                        <option value="LiveScores">Live Scores</option>
+                    </select>
+                </div>
+                <div class="col-lg-2 col-md-3">
+                    <label class="form-label mb-1">Spielernamen</label>
+                    <select class="form-select form-select-sm"
+                            value="@DetailMatchCardSettings.PlayerNameMode"
+                            @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.PlayerNameMode = MatchCardViewSettings.NormalizePlayerNameMode(args.Value?.ToString()))"
+                            disabled="@isSavingMatchCardPreferences">
+                        <option value="Name">Nur Name</option>
+                        <option value="NameAndPpr">Name und PPR</option>
+                    </select>
+                </div>
+                <div class="col-lg-2 col-md-3">
+                    <label class="form-label mb-1">Buttons Position</label>
+                    <select class="form-select form-select-sm"
+                            value="@DetailMatchCardSettings.ActionButtonsLocation"
+                            @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.ActionButtonsLocation = MatchCardViewSettings.NormalizeActionButtonsLocation(args.Value?.ToString()))"
+                            disabled="@isSavingMatchCardPreferences">
+                        <option value="Footer">Unten</option>
+                        <option value="Header">Oben (Titelleiste)</option>
+                    </select>
+                </div>
+                <div class="col-lg-6 col-md-12 d-flex flex-wrap gap-3 align-items-end">
+                    <div class="form-check"><input class="form-check-input" type="checkbox" id="matchesCardLive" checked="@DetailMatchCardSettings.LiveScoreEnabled" @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.LiveScoreEnabled = ParseBoolChangeEvent(args))" /><label class="form-check-label" for="matchesCardLive">LiveScore</label></div>
+                    <div class="form-check"><input class="form-check-input" type="checkbox" id="matchesCardCollapse" checked="@DetailMatchCardSettings.CollapseDetailsOnMobile" @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.CollapseDetailsOnMobile = ParseBoolChangeEvent(args))" /><label class="form-check-label" for="matchesCardCollapse">Mobile eingeklappt</label></div>
+                </div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-3 small mt-2">
+                <div class="form-check"><input class="form-check-input" type="checkbox" id="matchesCardRuntimeBadge" checked="@DetailMatchCardSettings.ShowRuntimeBadge" @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.ShowRuntimeBadge = ParseBoolChangeEvent(args))" /><label class="form-check-label" for="matchesCardRuntimeBadge">Laufzeit-Badge</label></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" id="matchesCardMonitoring" checked="@DetailMatchCardSettings.ShowMonitoringStatus" @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.ShowMonitoringStatus = ParseBoolChangeEvent(args))" /><label class="form-check-label" for="matchesCardMonitoring">Monitoring-Badge</label></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" id="matchesCardActionBar" checked="@DetailMatchCardSettings.ShowActionButtons" @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.ShowActionButtons = ParseBoolChangeEvent(args))" /><label class="form-check-label" for="matchesCardActionBar">Action-Leiste</label></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" id="matchesCardActionSync" checked="@DetailMatchCardSettings.ShowSyncAction" @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.ShowSyncAction = ParseBoolChangeEvent(args))" /><label class="form-check-label" for="matchesCardActionSync">Sync-Button</label></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" id="matchesCardActionFollow" checked="@DetailMatchCardSettings.ShowFollowAction" @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.ShowFollowAction = ParseBoolChangeEvent(args))" /><label class="form-check-label" for="matchesCardActionFollow">Folgen-Button</label></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" id="matchesCardPlayerLinks" checked="@DetailMatchCardSettings.EnablePlayerLinks" @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.EnablePlayerLinks = ParseBoolChangeEvent(args))" /><label class="form-check-label" for="matchesCardPlayerLinks">Spieler-Links</label></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" id="matchesCardBoardLink" checked="@DetailMatchCardSettings.EnableBoardLink" @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.EnableBoardLink = ParseBoolChangeEvent(args))" /><label class="form-check-label" for="matchesCardBoardLink">Board-Link</label></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" id="matchesCardSuppressHeader" checked="@DetailMatchCardSettings.SuppressHeader" @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.SuppressHeader = ParseBoolChangeEvent(args))" /><label class="form-check-label" for="matchesCardSuppressHeader">Titelleiste ausblenden</label></div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-3 small mt-2">
+                <div class="form-check"><input class="form-check-input" type="checkbox" id="matchesCardStatus" checked="@DetailMatchCardSettings.ShowMatchStatus" @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.ShowMatchStatus = ParseBoolChangeEvent(args))" /><label class="form-check-label" for="matchesCardStatus">MatchStatus</label></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" id="matchesCardScheduling" checked="@DetailMatchCardSettings.ShowSchedulingStatus" @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.ShowSchedulingStatus = ParseBoolChangeEvent(args))" /><label class="form-check-label" for="matchesCardScheduling">SchedulingStatus</label></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" id="matchesCardAverage" checked="@DetailMatchCardSettings.ShowAverage" @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.ShowAverage = ParseBoolChangeEvent(args))" /><label class="form-check-label" for="matchesCardAverage">Average</label></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" id="matchesCardPpr" checked="@DetailMatchCardSettings.ShowHighestPpr" @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.ShowHighestPpr = ParseBoolChangeEvent(args))" /><label class="form-check-label" for="matchesCardPpr">Highest PPR</label></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" id="matchesCardCheckout" checked="@DetailMatchCardSettings.ShowHighestCheckout" @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.ShowHighestCheckout = ParseBoolChangeEvent(args))" /><label class="form-check-label" for="matchesCardCheckout">Highest Checkout</label></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" id="matchesCardAdpl" checked="@DetailMatchCardSettings.ShowAverageDartsPerLeg" @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.ShowAverageDartsPerLeg = ParseBoolChangeEvent(args))" /><label class="form-check-label" for="matchesCardAdpl">Average Darts/Leg</label></div>
+                <div class="form-check"><input class="form-check-input" type="checkbox" id="matchesCardMinDarts" checked="@DetailMatchCardSettings.ShowMinimalDartsPerLeg" @onchange="args => UpdateDetailMatchCardSettingsAsync(s => s.ShowMinimalDartsPerLeg = ParseBoolChangeEvent(args))" /><label class="form-check-label" for="matchesCardMinDarts">Minimal Darts/Leg</label></div>
+            </div>
+
+            @if (isSavingMatchCardPreferences)
+            {
+                <div class="small text-muted mt-2">Speichere MatchCard-Einstellungen ...</div>
+            }
+            @if (matchCardPreferenceError is not null)
+            {
+                <div class="alert alert-danger py-1 px-2 small mt-2 mb-0">@matchCardPreferenceError</div>
+            }
+        </div>
+    </details>
+
     @* ─── Filters ─── *@
     <div class="d-flex flex-wrap gap-2 align-items-center mb-3 small filter-bar">
         <div class="form-check">
@@ -37,19 +174,22 @@ else
             <input class="form-check-input" type="checkbox" id="hideTbd" @bind="hideTbd" />
             <label class="form-check-label" for="hideTbd">TBD ausblenden</label>
         </div>
-        <select class="form-select form-select-sm" style="width:auto" @bind="statusFilter">
+        <select class="form-select form-select-sm" style="width:auto" @bind="statusFilter"
+            title="@UiHelp.GetTooltip("matches.filter.status")">
             <option value="all">Alle Status</option>
             <option value="running">Laufende Spiele</option>
             <option value="upcoming">Anstehende Spiele</option>
             <option value="inactive">Inaktive Spiele</option>
         </select>
-        <select class="form-select form-select-sm" style="width:auto" @bind="phaseFilter">
+        <select class="form-select form-select-sm" style="width:auto" @bind="phaseFilter"
+            title="@UiHelp.GetTooltip("matches.filter.phase")">
             <option value="all">Alle Phasen</option>
             <option value="Group">Gruppenphase</option>
             <option value="Knockout">K.O.-Phase</option>
         </select>
-        <input type="text" class="form-control form-control-sm" style="width:200px;min-width:120px"
+         <input type="text" class="form-control form-control-sm" style="width:200px;min-width:120px"
                placeholder="Spieler suchen…"
+             title="@UiHelp.GetTooltip("matches.search")"
                @bind="searchText" @bind:event="oninput" />
     </div>
 
@@ -65,7 +205,7 @@ else
                     disabled="@(!selectedMatchIds.Any())">Auswahl aufheben</button>
             @if (selectedMatchIds.Any())
             {
-                <button class="btn btn-danger btn-sm" @onclick="BulkResetAsync">
+                <button class="btn btn-danger btn-sm" @onclick="BulkResetAsync" title="@UiHelp.GetTooltip("matches.bulk.reset")">
                     Auswahl zurücksetzen (@selectedMatchIds.Count)
                 </button>
             }
@@ -200,24 +340,76 @@ else
         <div class="modal-dialog modal-dialog-centered modal-lg" @onclick:stopPropagation>
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Match Details — @MatchLabel(detailMatch)</h5>
+                    <h5 class="modal-title d-flex align-items-center gap-2">
+                        <span>Match Details — @MatchLabel(detailMatch)</span>
+                        <a href="/settings?tab=general&edit=matchcard&scope=matches::detail"
+                           class="btn btn-outline-secondary btn-sm"
+                           title="MatchCard-Detaileinstellungen bearbeiten"
+                           @onclick:stopPropagation>⚙</a>
+                    </h5>
                     <button type="button" class="btn-close" @onclick="CloseModal"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="text-center mb-3">
-                        <h5>
-                            <strong>@(homeP?.DisplayName ?? "TBD")</strong>
-                            <span class="text-muted mx-2">vs</span>
-                            <strong>@(awayP?.DisplayName ?? "TBD")</strong>
-                        </h5>
-                    </div>
+                    <MatchCard Match="@detailMatch"
+                               ViewSettings="@DetailMatchCardSettings"
+                               Layout="@DetailMatchCardSettings.Layout"
+                               Label="@MatchLabel(detailMatch)"
+                               HomeName="@(homeP?.DisplayName ?? "TBD")"
+                               AwayName="@(awayP?.DisplayName ?? "TBD")"
+                               BoardName="@(boards.FirstOrDefault(b => b.Id == detailMatch.BoardId)?.Name)"
+                               ShowRuntimeBadge="@DetailMatchCardSettings.ShowRuntimeBadge"
+                               ShowMonitoringStatus="@MatchCardUiPolicy.ShowMonitoring(DetailMatchCardSettings, CanManageSelectedTournament)"
+                               MonitoringStatusText="@GetMonitoringBadgeText(detailMatch)"
+                               MonitoringStatusCssClass="@GetMonitoringBadgeCss(detailMatch)"
+                               ShowActionButtons="@MatchCardUiPolicy.ShowActionBar(DetailMatchCardSettings)"
+                               ShowSyncAction="@ShowMatchCardSyncAction(detailMatch)"
+                               ShowFollowAction="@ShowMatchCardFollowAction()"
+                               IsFollowing="@isFollowingDetailMatch"
+                               CanSync="@CanSyncFromMatchCard(detailMatch)"
+                               CanFollow="@CanFollowFromMatchCard(detailMatch)"
+                               OnSync="SyncMatchFromExternalAsync"
+                               OnFollow="ToggleFollowMatchAsync"
+                               EnablePlayerLinks="@DetailMatchCardSettings.EnablePlayerLinks"
+                               EnableBoardLink="@DetailMatchCardSettings.EnableBoardLink"
+                               OnHomePlayerClick="BuildDetailPlayerNavigationCallback(detailMatch.HomeParticipantId)"
+                               OnAwayPlayerClick="BuildDetailPlayerNavigationCallback(detailMatch.AwayParticipantId)"
+                               OnBoardClick="BuildDetailBoardNavigationCallback()"
+                               SlotOrigin="@BuildSlotOrigin(detailMatch)"
+                               SetModeActive="@(round?.GameMode == "Sets")"
+                               LiveScoreEnabled="@DetailMatchCardSettings.LiveScoreEnabled"
+                               ShowMatchStatus="@DetailMatchCardSettings.ShowMatchStatus"
+                               ShowSchedulingStatus="@DetailMatchCardSettings.ShowSchedulingStatus"
+                               ShowAverage="@DetailMatchCardSettings.ShowAverage"
+                               ShowHighestPpr="@DetailMatchCardSettings.ShowHighestPpr"
+                               ShowHighestCheckout="@DetailMatchCardSettings.ShowHighestCheckout"
+                               ShowAverageDartsPerLeg="@DetailMatchCardSettings.ShowAverageDartsPerLeg"
+                               ShowMinimalDartsPerLeg="@DetailMatchCardSettings.ShowMinimalDartsPerLeg"
+                               HomeStatistic="@DetailHomeStatistic"
+                               AwayStatistic="@DetailAwayStatistic"
+                               EnableDetailPanel="true"
+                               DetailsExpandedByDefault="@(!DetailMatchCardSettings.CollapseDetailsOnMobile || !isCompactViewport)"
+                               ForceDetailsExpanded="@forcedMatchDetailsExpanded"
+                               EnableRealtimeConsumer="@(detailMatch.StartedUtc is not null && detailMatch.FinishedUtc is null)" />
 
                     @if (!isEditing)
                     {
                         @* ─── Read-only view ─── *@
                         <dl class="row mb-0">
                             <dt class="col-sm-4">Status</dt>
-                            <dd class="col-sm-8"><span class="badge @MatchStatusBadgeCss(detailMatch)">@MatchStatusText(detailMatch)</span></dd>
+                            <dd class="col-sm-8">
+                                @if (CanManageSelectedTournament)
+                                {
+                                    <SplitButton PrimaryText="@MatchStatusText(detailMatch)"
+                                                 ButtonStyle="@MatchStatusBadgeCss(detailMatch).Replace("bg-", "")"
+                                                 Size="sm"
+                                                 Disabled="@isSaving"
+                                                 Items="@BuildMatchStatusItems(detailMatch)" />
+                                }
+                                else
+                                {
+                                    <span class="badge @MatchStatusBadgeCss(detailMatch)">@MatchStatusText(detailMatch)</span>
+                                }
+                            </dd>
                             <dt class="col-sm-4">Ergebnis</dt>
                             <dd class="col-sm-8">@FormatScore(detailMatch)</dd>
                             <dt class="col-sm-4">Phase</dt>
@@ -230,7 +422,23 @@ else
                             <dt class="col-sm-4">Board</dt>
                             <dd class="col-sm-8">
                                 @{ var board = boards.FirstOrDefault(b => b.Id == detailMatch.BoardId); }
-                                @if (board is not null) { <span>@board.Name</span> } else { <span class="text-muted">Nicht zugewiesen</span> }
+                                @if (CanManageSelectedTournament)
+                                {
+                                    <SplitButton PrimaryText="@(board?.Name ?? "Nicht zugewiesen")"
+                                                 ButtonStyle="outline-primary"
+                                                 Size="sm"
+                                                 Disabled="@isSaving"
+                                                 Items="@BuildBoardSelectionItems(detailMatch)" />
+                                    <div class="small text-muted mt-1">Empfohlene Alternative steht oben.</div>
+                                }
+                                else if (board is not null)
+                                {
+                                    <span>@board.Name</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Nicht zugewiesen</span>
+                                }
                             </dd>
                             <dt class="col-sm-4">Board gesperrt</dt>
                             <dd class="col-sm-8">@(detailMatch.IsBoardLocked ? "Ja" : "Nein")</dd>
@@ -256,10 +464,11 @@ else
                                 <dt class="col-sm-4">Beendet</dt>
                                 <dd class="col-sm-8">@detailMatch.FinishedUtc.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</dd>
                             }
-                            @if (round is not null && round.MatchDurationMinutes > 0)
+                            @if (round is not null && round.LegDurationSeconds > 0)
                             {
-                                <dt class="col-sm-4">Geplante Dauer</dt>
-                                <dd class="col-sm-8">@round.MatchDurationMinutes min</dd>
+                                var plannedMinutes = (round.Sets ?? 1) * round.Legs * round.LegDurationSeconds / 60;
+                                <dt class="col-sm-4">Spielzeit/Leg</dt>
+                                <dd class="col-sm-8">@round.LegDurationSeconds s (min. @plannedMinutes min Spieldauer)</dd>
                             }
                             @if (detailMatch.StartedUtc.HasValue)
                             {
@@ -267,9 +476,10 @@ else
                                 <dt class="col-sm-4">@(detailMatch.FinishedUtc.HasValue ? "Spieldauer" : "Spielzeit")</dt>
                                 <dd class="col-sm-8">
                                     @($"{(int)elapsed.TotalMinutes} min")
-                                    @if (detailMatch.FinishedUtc is null && round is not null && round.MatchDurationMinutes > 0)
+                                    @if (detailMatch.FinishedUtc is null && round is not null && round.LegDurationSeconds > 0)
                                     {
-                                        var remaining = round.MatchDurationMinutes - (int)elapsed.TotalMinutes;
+                                        var plannedMins = (round.Sets ?? 1) * round.Legs * round.LegDurationSeconds / 60;
+                                        var remaining = plannedMins - (int)elapsed.TotalMinutes;
                                         @if (remaining > 0)
                                         {
                                             <span class="text-muted ms-2">(~@remaining min verbleibend)</span>
@@ -435,6 +645,20 @@ else
     private string walkoverWinnerId = string.Empty;
     private bool isAutodartsConnected;
     private string? autodartsDisplayName;
+    private bool isCompactViewport;
+    private bool? forcedMatchDetailsExpanded;
+    private int fallbackPollingIntervalSeconds = 5;
+    private bool isSavingRealtimePreference;
+    private string? realtimePreferenceError;
+    private bool isSavingMatchCardPreferences;
+    private string? matchCardPreferenceError;
+    private List<MatchPlayerStatisticDto> detailMatchStatistics = [];
+    private List<MatchListenerInfoDto> matchListeners = [];
+    private MatchCardViewSettings detailMatchCardSettings = MatchCardViewSettings.CreateDefault();
+    private readonly Dictionary<string, MatchCardViewSettings> matchCardSettingsByView = new(StringComparer.OrdinalIgnoreCase);
+    private bool isSyncingDetailMatch;
+    private bool isFollowingDetailMatch;
+    private bool isFollowOperationInProgress;
     private string editStatus = "";
     private string editBoardId = "";
     private int editHomeLegs;
@@ -444,6 +668,20 @@ else
     private string editWinnerId = "";
     private bool editIsBoardLocked;
     private bool editIsStartTimeLocked;
+
+    private const string RealtimePreferenceContext = "MatchesRealtime";
+    private const string MatchCardPreferenceContext = "MatchCardDisplay";
+    private const string MatchCardLegacyViewKey = "matches-detail";
+    private const string MatchCardScopeDelimiter = "::";
+    private const string MatchCardScopeGlobalPage = "all";
+    private const string MatchCardScopePage = "matches";
+    private const string MatchCardScopeSectionAll = "all";
+    private const string MatchCardScopeSectionDetail = "detail";
+
+    private sealed record MatchesRealtimeSettings(int FallbackPollingSeconds = 5);
+
+    private string DetailMatchCardScopeKey => BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionDetail);
+    private MatchCardViewSettings DetailMatchCardSettings => detailMatchCardSettings;
 
     private List<MatchDto> FilteredMatches
     {
@@ -496,19 +734,76 @@ else
                  || string.Equals(p.DisplayName, autodartsDisplayName, StringComparison.OrdinalIgnoreCase)))
         );
 
+    private bool ShowMatchCardSyncAction(MatchDto match)
+        => MatchCardUiPolicy.ShowSyncAction(DetailMatchCardSettings, CanManageSelectedTournament, match.ExternalMatchId);
+
+    private bool ShowMatchCardFollowAction()
+        => MatchCardUiPolicy.ShowFollowActionForUser(DetailMatchCardSettings, isAutodartsConnected, autodartsDisplayName);
+
+    private bool CanSyncFromMatchCard(MatchDto match)
+        => MatchCardUiPolicy.CanSync(CanManageSelectedTournament, isSyncingDetailMatch, isSaving, match.ExternalMatchId);
+
+    private bool CanFollowFromMatchCard(MatchDto match)
+        => MatchCardUiPolicy.CanFollowForUser(isAutodartsConnected, autodartsDisplayName, IsFollowOperationBusy(match.Id));
+
+    private bool IsMatchFollowed(Guid matchId)
+        => detailMatch?.Id == matchId && isFollowingDetailMatch;
+
+    private bool IsFollowOperationBusy(Guid matchId)
+        => detailMatch?.Id == matchId && isFollowOperationInProgress;
+
+    private EventCallback BuildDetailPlayerNavigationCallback(Guid participantId)
+    {
+        if (!MatchCardUiPolicy.CanOpenParticipant(participantId) || detailMatch is null)
+            return default;
+
+        return EventCallback.Factory.Create(this, GoToTournamentMatch);
+    }
+
+    private EventCallback BuildDetailBoardNavigationCallback()
+    {
+        if (!MatchCardUiPolicy.CanOpenBoard(detailMatch?.BoardId))
+            return default;
+
+        return EventCallback.Factory.Create(this, GoToTournamentBoardFromDetailMatch);
+    }
+
+    private MatchListenerInfoDto? GetMatchListener(Guid matchId)
+        => matchListeners.FirstOrDefault(l => l.MatchId == matchId);
+
+    private string GetMonitoringBadgeText(MatchDto match)
+    {
+        var listener = GetMatchListener(match.Id);
+        return MatchCardUiPolicy.MonitoringBadgeText(listener);
+    }
+
+    private string GetMonitoringBadgeCss(MatchDto match)
+    {
+        var listener = GetMatchListener(match.Id);
+        return MatchCardUiPolicy.MonitoringBadgeCss(listener);
+    }
+
     protected override async Task OnInitializedAsync()
     {
         AppState.OnChange += OnAppStateChanged;
         await Task.WhenAll(LoadDataAsync(), TryLoadAutodartsSessionAsync());
+        await LoadRealtimeSettingsAsync();
+        await LoadMatchCardSettingsAsync();
+        await TryLoadCompactViewportAsync();
+
+        forcedMatchDetailsExpanded = isCompactViewport ? false : true;
 
         if (!string.IsNullOrEmpty(QueryMatchId) && Guid.TryParse(QueryMatchId, out var qMatchId))
         {
             var found = matches.FirstOrDefault(m => m.Id == qMatchId);
             if (found is not null)
+            {
                 detailMatch = found;
+                _ = LoadDetailMatchStatisticsAsync(found.Id);
+            }
         }
 
-        _autoRefreshTimer = new Timer(OnAutoRefresh, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+        UpdateAutoRefreshTimer();
     }
 
     private async void OnAppStateChanged()
@@ -516,8 +811,264 @@ else
         await InvokeAsync(async () =>
         {
             await Task.WhenAll(LoadDataAsync(), TryLoadAutodartsSessionAsync());
+            await LoadRealtimeSettingsAsync();
+            await LoadMatchCardSettingsAsync();
+            await TryLoadCompactViewportAsync();
+            UpdateAutoRefreshTimer();
             StateHasChanged();
         });
+    }
+
+    private async Task LoadRealtimeSettingsAsync()
+    {
+        fallbackPollingIntervalSeconds = 5;
+        realtimePreferenceError = null;
+
+        if (string.IsNullOrWhiteSpace(autodartsDisplayName))
+            return;
+
+        try
+        {
+            var preference = await Api.GetViewPreferenceAsync(autodartsDisplayName, RealtimePreferenceContext);
+            if (preference is null || string.IsNullOrWhiteSpace(preference.SettingsJson))
+                return;
+
+            var parsed = JsonSerializer.Deserialize<MatchesRealtimeSettings>(preference.SettingsJson);
+            if (parsed is null)
+                return;
+
+            fallbackPollingIntervalSeconds = Math.Clamp(parsed.FallbackPollingSeconds, 2, 30);
+        }
+        catch
+        {
+            fallbackPollingIntervalSeconds = 5;
+        }
+    }
+
+    private async Task OnFallbackPollingIntervalChanged(ChangeEventArgs args)
+    {
+        if (!int.TryParse(args.Value?.ToString(), out var parsed))
+            return;
+
+        fallbackPollingIntervalSeconds = Math.Clamp(parsed, 2, 30);
+        realtimePreferenceError = null;
+        UpdateAutoRefreshTimer();
+
+        if (string.IsNullOrWhiteSpace(autodartsDisplayName))
+        {
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        try
+        {
+            isSavingRealtimePreference = true;
+            var payload = JsonSerializer.Serialize(new MatchesRealtimeSettings(fallbackPollingIntervalSeconds));
+            await Api.SaveViewPreferenceAsync(autodartsDisplayName, RealtimePreferenceContext, payload);
+        }
+        catch (Exception ex)
+        {
+            realtimePreferenceError = $"Polling-Einstellung konnte nicht gespeichert werden: {ex.Message}";
+        }
+        finally
+        {
+            isSavingRealtimePreference = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task TryLoadCompactViewportAsync()
+    {
+        try
+        {
+            isCompactViewport = await JS.InvokeAsync<bool>("dartSuiteUi.isCompactViewport");
+        }
+        catch
+        {
+            isCompactViewport = false;
+        }
+    }
+
+    private static string BuildMatchCardScopeKey(string page, string section)
+    {
+        var normalizedPage = string.IsNullOrWhiteSpace(page) ? MatchCardScopePage : page.Trim().ToLowerInvariant();
+        var normalizedSection = NormalizeMatchCardSection(section);
+        return $"{normalizedPage}{MatchCardScopeDelimiter}{normalizedSection}";
+    }
+
+    private static string NormalizeMatchCardScopeKey(string scopeKey)
+    {
+        if (string.IsNullOrWhiteSpace(scopeKey))
+            return BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionDetail);
+
+        var split = scopeKey.Split(MatchCardScopeDelimiter, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (split.Length != 2)
+            return scopeKey.Trim();
+
+        return BuildMatchCardScopeKey(split[0], split[1]);
+    }
+
+    private static string NormalizeMatchCardSection(string? section)
+    {
+        var normalized = (section ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            MatchCardScopeSectionAll => MatchCardScopeSectionAll,
+            MatchCardScopeSectionDetail => MatchCardScopeSectionDetail,
+            _ => MatchCardScopeSectionDetail
+        };
+    }
+
+    private MatchCardViewSettings ResolveDetailMatchCardSettings()
+    {
+        var candidates = new[]
+        {
+            DetailMatchCardScopeKey,
+            BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll),
+            BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll),
+            MatchCardLegacyViewKey
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (matchCardSettingsByView.TryGetValue(candidate, out var found))
+                return found;
+        }
+
+        return MatchCardViewSettings.CreateDefault();
+    }
+
+    private MatchCardViewSettings GetEditableDetailMatchCardSettings()
+    {
+        if (!matchCardSettingsByView.TryGetValue(DetailMatchCardScopeKey, out var settings))
+        {
+            settings = ResolveDetailMatchCardSettings().Clone();
+            settings.Normalize();
+            matchCardSettingsByView[DetailMatchCardScopeKey] = settings;
+        }
+
+        settings.Normalize();
+        return settings;
+    }
+
+    private async Task LoadMatchCardSettingsAsync()
+    {
+        matchCardPreferenceError = null;
+        matchCardSettingsByView.Clear();
+
+        matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
+        matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
+        detailMatchCardSettings = GetEditableDetailMatchCardSettings();
+
+        if (string.IsNullOrWhiteSpace(autodartsDisplayName))
+            return;
+
+        try
+        {
+            var preference = await Api.GetViewPreferenceAsync(autodartsDisplayName, MatchCardPreferenceContext);
+            if (preference is null || string.IsNullOrWhiteSpace(preference.SettingsJson))
+                return;
+
+            var payload = JsonSerializer.Deserialize<MatchCardViewPreferencePayload>(preference.SettingsJson);
+            if (payload?.Views is null)
+                return;
+
+            foreach (var (key, configured) in payload.Views)
+            {
+                if (string.IsNullOrWhiteSpace(key) || configured is null)
+                    continue;
+
+                var normalizedKey = string.Equals(key, MatchCardLegacyViewKey, StringComparison.OrdinalIgnoreCase)
+                    ? DetailMatchCardScopeKey
+                    : key.Contains(MatchCardScopeDelimiter, StringComparison.Ordinal)
+                        ? NormalizeMatchCardScopeKey(key)
+                        : key.Trim();
+
+                configured.Normalize();
+                matchCardSettingsByView[normalizedKey] = configured;
+            }
+
+            detailMatchCardSettings = GetEditableDetailMatchCardSettings();
+        }
+        catch
+        {
+            matchCardSettingsByView.Clear();
+            matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
+            matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
+            detailMatchCardSettings = MatchCardViewSettings.CreateDefault();
+            matchCardSettingsByView[DetailMatchCardScopeKey] = detailMatchCardSettings;
+        }
+    }
+
+    private async Task UpdateDetailMatchCardSettingsAsync(Action<MatchCardViewSettings> update)
+    {
+        matchCardPreferenceError = null;
+
+        update(detailMatchCardSettings);
+        detailMatchCardSettings.Normalize();
+        matchCardSettingsByView.Remove(MatchCardLegacyViewKey);
+        matchCardSettingsByView[DetailMatchCardScopeKey] = detailMatchCardSettings;
+
+        if (string.IsNullOrWhiteSpace(autodartsDisplayName))
+        {
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        try
+        {
+            isSavingMatchCardPreferences = true;
+
+            var payload = new MatchCardViewPreferencePayload
+            {
+                Views = matchCardSettingsByView.ToDictionary(
+                    entry => entry.Key,
+                    entry => entry.Value.Clone(),
+                    StringComparer.OrdinalIgnoreCase)
+            };
+
+            var json = JsonSerializer.Serialize(payload);
+            await Api.SaveViewPreferenceAsync(autodartsDisplayName, MatchCardPreferenceContext, json);
+        }
+        catch (Exception ex)
+        {
+            matchCardPreferenceError = $"MatchCard-Einstellungen konnten nicht gespeichert werden: {ex.Message}";
+        }
+        finally
+        {
+            isSavingMatchCardPreferences = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Task UpdateDetailMatchCardLayoutAsync(ChangeEventArgs args)
+        => UpdateDetailMatchCardSettingsAsync(s => s.Layout = args.Value?.ToString() ?? "Mixed");
+
+    private async Task SetGlobalDetailsExpansionAsync(bool? expanded)
+    {
+        forcedMatchDetailsExpanded = expanded;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static bool ParseBoolChangeEvent(ChangeEventArgs args)
+        => args.Value switch
+        {
+            bool b => b,
+            string s when bool.TryParse(s, out var parsed) => parsed,
+            _ => false
+        };
+
+    private void UpdateAutoRefreshTimer()
+    {
+        var refreshInterval = TimeSpan.FromSeconds(Math.Clamp(fallbackPollingIntervalSeconds, 2, 30));
+
+        if (_autoRefreshTimer is null)
+        {
+            _autoRefreshTimer = new Timer(OnAutoRefresh, null, refreshInterval, refreshInterval);
+            return;
+        }
+
+        _autoRefreshTimer.Change(refreshInterval, refreshInterval);
     }
 
     private async Task TryLoadAutodartsSessionAsync()
@@ -535,12 +1086,48 @@ else
         }
     }
 
+    private async Task LoadMatchListenersAsync()
+    {
+        if (AppState.SelectedTournament is null)
+        {
+            matchListeners = [];
+            return;
+        }
+
+        try
+        {
+            var allListeners = await Api.GetMatchListenersAsync();
+            var matchIds = matches.Select(m => m.Id).ToHashSet();
+            matchListeners = allListeners
+                .Where(x => matchIds.Contains(x.MatchId))
+                .ToList();
+        }
+        catch
+        {
+            matchListeners = [];
+        }
+    }
+
     private async void OnAutoRefresh(object? _)
     {
         if (AppState.SelectedTournament is null) return;
         try
         {
+            var pageVisible = await JS.InvokeAsync<bool>("dartSuiteUi.isDocumentVisible");
+            if (!pageVisible)
+                return;
+
             matches = (await Api.GetMatchesAsync(AppState.SelectedTournament.Id)).ToList();
+
+            if (detailMatch is not null)
+            {
+                detailMatch = matches.FirstOrDefault(m => m.Id == detailMatch.Id) ?? detailMatch;
+                await LoadMatchListenersAsync();
+
+                if (detailMatch.StartedUtc is not null && detailMatch.FinishedUtc is null)
+                    await LoadDetailMatchStatisticsAsync(detailMatch.Id);
+            }
+
             await InvokeAsync(StateHasChanged);
         }
         catch { /* ignore refresh errors */ }
@@ -554,7 +1141,8 @@ else
             matches = (await Api.GetMatchesAsync(id)).ToList();
             participants = (await Api.GetParticipantsAsync(id)).ToList();
             roundSettings = (await Api.GetRoundsAsync(id)).ToList();
-            boards = (await Api.GetBoardsAsync()).ToList();
+            boards = (await Api.GetBoardsByTournamentAsync(id)).ToList();
+            await LoadMatchListenersAsync();
         }
         else
         {
@@ -562,6 +1150,7 @@ else
             participants = [];
             roundSettings = [];
             boards = [];
+            matchListeners = [];
         }
     }
 
@@ -692,18 +1281,146 @@ else
     private void OpenMatchDetail(MatchDto match)
     {
         detailMatch = match;
+        detailMatchStatistics = [];
         isEditing = false;
         showWalkoverConfirm = false;
         walkoverWinnerId = string.Empty;
         editError = null;
+        _ = LoadDetailMatchStatisticsAsync(match.Id);
+        _ = LoadMatchListenersAsync();
+        _ = CheckFollowStateAsync(match.Id);
     }
 
     private void CloseModal()
     {
         detailMatch = null;
+        detailMatchStatistics = [];
         isEditing = false;
         showWalkoverConfirm = false;
         walkoverWinnerId = string.Empty;
+        isFollowingDetailMatch = false;
+        isFollowOperationInProgress = false;
+        isSyncingDetailMatch = false;
+    }
+
+    private async Task CheckFollowStateAsync(Guid matchId)
+    {
+        if (string.IsNullOrWhiteSpace(autodartsDisplayName))
+        {
+            isFollowingDetailMatch = false;
+            return;
+        }
+
+        try
+        {
+            var followers = await Api.GetMatchFollowersAsync(matchId);
+            isFollowingDetailMatch = followers.Any(f =>
+                string.Equals(f.UserAccountName, autodartsDisplayName, StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            isFollowingDetailMatch = false;
+        }
+    }
+
+    private async Task ToggleFollowMatchAsync()
+    {
+        if (detailMatch is null)
+            return;
+
+        await ToggleFollowMatchAsync(detailMatch);
+    }
+
+    private async Task ToggleFollowMatchAsync(MatchDto match)
+    {
+        if (match.Id == Guid.Empty || string.IsNullOrWhiteSpace(autodartsDisplayName))
+            return;
+
+        if (!CanFollowFromMatchCard(match))
+            return;
+
+        try
+        {
+            isFollowOperationInProgress = true;
+
+            var isFollowing = IsMatchFollowed(match.Id);
+            if (isFollowing)
+            {
+                await Api.UnfollowMatchAsync(match.Id, autodartsDisplayName);
+            }
+            else
+            {
+                await Api.FollowMatchAsync(match.Id, autodartsDisplayName);
+            }
+
+            if (detailMatch?.Id == match.Id)
+                isFollowingDetailMatch = !isFollowing;
+        }
+        catch
+        {
+            await CheckFollowStateAsync(match.Id);
+        }
+        finally
+        {
+            isFollowOperationInProgress = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SyncMatchFromExternalAsync()
+    {
+        if (detailMatch is null)
+            return;
+
+        await SyncMatchFromExternalAsync(detailMatch);
+    }
+
+    private async Task SyncMatchFromExternalAsync(MatchDto match)
+    {
+        if (!CanSyncFromMatchCard(match))
+            return;
+
+        try
+        {
+            isSyncingDetailMatch = true;
+            editError = null;
+
+            var synced = await Api.SyncMatchFromExternalAsync(match.Id);
+            if (synced is null)
+                return;
+
+            if (detailMatch?.Id == synced.Id)
+                detailMatch = synced;
+
+            var index = matches.FindIndex(m => m.Id == synced.Id);
+            if (index >= 0)
+                matches[index] = synced;
+
+            await LoadDetailMatchStatisticsAsync(synced.Id);
+            await LoadMatchListenersAsync();
+        }
+        catch (Exception ex)
+        {
+            editError = $"Sync fehlgeschlagen: {ex.Message}";
+        }
+        finally
+        {
+            isSyncingDetailMatch = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadDetailMatchStatisticsAsync(Guid matchId)
+    {
+        try
+        {
+            detailMatchStatistics = (await Api.GetMatchStatisticsAsync(matchId)).ToList();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            detailMatchStatistics = [];
+        }
     }
 
     private static bool CanSetWalkover(MatchDto match)
@@ -893,6 +1610,12 @@ else
             Nav.NavigateTo($"/tournaments?matchId={detailMatch.Id}");
     }
 
+    private void GoToTournamentBoardFromDetailMatch()
+    {
+        if (MatchCardUiPolicy.CanOpenBoard(detailMatch?.BoardId) && detailMatch?.BoardId is Guid boardId)
+            Nav.NavigateTo($"/tournaments?boardId={boardId}");
+    }
+
     // ─── Label Helpers ───
 
     private string MatchLabel(MatchDto m)
@@ -940,6 +1663,36 @@ else
         return $"{match.HomeLegs}:{match.AwayLegs}";
     }
 
+    private MatchPlayerStatisticDto? DetailHomeStatistic
+        => ResolveMatchStatistic(detailMatch, detailMatch?.HomeParticipantId ?? Guid.Empty);
+
+    private MatchPlayerStatisticDto? DetailAwayStatistic
+        => ResolveMatchStatistic(detailMatch, detailMatch?.AwayParticipantId ?? Guid.Empty);
+
+    private MatchPlayerStatisticDto? ResolveMatchStatistic(MatchDto? match, Guid participantId)
+    {
+        if (match is null || participantId == Guid.Empty)
+            return null;
+
+        return detailMatchStatistics
+            .Where(x => x.MatchId == match.Id && x.ParticipantId == participantId)
+            .OrderByDescending(x => x.Id)
+            .FirstOrDefault();
+    }
+
+    private static string? BuildSlotOrigin(MatchDto match)
+    {
+        var originParts = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(match.HomeSlotOrigin))
+            originParts.Add($"Home: {match.HomeSlotOrigin}");
+
+        if (!string.IsNullOrWhiteSpace(match.AwaySlotOrigin))
+            originParts.Add($"Away: {match.AwaySlotOrigin}");
+
+        return originParts.Count == 0 ? null : string.Join(" | ", originParts);
+    }
+
     private static string StatusBadgeClass(string status) => status switch
     {
         "Erstellt" => "bg-secondary",
@@ -979,6 +1732,154 @@ else
         "WalkOver" => @<span class="badge bg-dark">WalkOver</span>,
         _ => @<span class="badge bg-secondary">Anstehend</span>
     };
+
+    private IReadOnlyList<SplitButton.SplitButtonItem> BuildMatchStatusItems(MatchDto match)
+    {
+        var statusCandidates = new[] { "Erstellt", "Geplant", "Aktiv", "Beendet", "Inaktiv", "WalkOver" };
+        return statusCandidates.Select(status => new SplitButton.SplitButtonItem
+        {
+            Text = status,
+            IsDisabled = string.Equals(match.Status, status, StringComparison.OrdinalIgnoreCase),
+            IsDanger = status is "Inaktiv" or "WalkOver",
+            OnClick = EventCallback.Factory.Create(this, () => QuickSetMatchStatusAsync(match, status))
+        }).ToList();
+    }
+
+    private async Task QuickSetMatchStatusAsync(MatchDto match, string newStatus)
+    {
+        if (!CanManageSelectedTournament)
+            return;
+
+        try
+        {
+            isSaving = true;
+            editError = null;
+
+            var request = new UpdateMatchRequest(
+                match.Id,
+                match.BoardId,
+                match.HomeLegs,
+                match.AwayLegs,
+                match.HomeSets,
+                match.AwaySets,
+                newStatus,
+                match.IsStartTimeLocked,
+                match.IsBoardLocked,
+                match.WinnerParticipantId);
+
+            var updated = await Api.UpdateMatchAsync(request);
+            if (updated is null)
+                return;
+
+            var index = matches.FindIndex(m => m.Id == updated.Id);
+            if (index >= 0)
+                matches[index] = updated;
+
+            if (detailMatch?.Id == updated.Id)
+                detailMatch = updated;
+        }
+        catch (Exception ex)
+        {
+            editError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private IReadOnlyList<SplitButton.SplitButtonItem> BuildBoardSelectionItems(MatchDto match)
+    {
+        var runningBoardIds = matches
+            .Where(m => m.Id != match.Id && m.StartedUtc is not null && m.FinishedUtc is null && m.BoardId.HasValue)
+            .Select(m => m.BoardId!.Value)
+            .ToHashSet();
+
+        var rankedBoards = boards
+            .Select(board => new
+            {
+                Board = board,
+                IsAvailable = !runningBoardIds.Contains(board.Id),
+                QueueCount = matches.Count(m => m.Id != match.Id && m.BoardId == board.Id && m.FinishedUtc is null && m.StartedUtc is null)
+            })
+            .OrderByDescending(x => x.IsAvailable)
+            .ThenBy(x => x.QueueCount)
+            .ThenBy(x => x.Board.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var items = rankedBoards
+            .Select(x => new SplitButton.SplitButtonItem
+            {
+                Text = x.IsAvailable
+                    ? $"{x.Board.Name} ({x.Board.Status}, Queue: {x.QueueCount})"
+                    : $"{x.Board.Name} ({x.Board.Status}, belegt)",
+                IsDisabled = x.Board.Id == match.BoardId || !x.IsAvailable,
+                OnClick = EventCallback.Factory.Create(this, () => QuickAssignBoardAsync(match, x.Board.Id))
+            })
+            .ToList();
+
+        items.Add(new SplitButton.SplitButtonItem { IsDivider = true });
+        items.Add(new SplitButton.SplitButtonItem
+        {
+            Text = "Keine Zuweisung",
+            IsDisabled = !match.BoardId.HasValue,
+            OnClick = EventCallback.Factory.Create(this, () => QuickAssignBoardAsync(match, null))
+        });
+
+        return items;
+    }
+
+    private async Task QuickAssignBoardAsync(MatchDto match, Guid? boardId)
+    {
+        if (!CanManageSelectedTournament)
+            return;
+
+        try
+        {
+            isSaving = true;
+            editError = null;
+
+            MatchDto? updated;
+            if (boardId.HasValue)
+            {
+                await Api.AssignBoardToMatchAsync(match.Id, boardId.Value);
+                await LoadDataAsync();
+                updated = matches.FirstOrDefault(m => m.Id == match.Id);
+            }
+            else
+            {
+                updated = await Api.UpdateMatchAsync(new UpdateMatchRequest(
+                    match.Id,
+                    null,
+                    match.HomeLegs,
+                    match.AwayLegs,
+                    match.HomeSets,
+                    match.AwaySets,
+                    match.Status,
+                    match.IsStartTimeLocked,
+                    match.IsBoardLocked,
+                    match.WinnerParticipantId));
+            }
+
+            if (updated is null)
+                return;
+
+            var index = matches.FindIndex(m => m.Id == updated.Id);
+            if (index >= 0)
+                matches[index] = updated;
+
+            if (detailMatch?.Id == updated.Id)
+                detailMatch = updated;
+        }
+        catch (Exception ex)
+        {
+            editError = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
 
     public void Dispose()
     {

@@ -1,0 +1,384 @@
+@using System.Text.Json
+@inject DartSuiteApiService Api
+
+@if (Visible)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="HandleBackdropClick">
+        <div class="modal-dialog modal-dialog-centered modal-lg" @onclick:stopPropagation>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">MatchCard – @GetScopeLabel(ScopeKey)</h5>
+                    <button type="button" class="btn-close" @onclick="CloseAsync"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_isLoading)
+                    {
+                        <div class="text-center py-3 text-muted small">Laden...</div>
+                    }
+                    else
+                    {
+                        @if (!string.IsNullOrWhiteSpace(_error))
+                        {
+                            <div class="alert alert-danger py-2 small mb-2">@_error</div>
+                        }
+
+                        @if (_isOverride)
+                        {
+                            <div class="form-check form-switch mb-3 border rounded p-2">
+                                <input class="form-check-input" type="checkbox" id="mcsmUseDefaults"
+                                       checked="@_useDefaults"
+                                       @onchange="args => _useDefaults = ParseBool(args)" />
+                                <label class="form-check-label fw-semibold" for="mcsmUseDefaults">Standardwerte verwenden</label>
+                                @if (_useDefaults)
+                                {
+                                    <div class="small text-muted mt-1">Diese Sektion wird auf die vererbten Einstellungen zurückgesetzt.</div>
+                                }
+                            </div>
+                        }
+
+                        <fieldset disabled="@_useDefaults">
+                        <div class="row g-2 small mb-3">
+                            <div class="col-lg-3 col-md-4">
+                                <label class="form-label mb-1">Anzeige</label>
+                                <select class="form-select form-select-sm"
+                                        value="@_settings.Layout"
+                                        @onchange="OnLayoutChanged">
+                                    <option value="Horizontal">Horizontal</option>
+                                    <option value="Vertical">Vertikal</option>
+                                    <option value="Card">Karte</option>
+                                    <option value="List">Liste</option>
+                                </select>
+                            </div>
+                            <div class="col-lg-3 col-md-4">
+                                <label class="form-label mb-1">Spielstand</label>
+                                <select class="form-select form-select-sm"
+                                        value="@_settings.ScoreMode"
+                                        @onchange="args => _settings.ScoreMode = MatchCardViewSettings.NormalizeScoreMode(args.Value?.ToString())">
+                                    <option value="FinalOnly">Nur Endresultat</option>
+                                    <option value="CurrentNoPoints">Aktueller Spielstand</option>
+                                    <option value="LiveScores">Live Scores</option>
+                                </select>
+                            </div>
+                            <div class="col-lg-3 col-md-4">
+                                <label class="form-label mb-1">Spielernamen</label>
+                                <select class="form-select form-select-sm"
+                                        value="@_settings.PlayerNameMode"
+                                        @onchange="args => _settings.PlayerNameMode = MatchCardViewSettings.NormalizePlayerNameMode(args.Value?.ToString())">
+                                    <option value="Name">Nur Name</option>
+                                    <option value="NameAndPpr">Name und PPR</option>
+                                </select>
+                            </div>
+                            <div class="col-lg-3 col-md-12 d-flex align-items-end">
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmCollapse" checked="@_settings.CollapseDetailsOnMobile" @onchange="args => _settings.CollapseDetailsOnMobile = ParseBool(args)" /><label class="form-check-label" for="mcsmCollapse">Mobile eingeklappt</label></div>
+                            </div>
+                        </div>
+
+                        <div class="border rounded p-2 mb-2">
+                            <div class="fw-semibold small mb-2">Titelleiste</div>
+                            <div class="d-flex flex-wrap gap-3 small">
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmHdrNum" checked="@_settings.ShowHeaderMatchNumber" @onchange="args => _settings.ShowHeaderMatchNumber = ParseBool(args)" /><label class="form-check-label" for="mcsmHdrNum">Matchnummer</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmHdrName" checked="@_settings.ShowHeaderMatchName" @onchange="args => _settings.ShowHeaderMatchName = ParseBool(args)" /><label class="form-check-label" for="mcsmHdrName">Matchname</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmHdrStart" checked="@_settings.ShowHeaderStartTime" @onchange="args => _settings.ShowHeaderStartTime = ParseBool(args)" /><label class="form-check-label" for="mcsmHdrStart">Startzeit</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmHdrStartLock" checked="@_settings.ShowHeaderStartTimeLock" @onchange="args => _settings.ShowHeaderStartTimeLock = ParseBool(args)" /><label class="form-check-label" for="mcsmHdrStartLock">Startzeit gesperrt</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmHdrBoard" checked="@_settings.ShowHeaderBoardName" @onchange="args => _settings.ShowHeaderBoardName = ParseBool(args)" /><label class="form-check-label" for="mcsmHdrBoard">Boardname</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmHdrBoardLock" checked="@_settings.ShowHeaderBoardLock" @onchange="args => _settings.ShowHeaderBoardLock = ParseBool(args)" /><label class="form-check-label" for="mcsmHdrBoardLock">Board gesperrt</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmHdrDelay" checked="@_settings.ShowHeaderDelay" @onchange="args => _settings.ShowHeaderDelay = ParseBool(args)" /><label class="form-check-label" for="mcsmHdrDelay">Zeitdifferenz</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmHdrStatus" checked="@_settings.ShowHeaderMatchStatus" @onchange="args => _settings.ShowHeaderMatchStatus = ParseBool(args)" /><label class="form-check-label" for="mcsmHdrStatus">Matchstatus</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmHdrLive" checked="@_settings.ShowHeaderLiveBadge" @onchange="args => _settings.ShowHeaderLiveBadge = ParseBool(args)" /><label class="form-check-label" for="mcsmHdrLive">Live-Badge</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmHdrRuntime" checked="@_settings.ShowRuntimeBadge" @onchange="args => _settings.ShowRuntimeBadge = ParseBool(args)" /><label class="form-check-label" for="mcsmHdrRuntime">Spielzeit-Badge</label></div>
+                            </div>
+                        </div>
+
+                        <div class="border rounded p-2 mb-2">
+                            <div class="fw-semibold small mb-2">Body</div>
+                            <div class="d-flex flex-wrap gap-3 small">
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmBodyStart" checked="@_settings.ShowBodyStartTime" @onchange="args => _settings.ShowBodyStartTime = ParseBool(args)" /><label class="form-check-label" for="mcsmBodyStart">Startzeit</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmBodyStartLock" checked="@_settings.ShowBodyStartTimeLock" @onchange="args => _settings.ShowBodyStartTimeLock = ParseBool(args)" /><label class="form-check-label" for="mcsmBodyStartLock">Startzeit gesperrt</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmBodyDelay" checked="@_settings.ShowBodyDelay" @onchange="args => _settings.ShowBodyDelay = ParseBool(args)" /><label class="form-check-label" for="mcsmBodyDelay">Zeitdifferenz</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmBodyNum" checked="@_settings.ShowBodyMatchNumber" @onchange="args => _settings.ShowBodyMatchNumber = ParseBool(args)" /><label class="form-check-label" for="mcsmBodyNum">Matchnummer</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmBodyBoard" checked="@_settings.ShowBodyBoardName" @onchange="args => _settings.ShowBodyBoardName = ParseBool(args)" /><label class="form-check-label" for="mcsmBodyBoard">Boardname</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmBodyLive" checked="@_settings.LiveScoreEnabled" @onchange="args => _settings.LiveScoreEnabled = ParseBool(args)" /><label class="form-check-label" for="mcsmBodyLive">LiveScore aktiv</label></div>
+                            </div>
+                        </div>
+
+                        <div class="border rounded p-2 mb-2">
+                            <div class="fw-semibold small mb-2">Buttons / Funktionen</div>
+                            <div class="d-flex flex-wrap gap-3 small">
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmActBar" checked="@_settings.ShowActionButtons" @onchange="args => _settings.ShowActionButtons = ParseBool(args)" /><label class="form-check-label" for="mcsmActBar">Action-Leiste</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmActSync" checked="@_settings.ShowSyncAction" @onchange="args => _settings.ShowSyncAction = ParseBool(args)" /><label class="form-check-label" for="mcsmActSync">Sync</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmActFollow" checked="@_settings.ShowFollowAction" @onchange="args => _settings.ShowFollowAction = ParseBool(args)" /><label class="form-check-label" for="mcsmActFollow">Spiel folgen</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmActStart" checked="@_settings.ShowStartMatchAction" @onchange="args => _settings.ShowStartMatchAction = ParseBool(args)" /><label class="form-check-label" for="mcsmActStart">Match starten</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmActReset" checked="@_settings.ShowResetAction" @onchange="args => _settings.ShowResetAction = ParseBool(args)" /><label class="form-check-label" for="mcsmActReset">Zurücksetzen</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmActListener" checked="@_settings.ShowListenerAction" @onchange="args => _settings.ShowListenerAction = ParseBool(args)" /><label class="form-check-label" for="mcsmActListener">Listener starten</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmPlayerLinks" checked="@_settings.EnablePlayerLinks" @onchange="args => _settings.EnablePlayerLinks = ParseBool(args)" /><label class="form-check-label" for="mcsmPlayerLinks">Spieler-Links</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmBoardLink" checked="@_settings.EnableBoardLink" @onchange="args => _settings.EnableBoardLink = ParseBool(args)" /><label class="form-check-label" for="mcsmBoardLink">Board-Link</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmSuppressHeader" checked="@_settings.SuppressHeader" @onchange="args => _settings.SuppressHeader = ParseBool(args)" /><label class="form-check-label" for="mcsmSuppressHeader">Titelleiste ausblenden</label></div>
+                            </div>
+                            <div class="d-flex align-items-center gap-2 mt-2 small">
+                                <label class="form-label mb-0">Buttons Position</label>
+                                <select class="form-select form-select-sm" style="width:auto" value="@_settings.ActionButtonsLocation" @onchange="args => _settings.ActionButtonsLocation = MatchCardViewSettings.NormalizeActionButtonsLocation(args.Value?.ToString())">
+                                    <option value="Footer">Unten</option>
+                                    <option value="Header">Oben (Titelleiste)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="border rounded p-2">
+                            <div class="fw-semibold small mb-2">Erweitert / Statistiken</div>
+                            <div class="d-flex flex-wrap gap-3 small">
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmMonitoring" checked="@_settings.ShowMonitoringStatus" @onchange="args => _settings.ShowMonitoringStatus = ParseBool(args)" /><label class="form-check-label" for="mcsmMonitoring">Monitoring-Badge</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmStatus" checked="@_settings.ShowMatchStatus" @onchange="args => _settings.ShowMatchStatus = ParseBool(args)" /><label class="form-check-label" for="mcsmStatus">MatchStatus</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmScheduling" checked="@_settings.ShowSchedulingStatus" @onchange="args => _settings.ShowSchedulingStatus = ParseBool(args)" /><label class="form-check-label" for="mcsmScheduling">SchedulingStatus</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmAvg" checked="@_settings.ShowAverage" @onchange="args => _settings.ShowAverage = ParseBool(args)" /><label class="form-check-label" for="mcsmAvg">Average</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmPpr" checked="@_settings.ShowHighestPpr" @onchange="args => _settings.ShowHighestPpr = ParseBool(args)" /><label class="form-check-label" for="mcsmPpr">Highest PPR</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmCheckout" checked="@_settings.ShowHighestCheckout" @onchange="args => _settings.ShowHighestCheckout = ParseBool(args)" /><label class="form-check-label" for="mcsmCheckout">Highest Checkout</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmAdpl" checked="@_settings.ShowAverageDartsPerLeg" @onchange="args => _settings.ShowAverageDartsPerLeg = ParseBool(args)" /><label class="form-check-label" for="mcsmAdpl">Average Darts/Leg</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmMinDarts" checked="@_settings.ShowMinimalDartsPerLeg" @onchange="args => _settings.ShowMinimalDartsPerLeg = ParseBool(args)" /><label class="form-check-label" for="mcsmMinDarts">Minimal Darts/Leg</label></div>
+                            </div>
+                        </div>
+                        </fieldset>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="CloseAsync">Schließen</button>
+                    <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(_isSaving || _isLoading)">Speichern</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public string ScopeKey { get; set; } = string.Empty;
+    [Parameter] public EventCallback OnClosed { get; set; }
+
+    private const string MatchCardPreferenceContext = "MatchCardDisplay";
+    private const string ScopeDelimiter = "::";
+
+    private bool _isLoading;
+    private bool _isSaving;
+    private bool _isOverride;
+    private bool _useDefaults;
+    private string? _error;
+    private string? _autodartsDisplayName;
+    private MatchCardViewSettings _settings = MatchCardViewSettings.CreateDefault();
+    private readonly Dictionary<string, MatchCardViewSettings> _allViews = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _overriddenKeys = new(StringComparer.OrdinalIgnoreCase);
+
+    private string _lastLoadedScopeKey = string.Empty;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Visible) return;
+        if (string.Equals(ScopeKey, _lastLoadedScopeKey, StringComparison.OrdinalIgnoreCase)) return;
+
+        _lastLoadedScopeKey = ScopeKey;
+        _useDefaults = false;
+        _error = null;
+        _isLoading = true;
+
+        try
+        {
+            var status = await Api.GetAutodartsStatusAsync();
+            _autodartsDisplayName = status.Profile?.DisplayName;
+            await LoadAllViewsAsync();
+            InitSettingsForScope(NormalizeKey(ScopeKey));
+        }
+        catch (Exception ex)
+        {
+            _error = $"Einstellungen konnten nicht geladen werden: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task LoadAllViewsAsync()
+    {
+        _allViews.Clear();
+        _overriddenKeys.Clear();
+
+        if (string.IsNullOrWhiteSpace(_autodartsDisplayName)) return;
+
+        var preference = await Api.GetViewPreferenceAsync(_autodartsDisplayName, MatchCardPreferenceContext);
+        if (preference is null || string.IsNullOrWhiteSpace(preference.SettingsJson)) return;
+
+        var parsed = JsonSerializer.Deserialize<MatchCardViewPreferencePayload>(preference.SettingsJson);
+        if (parsed?.Views is null) return;
+
+        foreach (var (key, value) in parsed.Views)
+        {
+            if (string.IsNullOrWhiteSpace(key) || value is null) continue;
+            var nk = NormalizeKey(key);
+            value.Normalize();
+            _allViews[nk] = value;
+            _overriddenKeys.Add(nk);
+        }
+    }
+
+    private void InitSettingsForScope(string normalizedKey)
+    {
+        _isOverride = _overriddenKeys.Contains(normalizedKey);
+
+        if (_allViews.TryGetValue(normalizedKey, out var existing))
+        {
+            _settings = existing.Clone();
+        }
+        else
+        {
+            _settings = ResolveInherited(normalizedKey).Clone();
+        }
+
+        _settings.Normalize();
+    }
+
+    private MatchCardViewSettings ResolveInherited(string normalizedKey)
+    {
+        if (!TryParseKey(normalizedKey, out var page, out var section))
+            return MatchCardViewSettings.CreateDefault();
+
+        var candidates = new List<string> { normalizedKey };
+
+        if (section.StartsWith("schedule-", StringComparison.OrdinalIgnoreCase))
+            candidates.Add(MakeKey(page, "schedule"));
+
+        candidates.Add(MakeKey(page, "all"));
+        candidates.Add(MakeKey("all", "all"));
+
+        foreach (var c in candidates)
+        {
+            if (_allViews.TryGetValue(c, out var found))
+                return found;
+        }
+
+        return MatchCardViewSettings.CreateDefault();
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        _isSaving = true;
+        try
+        {
+            var normalizedKey = NormalizeKey(ScopeKey);
+
+            if (_useDefaults)
+            {
+                _overriddenKeys.Remove(normalizedKey);
+                _allViews.Remove(normalizedKey);
+            }
+            else
+            {
+                _settings.Normalize();
+                _allViews[normalizedKey] = _settings.Clone();
+                _overriddenKeys.Add(normalizedKey);
+            }
+
+            if (!string.IsNullOrWhiteSpace(_autodartsDisplayName))
+            {
+                var payload = new MatchCardViewPreferencePayload
+                {
+                    Views = _allViews.ToDictionary(e => e.Key, e => e.Value.Clone(), StringComparer.OrdinalIgnoreCase)
+                };
+                var json = JsonSerializer.Serialize(payload);
+                await Api.SaveViewPreferenceAsync(_autodartsDisplayName, MatchCardPreferenceContext, json);
+            }
+
+            _lastLoadedScopeKey = string.Empty; // force reload next open
+            await OnClosed.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Einstellungen konnten nicht gespeichert werden: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task CloseAsync()
+    {
+        _lastLoadedScopeKey = string.Empty;
+        await OnClosed.InvokeAsync();
+    }
+
+    private Task HandleBackdropClick() => CloseAsync();
+
+    private void OnLayoutChanged(ChangeEventArgs args)
+    {
+        _settings.Layout = args.Value?.ToString() ?? "Horizontal";
+        _settings.Normalize();
+    }
+
+    private static string MakeKey(string page, string section)
+        => $"{page.Trim().ToLowerInvariant()}{ScopeDelimiter}{NormalizeSection(section)}";
+
+    private static string NormalizeKey(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return MakeKey("tournaments", "general");
+        if (TryParseKey(raw, out var p, out var s)) return MakeKey(p, s);
+        return MakeKey("tournaments", "general");
+    }
+
+    private static bool TryParseKey(string key, out string page, out string section)
+    {
+        page = "tournaments";
+        section = "general";
+        if (string.IsNullOrWhiteSpace(key)) return false;
+        var parts = key.Split(ScopeDelimiter, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length != 2) return false;
+        page = parts[0].ToLowerInvariant();
+        section = NormalizeSection(parts[1]);
+        return true;
+    }
+
+    private static string NormalizeSection(string? s)
+    {
+        var n = (s ?? string.Empty).Trim().ToLowerInvariant();
+        return n switch
+        {
+            "all" => "all",
+            "general" => "general",
+            "groups" => "groups",
+            "knockout" => "knockout",
+            "schedule" => "schedule",
+            "schedule-queue" => "schedule-queue",
+            "schedule-timeline" => "schedule-timeline",
+            "board-detail" => "board-detail",
+            "detail" => "detail",
+            _ => "general"
+        };
+    }
+
+    private static readonly IReadOnlyDictionary<string, string> ScopeLabels =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["all::all"] = "Alle Seiten / Alle Sektionen",
+            ["tournaments::all"] = "Turniere / Alle Sektionen",
+            ["tournaments::general"] = "Turniere / Allgemein",
+            ["tournaments::groups"] = "Turniere / Gruppenphase",
+            ["tournaments::knockout"] = "Turniere / K.O.-Phase",
+            ["tournaments::schedule"] = "Turniere / Spielplan (alle)",
+            ["tournaments::schedule-queue"] = "Turniere / Spielplan Warteschlange",
+            ["tournaments::schedule-timeline"] = "Turniere / Spielplan Zeitplan",
+            ["tournaments::board-detail"] = "Turniere / Board-Detail",
+            ["matches::all"] = "Matches / Alle Sektionen",
+            ["matches::detail"] = "Matches / Detail",
+        };
+
+    private static string GetScopeLabel(string scopeKey)
+    {
+        var nk = NormalizeKey(scopeKey);
+        return ScopeLabels.TryGetValue(nk, out var label) ? label : nk;
+    }
+
+    private static bool ParseBool(ChangeEventArgs args) => args.Value switch
+    {
+        bool b => b,
+        string s when bool.TryParse(s, out var p) => p,
+        _ => false
+    };
+}

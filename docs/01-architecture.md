@@ -36,3 +36,9 @@
 - `MatchCard` — Kompakte Match-Darstellung (wiederverwendbar)
 - `MatchStatistics` — Spieler-Statistiken pro Match (Autodarts-Daten)
 - `SplitButton` — Bootstrap Split-Button mit Dropdown
+
+## Sprint #39 Architektur-Update
+- Tournaments-UI: Der Bereich `Teilnehmer & Boards` nutzt Sub-Tabs fuer `Spieler` und `Teams`.
+- Teamplay-Logik: Teamzuordnung und Teamverwaltung sind aus dem Draw-Kontext in den Teilnehmer-Kontext verschoben.
+- Domain-Erweiterung: `Participant.Type` (Enum) dient zur fachlichen Typisierung von Teilnehmern.
+- Infrastruktur: Team- und Match-Services beruecksichtigen `Participant.Type` fuer Teamplay-Rechenwege.

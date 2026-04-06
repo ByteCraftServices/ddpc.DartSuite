@@ -1,5 +1,10 @@
-﻿@using ddpc.DartSuite.Application.Contracts.Tournaments
+﻿@using ddpc.DartSuite.Application.Contracts.Boards
+@using ddpc.DartSuite.Application.Contracts.Tournaments
+@inject DartSuiteApiService Api
 @inject AppStateService AppState
+@inject BoardHubService BoardHubService
+@inject IUiHelpService UiHelp
+@implements IAsyncDisposable
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
@@ -49,26 +54,132 @@
         </div>
 
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="tournaments">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Turniere
+            <NavLink class="nav-link" href="dashboard">
+                <span class="bi bi-display-nav-menu" aria-hidden="true"></span> Infowall
             </NavLink>
         </div>
 
+        <div class="nav-item px-3 nav-group-head">
+            <NavLink class="nav-link flex-grow-1" href="@TournamentOverviewHref">
+                <span class="bi bi-kanban-nav-menu" aria-hidden="true"></span> Turnieruebersicht
+            </NavLink>
+            <button type="button" class="btn btn-link nav-expand-btn" title="Untermenue ein-/ausklappen"
+                    @onclick="ToggleOverviewGroup" @onclick:stopPropagation="true">@ExpandIndicator(isOverviewExpanded)</button>
+        </div>
+
+        @if (isOverviewExpanded)
+        {
+            <div class="nav-item px-4">
+                <NavLink class="nav-link small" href="my-tournaments?filter=overview">- Meine Turniere</NavLink>
+            </div>
+            <div class="nav-item px-4">
+                <NavLink class="nav-link small" href="my-tournaments?filter=running">- Laufende</NavLink>
+            </div>
+        }
+
+        @if (IsAdminMenuVisible)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="@LandingHref" title="@UiHelp.GetTooltip("page.landing")">
+                    <span class="bi bi-house-nav-menu" aria-hidden="true"></span> Landing
+                </NavLink>
+            </div>
+        }
+
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="matches">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Matches
+            <NavLink class="nav-link" href="@RegisterHref" title="@UiHelp.GetTooltip("page.register")">
+                <span class="bi bi-person-plus-nav-menu" aria-hidden="true"></span> Registrieren
             </NavLink>
         </div>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="boards">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Boards
+        <div class="nav-item px-3 nav-group-head">
+            <NavLink class="nav-link flex-grow-1" href="settings?tab=general">
+                <span class="bi bi-gear-nav-menu" aria-hidden="true"></span> Einstellungen
             </NavLink>
+            <button type="button" class="btn btn-link nav-expand-btn" title="Untermenue ein-/ausklappen"
+                    @onclick="ToggleSettingsGroup" @onclick:stopPropagation="true">@ExpandIndicator(isSettingsExpanded)</button>
         </div>
 
-        <div class="nav-item px-3">
+        @if (isSettingsExpanded)
+        {
+            <div class="nav-item px-4">
+                <NavLink class="nav-link small" href="settings?tab=user">- Benutzer</NavLink>
+            </div>
+            <div class="nav-item px-4">
+                <NavLink class="nav-link small" href="profile">- Profil</NavLink>
+            </div>
+        }
+
+        <hr class="nav-separator" />
+
+        @foreach (var tournament in Tournaments.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var isSelectedTournament = IsSelectedTournament(tournament.Id);
+            <div class="nav-item px-3 mt-1 nav-group-head">
+                <NavLink class="@($"nav-link flex-grow-1 {(isSelectedTournament ? "text-info fw-semibold" : string.Empty)}")"
+                         href="@TournamentTabHref(tournament.Id, "general")">@tournament.Name</NavLink>
+                @if (!isSelectedTournament)
+                {
+                    <button type="button" class="btn btn-link nav-expand-btn" title="Turniermenue ein-/ausklappen"
+                            @onclick="() => ToggleTournamentGroup(tournament.Id)" @onclick:stopPropagation="true">@ExpandIndicator(IsTournamentExpanded(tournament.Id))</button>
+                }
+            </div>
+
+            @if (IsTournamentExpanded(tournament.Id))
+            {
+                <div class="nav-item px-4"><NavLink class="nav-link small" href="@TournamentTabHref(tournament.Id, "general")">- Allgemein</NavLink></div>
+                <div class="nav-item px-4"><NavLink class="nav-link small" href="@TournamentTabHref(tournament.Id, "boards-participants")">- Teilnehmer & Boards</NavLink></div>
+                <div class="nav-item px-4"><NavLink class="nav-link small" href="@TournamentTabHref(tournament.Id, "draw")">- Auslosung</NavLink></div>
+                <div class="nav-item px-4"><NavLink class="nav-link small" href="@TournamentTabHref(tournament.Id, "rounds")">- Spielmodus</NavLink></div>
+                @if (string.Equals(tournament.Mode, "GroupAndKnockout", StringComparison.OrdinalIgnoreCase))
+                {
+                    <div class="nav-item px-4"><NavLink class="nav-link small" href="@TournamentTabHref(tournament.Id, "groups")">- Gruppenphase</NavLink></div>
+                }
+                <div class="nav-item px-4"><NavLink class="nav-link small" href="@TournamentTabHref(tournament.Id, "knockout")">- Knockout</NavLink></div>
+                <div class="nav-item px-4"><NavLink class="nav-link small" href="@TournamentTabHref(tournament.Id, "schedule")">- Spielplan</NavLink></div>
+            }
+        }
+
+        @if (IsAdminMenuVisible)
+        {
+            <div class="nav-item px-3 nav-group-head mt-2">
+                <span class="nav-link flex-grow-1">Admin</span>
+                <button type="button" class="btn btn-link nav-expand-btn" title="Untermenue ein-/ausklappen"
+                        @onclick="ToggleAdminGroup" @onclick:stopPropagation="true">@ExpandIndicator(isAdminExpanded)</button>
+            </div>
+
+            @if (isAdminExpanded)
+            {
+                <div class="nav-item px-4">
+                    <NavLink class="nav-link small" href="tournaments">- Turniere</NavLink>
+                </div>
+                <div class="nav-item px-4">
+                    <NavLink class="nav-link small" href="matches">- Matches</NavLink>
+                </div>
+                <div class="nav-item px-4 nav-group-head nav-subgroup-head">
+                    <NavLink class="nav-link small flex-grow-1" href="boards">- Boards</NavLink>
+                    <button type="button" class="btn btn-link nav-expand-btn" title="Boards ein-/ausklappen"
+                            @onclick="ToggleBoardsGroup" @onclick:stopPropagation="true">@ExpandIndicator(isBoardsExpanded)</button>
+                </div>
+
+                @if (isBoardsExpanded)
+                {
+                    @foreach (var board in VisibleBoards)
+                    {
+                        <div class="nav-item px-5">
+                            <NavLink class="nav-link small board-subentry" href="@TournamentBoardHref(board.Id)">
+                                <span class="status-dot @StatusDotClass(board.OverallStatus)"></span>
+                                @board.Name
+                            </NavLink>
+                        </div>
+                    }
+                }
+            }
+        }
+
+        <div class="nav-item px-3 mt-2">
             <NavLink class="nav-link" href="login">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Autodarts
+                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Autodarts - Login
             </NavLink>
         </div>
     </nav>
@@ -79,6 +190,195 @@
     [Parameter] public string SelectedTournamentId { get; set; } = "";
     [Parameter] public EventCallback<ChangeEventArgs> OnTournamentChanged { get; set; }
 
+    private readonly List<BoardDto> boards = [];
+    private string _loadedScopeTournamentId = string.Empty;
+    private bool isOverviewExpanded;
+    private bool isSettingsExpanded;
+    private bool isAdminExpanded;
+    private bool isBoardsExpanded = true;
+    private string _lastKnownSelectedTournamentId = string.Empty;
+    private readonly HashSet<Guid> expandedTournamentIds = [];
+
+    private TournamentDto? SelectedTournament => Tournaments.FirstOrDefault(t => t.Id.ToString() == SelectedTournamentId);
+
+    private bool IsAdminMenuVisible
+    {
+        get
+        {
+            if (!AppState.IsAutodartsConnected)
+                return false;
+
+            var actor = AppState.AutodartsProfile?.DisplayName;
+            if (string.IsNullOrWhiteSpace(actor))
+                return false;
+
+            return Tournaments.Any(t => string.Equals(t.OrganizerAccount, actor, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private string LandingHref => string.IsNullOrWhiteSpace(SelectedTournamentId)
+        ? "landing"
+        : $"landing?tournamentId={SelectedTournamentId}";
+
+    private string TournamentOverviewHref => string.IsNullOrWhiteSpace(SelectedTournamentId)
+        ? "tournaments?tab=general"
+        : $"tournaments?tournamentId={SelectedTournamentId}&tab=general";
+
+    private string RegisterHref => string.IsNullOrWhiteSpace(SelectedTournamentId)
+        ? "register"
+        : $"register?tournamentId={SelectedTournamentId}";
+
+    private static string TournamentTabHref(Guid tournamentId, string tab)
+        => $"tournaments?tournamentId={tournamentId}&tab={tab}";
+
+    private string TournamentBoardHref(Guid boardId)
+        => string.IsNullOrWhiteSpace(SelectedTournamentId)
+            ? $"tournaments?boardId={boardId}"
+            : $"tournaments?tournamentId={SelectedTournamentId}&boardId={boardId}";
+
+    private IReadOnlyList<BoardDto> VisibleBoards
+    {
+        get
+        {
+            if (!Guid.TryParse(SelectedTournamentId, out var selectedId))
+                return boards.Where(b => !b.TournamentId.HasValue).OrderBy(b => b.Name).ToList();
+
+            return boards
+                .Where(b => !b.TournamentId.HasValue || b.TournamentId == selectedId)
+                .OrderBy(b => b.Name)
+                .ToList();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var normalized = SelectedTournamentId ?? string.Empty;
+        if (!string.Equals(_lastKnownSelectedTournamentId, normalized, StringComparison.Ordinal))
+        {
+            if (Guid.TryParse(_lastKnownSelectedTournamentId, out var previousSelectedId))
+                expandedTournamentIds.Remove(previousSelectedId);
+
+            _lastKnownSelectedTournamentId = normalized;
+
+            if (Guid.TryParse(normalized, out var selectedId))
+            {
+                expandedTournamentIds.Add(selectedId);
+                isBoardsExpanded = true;
+            }
+        }
+
+        if (string.Equals(_loadedScopeTournamentId, normalized, StringComparison.Ordinal))
+            return;
+
+        await LoadBoardsAsync(normalized);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBoardsAsync(SelectedTournamentId);
+
+        try
+        {
+            BoardHubService.OnBoardAdded += OnBoardChanged;
+            BoardHubService.OnBoardStatusChanged += OnBoardChanged;
+            BoardHubService.OnBoardConnectionChanged += OnBoardChanged;
+            BoardHubService.OnBoardExtensionStatusChanged += OnBoardChanged;
+            BoardHubService.OnBoardCurrentMatchChanged += OnBoardChanged;
+            BoardHubService.OnBoardManagedModeChanged += OnBoardChanged;
+            BoardHubService.OnBoardRemoved += OnBoardRemoved;
+
+            await BoardHubService.StartAsync();
+        }
+        catch
+        {
+            // Navigation still works without live board events.
+        }
+    }
+
+    private async Task LoadBoardsAsync(string? selectedTournamentId = null)
+    {
+        try
+        {
+            _loadedScopeTournamentId = selectedTournamentId ?? string.Empty;
+            boards.Clear();
+
+            if (Guid.TryParse(selectedTournamentId, out var selectedId))
+            {
+                boards.AddRange((await Api.GetBoardsByTournamentAsync(selectedId)).OrderBy(b => b.Name));
+            }
+            else
+            {
+                boards.AddRange((await Api.GetBoardsAsync())
+                    .Where(b => !b.TournamentId.HasValue)
+                    .OrderBy(b => b.Name));
+            }
+        }
+        catch
+        {
+            // Ignore transient API errors in navigation panel.
+        }
+    }
+
+    private async Task OnBoardChanged(BoardDto board)
+    {
+        await InvokeAsync(() =>
+        {
+            if (!IsBoardVisibleInCurrentScope(board))
+            {
+                boards.RemoveAll(b => b.Id == board.Id);
+                StateHasChanged();
+                return;
+            }
+
+            var index = boards.FindIndex(b => b.Id == board.Id);
+            if (index >= 0)
+                boards[index] = board;
+            else
+                boards.Add(board);
+
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnBoardRemoved(Guid boardId)
+    {
+        await InvokeAsync(() =>
+        {
+            boards.RemoveAll(b => b.Id == boardId);
+            StateHasChanged();
+        });
+    }
+
+    private static string StatusDotClass(string? overallStatus) => overallStatus switch
+    {
+        "Ok" => "dot-ok",
+        "Warning" => "dot-warning",
+        "Error" => "dot-error",
+        _ => "dot-unknown"
+    };
+
+    private static string ExpandIndicator(bool expanded) => expanded ? "▾" : "▸";
+
+    private void ToggleOverviewGroup() => isOverviewExpanded = !isOverviewExpanded;
+    private void ToggleSettingsGroup() => isSettingsExpanded = !isSettingsExpanded;
+    private void ToggleAdminGroup() => isAdminExpanded = !isAdminExpanded;
+    private void ToggleBoardsGroup() => isBoardsExpanded = !isBoardsExpanded;
+
+    private bool IsSelectedTournament(Guid tournamentId)
+        => Guid.TryParse(SelectedTournamentId, out var selectedId) && selectedId == tournamentId;
+
+    private bool IsTournamentExpanded(Guid tournamentId)
+        => IsSelectedTournament(tournamentId) || expandedTournamentIds.Contains(tournamentId);
+
+    private void ToggleTournamentGroup(Guid tournamentId)
+    {
+        if (IsSelectedTournament(tournamentId))
+            return;
+
+        if (!expandedTournamentIds.Add(tournamentId))
+            expandedTournamentIds.Remove(tournamentId);
+    }
+
     private static string GravatarUrl(string email)
     {
         using var md5 = System.Security.Cryptography.MD5.Create();
@@ -86,4 +386,82 @@
         var hex = Convert.ToHexStringLower(hash);
         return $"https://www.gravatar.com/avatar/{hex}?s=64&d=identicon";
     }
+
+    private bool IsBoardVisibleInCurrentScope(BoardDto board)
+    {
+        if (!Guid.TryParse(SelectedTournamentId, out var selectedId))
+            return !board.TournamentId.HasValue;
+
+        return !board.TournamentId.HasValue || board.TournamentId == selectedId;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        BoardHubService.OnBoardAdded -= OnBoardChanged;
+        BoardHubService.OnBoardStatusChanged -= OnBoardChanged;
+        BoardHubService.OnBoardConnectionChanged -= OnBoardChanged;
+        BoardHubService.OnBoardExtensionStatusChanged -= OnBoardChanged;
+        BoardHubService.OnBoardCurrentMatchChanged -= OnBoardChanged;
+        BoardHubService.OnBoardManagedModeChanged -= OnBoardChanged;
+        BoardHubService.OnBoardRemoved -= OnBoardRemoved;
+        await Task.CompletedTask;
+    }
 }
+
+<style>
+    .nav-group-head {
+        display: flex;
+        align-items: center;
+    }
+
+    .nav-expand-btn {
+        color: rgba(255, 255, 255, 0.75);
+        text-decoration: none;
+        padding: 0 0.15rem;
+        line-height: 1;
+        font-size: 0.95rem;
+    }
+
+    .nav-expand-btn:hover {
+        color: #fff;
+    }
+
+    .nav-subgroup-head {
+        margin-top: 0.1rem;
+    }
+
+    .nav-separator {
+        border-color: rgba(255, 255, 255, 0.25);
+        margin: 0.55rem 0.9rem;
+    }
+
+    .board-subentry {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+        flex-shrink: 0;
+    }
+
+    .dot-ok {
+        background: #21c55d;
+    }
+
+    .dot-warning {
+        background: #facc15;
+    }
+
+    .dot-error {
+        background: #ef4444;
+    }
+
+    .dot-unknown {
+        background: #9ca3af;
+    }
+</style>

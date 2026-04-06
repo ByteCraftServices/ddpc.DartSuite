@@ -2,6 +2,13 @@
 
 ## Übersicht
 
+Aktualisierung 04.04.2026:
+
+- Kontextbezogene UI-Hilfe ist ueber `docs/06-ui-help.md` standardisiert.
+- Vollstaendige REST-Referenz ist in `docs/07-rest-api.md` gepflegt.
+- UI/UX- und Accessibility-Review ist in `docs/08-ui-ux-accessibility-review.md` dokumentiert.
+- Dokumentationspflegeprozess ist in `docs/09-documentation-maintenance.md` verbindlich festgelegt.
+
 DartSuite ist eine moderne Webanwendung zur Verwaltung und Steuerung von Dartturnieren auf Basis von [autodarts.io](https://autodarts.io). Die Applikation ist responsiv, sowohl am PC als auch auf Smartphones vollständig bedienbar, und orientiert sich im Design an [play.autodarts.io](https://play.autodarts.io).
 
 ### Kernmodule

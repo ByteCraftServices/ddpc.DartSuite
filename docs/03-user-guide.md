@@ -1,5 +1,12 @@
 # Benutzerhandbuch
 
+## Integrierte Onlinehilfe
+
+- Auf den Kernseiten ist neben der Ueberschrift ein Hilfe-Icon (`?`) verfuegbar.
+- Das Hilfe-Icon zeigt kontextbezogene Kurzhilfe direkt in der UI an.
+- Tooltips fuer wichtige Felder (Filter, Buttons, Eingaben) werden aus dem zentralen Hilfe-Katalog geladen.
+- Die Hilfetexte werden in [06-ui-help.md](06-ui-help.md) gepflegt und per `help`-Key eindeutig zugeordnet.
+
 ## Anmeldung
 1. Navigiere zu `Login`.
 2. E-Mail und Passwort eingeben.
@@ -22,10 +29,16 @@
 1. Zu `Tournaments` wechseln.
 2. Neues Turnier erstellen (2-Schritt-Wizard).
 3. Turnier auswählen.
-4. Teilnehmer hinzufügen.
+4. Teilnehmer im Tab `Teilnehmer & Boards` verwalten.
 5. Spielrunden konfigurieren (Tab „Spielmodus").
 6. Auslosung durchführen (Tab „Auslosung").
 7. Spielplan generieren (Tab „Spielplan").
+
+### Teilnehmer & Teams (#39)
+- Der Tab `Teilnehmer & Boards` enthaelt die Sub-Tabs `Spieler` und `Teams`.
+- Teamzuordnungen erfolgen direkt im Teams-Sub-Tab.
+- Teamaenderungen werden unmittelbar gespeichert (kein separater Speichern-Button).
+- Je nach Turnierkontext werden Teilnehmer intern typisiert, damit Teamplay-Ablaufe korrekt verarbeitet werden.
 
 ### Discord Webhook (#14)
 - Im Tab „Allgemein" kann pro Turnier eine Discord Webhook URL konfiguriert werden.

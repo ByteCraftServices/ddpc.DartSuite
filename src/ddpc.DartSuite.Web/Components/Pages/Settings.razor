@@ -1,0 +1,848 @@
+@page "/settings"
+@inject AppStateService AppState
+@inject IUiHelpService UiHelp
+@inject DartSuiteApiService Api
+@inject NavigationManager Navigation
+@using System.Text.Json
+
+<PageTitle>Einstellungen</PageTitle>
+
+<h1 class="mb-3">Einstellungen <UiHelpIcon HelpKey="page.settings" /></h1>
+
+<div class="btn-group mb-3" role="group">
+        <button class="btn @(activeTab == "general" ? "btn-primary" : "btn-outline-primary")" @onclick='() => activeTab = "general"'
+            title="@UiHelp.GetTooltip("settings.tab.general")">Allgemein</button>
+        <button class="btn @(activeTab == "user" ? "btn-primary" : "btn-outline-primary")" @onclick='() => activeTab = "user"'
+            title="@UiHelp.GetTooltip("settings.tab.user")">Benutzer</button>
+</div>
+
+@if (activeTab == "general")
+{
+    <details id="settings-general-fallback" class="card shadow-sm mb-3" open>
+        <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
+            <span class="fw-semibold">Realtime / Fallback-Polling</span>
+            <span class="small text-muted">Benutzer-Einstellung</span>
+        </summary>
+        <div class="card-body">
+            <p class="text-muted small mb-3">Diese Einstellungen gelten pro Benutzer und steuern das Polling als Fallback fuer Realtime.</p>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="border rounded p-3" id="settings-panel-fallback-tournaments">
+                        <div class="fw-semibold mb-2">Turniere</div>
+                        <label for="settingsTournamentFallback" class="form-label small mb-1">Fallback-Polling</label>
+                        <select id="settingsTournamentFallback" class="form-select form-select-sm"
+                                value="@tournamentsFallbackPollingSeconds"
+                                @onchange="OnTournamentFallbackChanged"
+                                disabled="@isSavingRealtimePreference">
+                            <option value="2">2s</option>
+                            <option value="3">3s</option>
+                            <option value="5">5s (Standard)</option>
+                            <option value="10">10s</option>
+                            <option value="15">15s</option>
+                            <option value="30">30s</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="border rounded p-3" id="settings-panel-fallback-matches">
+                        <div class="fw-semibold mb-2">Matches</div>
+                        <label for="settingsMatchesFallback" class="form-label small mb-1">Fallback-Polling</label>
+                        <select id="settingsMatchesFallback" class="form-select form-select-sm"
+                                value="@matchesFallbackPollingSeconds"
+                                @onchange="OnMatchesFallbackChanged"
+                                disabled="@isSavingRealtimePreference">
+                            <option value="2">2s</option>
+                            <option value="3">3s</option>
+                            <option value="5">5s (Standard)</option>
+                            <option value="10">10s</option>
+                            <option value="15">15s</option>
+                            <option value="30">30s</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            @if (isSavingRealtimePreference)
+            {
+                <div class="small text-muted mt-2">Speichere Polling-Einstellungen ...</div>
+            }
+            @if (realtimePreferenceError is not null)
+            {
+                <div class="alert alert-danger py-2 mt-2 mb-0">@realtimePreferenceError</div>
+            }
+        </div>
+    </details>
+
+    <details id="settings-general-matchcard" class="card shadow-sm" open>
+        <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
+            <span class="fw-semibold">MatchCard Konfiguration</span>
+            <span class="small text-muted">Sektionen mit eindeutiger ID</span>
+        </summary>
+        <div class="card-body">
+            <p class="text-muted small mb-3">Jede Sektion kann direkt ueber das Settings-Icon modal konfiguriert werden. Die Einstellungen werden persistent als Benutzereinstellung gespeichert.</p>
+
+            @{
+                var globalScopeKey = BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll);
+                var globalResolved = ResolveMatchCardSettingsForScope(globalScopeKey);
+            }
+            <details id="@BuildScopePanelId(globalScopeKey)" class="card mb-2" open>
+                <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
+                    <span>@GetScopeLabel(globalScopeKey)</span>
+                    <button type="button" class="btn btn-outline-secondary btn-sm"
+                            title="Sektion modal bearbeiten"
+                            @onclick:preventDefault
+                            @onclick:stopPropagation
+                            @onclick="() => OpenMatchCardEditor(globalScopeKey)">⚙</button>
+                </summary>
+                <div class="card-body py-2 small d-flex flex-wrap gap-2" id="@($"{BuildScopePanelId(globalScopeKey)}-body")">
+                    <span class="badge text-bg-light border">Layout: @globalResolved.Layout</span>
+                    <span class="badge text-bg-light border">Spielstand: @globalResolved.ScoreMode</span>
+                    <span class="badge text-bg-light border">Spielernamen: @globalResolved.PlayerNameMode</span>
+                    <span class="badge text-bg-light border">LiveScore: @(globalResolved.LiveScoreEnabled ? "An" : "Aus")</span>
+                    <span class="badge text-bg-light border">Aktionen: @(globalResolved.ShowActionButtons ? "An" : "Aus")</span>
+                    <span class="badge text-bg-light border">Spieler-Link: @(globalResolved.EnablePlayerLinks ? "An" : "Aus")</span>
+                    <span class="badge text-bg-light border">Board-Link: @(globalResolved.EnableBoardLink ? "An" : "Aus")</span>
+                </div>
+            </details>
+
+            @foreach (var overriddenKey in _userOverriddenScopeKeys
+                .Where(k => !string.Equals(k, globalScopeKey, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(k => k))
+            {
+                var resolved = ResolveMatchCardSettingsForScope(overriddenKey);
+                <details id="@BuildScopePanelId(overriddenKey)" class="card mb-2" open>
+                    <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
+                        <span>@GetScopeLabel(overriddenKey)</span>
+                        <div class="d-flex gap-1" @onclick:stopPropagation @onclick:preventDefault>
+                            <button type="button" class="btn btn-outline-secondary btn-sm"
+                                    title="Sektion modal bearbeiten"
+                                    @onclick="() => OpenMatchCardEditor(overriddenKey)">⚙</button>
+                            <button type="button" class="btn btn-outline-danger btn-sm"
+                                    title="Überschreibung entfernen"
+                                    @onclick="() => RemoveScopeOverrideAsync(overriddenKey)">×</button>
+                        </div>
+                    </summary>
+                    <div class="card-body py-2 small d-flex flex-wrap gap-2" id="@($"{BuildScopePanelId(overriddenKey)}-body")">
+                        <span class="badge text-bg-light border">Layout: @resolved.Layout</span>
+                        <span class="badge text-bg-light border">Spielstand: @resolved.ScoreMode</span>
+                        <span class="badge text-bg-light border">Spielernamen: @resolved.PlayerNameMode</span>
+                        <span class="badge text-bg-light border">LiveScore: @(resolved.LiveScoreEnabled ? "An" : "Aus")</span>
+                        <span class="badge text-bg-light border">Aktionen: @(resolved.ShowActionButtons ? "An" : "Aus")</span>
+                        <span class="badge text-bg-light border">Spieler-Link: @(resolved.EnablePlayerLinks ? "An" : "Aus")</span>
+                        <span class="badge text-bg-light border">Board-Link: @(resolved.EnableBoardLink ? "An" : "Aus")</span>
+                    </div>
+                </details>
+            }
+
+            <div class="mt-3 d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-outline-primary btn-sm" @onclick="OpenAddScopeModal">+ Sektion hinzufügen</button>
+                <span class="small text-muted">Nicht konfigurierte Sektionen erben von der nächsthöheren Ebene.</span>
+            </div>
+
+            @if (isSavingMatchCardPreferences)
+            {
+                <div class="small text-muted mt-2">Speichere MatchCard-Einstellungen ...</div>
+            }
+            @if (matchCardPreferenceError is not null)
+            {
+                <div class="alert alert-danger py-2 mt-2 mb-0">@matchCardPreferenceError</div>
+            }
+        </div>
+    </details>
+}
+else
+{
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h5 class="card-title">Benutzer</h5>
+            <p class="text-muted">Benachrichtigungs- und Anzeigeeinstellungen des eingeloggten Benutzers.</p>
+            @if (AppState.AutodartsProfile is not null)
+            {
+                <div class="small text-muted">Aktiver Account: @AppState.AutodartsProfile.DisplayName</div>
+            }
+            else
+            {
+                <div class="alert alert-warning py-2">Kein aktiver Login erkannt.</div>
+            }
+        </div>
+    </div>
+}
+
+@if (showSettingsModal)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="() => CloseSettingsModal()">
+        <div class="modal-dialog modal-dialog-centered modal-lg" @onclick:stopPropagation>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@settingsModalTitle</h5>
+                    <button type="button" class="btn-close" @onclick="() => CloseSettingsModal()"></button>
+                </div>
+                <div class="modal-body">
+                    @if (settingsModalKind == "matchcard")
+                    {
+                        <div id="settings-modal-matchcard">
+                            <div class="small text-muted mb-2">Kontext: @GetScopeLabel(settingsModalScopeKey)</div>
+
+                            @{
+                                var isGlobalScope = string.Equals(settingsModalScopeKey, BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll), StringComparison.OrdinalIgnoreCase);
+                                var isExistingOverride = _userOverriddenScopeKeys.Contains(settingsModalScopeKey);
+                            }
+                            @if (!isGlobalScope && isExistingOverride)
+                            {
+                                <div class="form-check form-switch mb-3 border rounded p-2">
+                                    <input class="form-check-input" type="checkbox" id="settingsModalUseDefaults"
+                                           checked="@settingsModalUseDefaults"
+                                           @onchange="args => settingsModalUseDefaults = ParseBoolChangeEvent(args)" />
+                                    <label class="form-check-label fw-semibold" for="settingsModalUseDefaults">Standardwerte verwenden</label>
+                                    @if (settingsModalUseDefaults)
+                                    {
+                                        <div class="small text-muted mt-1">Diese Sektion wird auf die vererbten Einstellungen zurückgesetzt.</div>
+                                    }
+                                </div>
+                            }
+
+                            <fieldset disabled="@settingsModalUseDefaults">
+                            <div class="row g-2 small mb-3">
+                                <div class="col-lg-3 col-md-4">
+                                    <label class="form-label mb-1">Anzeige</label>
+                                    <select class="form-select form-select-sm"
+                                            value="@settingsModalMatchCard.Layout"
+                                            @onchange="OnModalMatchCardLayoutChanged">
+                                        <option value="Horizontal">Horizontal</option>
+                                        <option value="Vertical">Vertikal</option>
+                                        <option value="Card">Karte</option>
+                                        <option value="List">Liste</option>
+                                        <option value="List">Liste</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-4">
+                                    <label class="form-label mb-1">Spielstand</label>
+                                    <select class="form-select form-select-sm"
+                                            value="@settingsModalMatchCard.ScoreMode"
+                                            @onchange="args => settingsModalMatchCard.ScoreMode = MatchCardViewSettings.NormalizeScoreMode(args.Value?.ToString())">
+                                        <option value="FinalOnly">Nur Endresultat</option>
+                                        <option value="CurrentNoPoints">Aktueller Spielstand</option>
+                                        <option value="LiveScores">Live Scores</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-4">
+                                    <label class="form-label mb-1">Spielernamen</label>
+                                    <select class="form-select form-select-sm"
+                                            value="@settingsModalMatchCard.PlayerNameMode"
+                                            @onchange="args => settingsModalMatchCard.PlayerNameMode = MatchCardViewSettings.NormalizePlayerNameMode(args.Value?.ToString())">
+                                        <option value="Name">Nur Name</option>
+                                        <option value="NameAndPpr">Name und PPR</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-12 d-flex align-items-end">
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalCollapse" checked="@settingsModalMatchCard.CollapseDetailsOnMobile" @onchange="args => settingsModalMatchCard.CollapseDetailsOnMobile = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalCollapse">Mobile eingeklappt</label></div>
+                                </div>
+                            </div>
+
+                            <div class="border rounded p-2 mb-2">
+                                <div class="fw-semibold small mb-2">Titelleiste</div>
+                                <div class="d-flex flex-wrap gap-3 small">
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderMatchNumber" checked="@settingsModalMatchCard.ShowHeaderMatchNumber" @onchange="args => settingsModalMatchCard.ShowHeaderMatchNumber = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderMatchNumber">Matchnummer</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderMatchName" checked="@settingsModalMatchCard.ShowHeaderMatchName" @onchange="args => settingsModalMatchCard.ShowHeaderMatchName = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderMatchName">Matchname</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderStart" checked="@settingsModalMatchCard.ShowHeaderStartTime" @onchange="args => settingsModalMatchCard.ShowHeaderStartTime = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderStart">Startzeit</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderStartLock" checked="@settingsModalMatchCard.ShowHeaderStartTimeLock" @onchange="args => settingsModalMatchCard.ShowHeaderStartTimeLock = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderStartLock">Startzeit gesperrt</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderBoard" checked="@settingsModalMatchCard.ShowHeaderBoardName" @onchange="args => settingsModalMatchCard.ShowHeaderBoardName = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderBoard">Boardname</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderBoardLock" checked="@settingsModalMatchCard.ShowHeaderBoardLock" @onchange="args => settingsModalMatchCard.ShowHeaderBoardLock = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderBoardLock">Board gesperrt</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderDelay" checked="@settingsModalMatchCard.ShowHeaderDelay" @onchange="args => settingsModalMatchCard.ShowHeaderDelay = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderDelay">Zeitdifferenz</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderStatus" checked="@settingsModalMatchCard.ShowHeaderMatchStatus" @onchange="args => settingsModalMatchCard.ShowHeaderMatchStatus = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderStatus">Matchstatus</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderLive" checked="@settingsModalMatchCard.ShowHeaderLiveBadge" @onchange="args => settingsModalMatchCard.ShowHeaderLiveBadge = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderLive">Live-Badge</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalRuntimeBadge" checked="@settingsModalMatchCard.ShowRuntimeBadge" @onchange="args => settingsModalMatchCard.ShowRuntimeBadge = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalRuntimeBadge">Spielzeit-Badge</label></div>
+                                </div>
+                            </div>
+
+                            <div class="border rounded p-2 mb-2">
+                                <div class="fw-semibold small mb-2">Body</div>
+                                <div class="d-flex flex-wrap gap-3 small">
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalBodyStart" checked="@settingsModalMatchCard.ShowBodyStartTime" @onchange="args => settingsModalMatchCard.ShowBodyStartTime = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyStart">Startzeit</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalBodyStartLock" checked="@settingsModalMatchCard.ShowBodyStartTimeLock" @onchange="args => settingsModalMatchCard.ShowBodyStartTimeLock = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyStartLock">Startzeit gesperrt</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalBodyDelay" checked="@settingsModalMatchCard.ShowBodyDelay" @onchange="args => settingsModalMatchCard.ShowBodyDelay = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyDelay">Zeitdifferenz</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalBodyMatchNumber" checked="@settingsModalMatchCard.ShowBodyMatchNumber" @onchange="args => settingsModalMatchCard.ShowBodyMatchNumber = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyMatchNumber">Matchnummer</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalBodyBoard" checked="@settingsModalMatchCard.ShowBodyBoardName" @onchange="args => settingsModalMatchCard.ShowBodyBoardName = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyBoard">Boardname</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalLive" checked="@settingsModalMatchCard.LiveScoreEnabled" @onchange="args => settingsModalMatchCard.LiveScoreEnabled = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalLive">LiveScore aktiv</label></div>
+                                </div>
+                            </div>
+
+                            <div class="border rounded p-2 mb-2">
+                                <div class="fw-semibold small mb-2">Buttons / Funktionen</div>
+                                <div class="d-flex flex-wrap gap-3 small">
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalActionBar" checked="@settingsModalMatchCard.ShowActionButtons" @onchange="args => settingsModalMatchCard.ShowActionButtons = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionBar">Action-Leiste</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalActionSync" checked="@settingsModalMatchCard.ShowSyncAction" @onchange="args => settingsModalMatchCard.ShowSyncAction = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionSync">Sync</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalActionFollow" checked="@settingsModalMatchCard.ShowFollowAction" @onchange="args => settingsModalMatchCard.ShowFollowAction = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionFollow">Spiel folgen</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalActionStart" checked="@settingsModalMatchCard.ShowStartMatchAction" @onchange="args => settingsModalMatchCard.ShowStartMatchAction = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionStart">Match starten</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalActionReset" checked="@settingsModalMatchCard.ShowResetAction" @onchange="args => settingsModalMatchCard.ShowResetAction = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionReset">Zuruecksetzen</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalActionListener" checked="@settingsModalMatchCard.ShowListenerAction" @onchange="args => settingsModalMatchCard.ShowListenerAction = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionListener">Listener starten</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalPlayerLinks" checked="@settingsModalMatchCard.EnablePlayerLinks" @onchange="args => settingsModalMatchCard.EnablePlayerLinks = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalPlayerLinks">Spieler-Links</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalBoardLink" checked="@settingsModalMatchCard.EnableBoardLink" @onchange="args => settingsModalMatchCard.EnableBoardLink = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBoardLink">Board-Link</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalSuppressHeader" checked="@settingsModalMatchCard.SuppressHeader" @onchange="args => settingsModalMatchCard.SuppressHeader = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalSuppressHeader">Titelleiste ausblenden</label></div>
+                                </div>
+                                <div class="d-flex align-items-center gap-2 mt-2 small">
+                                    <label class="form-label mb-0">Buttons Position</label>
+                                    <select class="form-select form-select-sm" style="width:auto" value="@settingsModalMatchCard.ActionButtonsLocation" @onchange="args => settingsModalMatchCard.ActionButtonsLocation = MatchCardViewSettings.NormalizeActionButtonsLocation(args.Value?.ToString())">
+                                        <option value="Footer">Unten</option>
+                                        <option value="Header">Oben (Titelleiste)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="border rounded p-2">
+                                <div class="fw-semibold small mb-2">Erweitert / Statistiken</div>
+                                <div class="d-flex flex-wrap gap-3 small">
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalMonitoring" checked="@settingsModalMatchCard.ShowMonitoringStatus" @onchange="args => settingsModalMatchCard.ShowMonitoringStatus = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalMonitoring">Monitoring-Badge</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalStatus" checked="@settingsModalMatchCard.ShowMatchStatus" @onchange="args => settingsModalMatchCard.ShowMatchStatus = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalStatus">MatchStatus</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalScheduling" checked="@settingsModalMatchCard.ShowSchedulingStatus" @onchange="args => settingsModalMatchCard.ShowSchedulingStatus = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalScheduling">SchedulingStatus</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalAverage" checked="@settingsModalMatchCard.ShowAverage" @onchange="args => settingsModalMatchCard.ShowAverage = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalAverage">Average</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalPpr" checked="@settingsModalMatchCard.ShowHighestPpr" @onchange="args => settingsModalMatchCard.ShowHighestPpr = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalPpr">Highest PPR</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalCheckout" checked="@settingsModalMatchCard.ShowHighestCheckout" @onchange="args => settingsModalMatchCard.ShowHighestCheckout = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalCheckout">Highest Checkout</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalAdpl" checked="@settingsModalMatchCard.ShowAverageDartsPerLeg" @onchange="args => settingsModalMatchCard.ShowAverageDartsPerLeg = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalAdpl">Average Darts/Leg</label></div>
+                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalMinDarts" checked="@settingsModalMatchCard.ShowMinimalDartsPerLeg" @onchange="args => settingsModalMatchCard.ShowMinimalDartsPerLeg = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalMinDarts">Minimal Darts/Leg</label></div>
+                                </div>
+                            </div>
+                            </fieldset>
+                        </div>
+                    }
+                    else if (settingsModalKind == "matchcard-add")
+                    {
+                        <div id="settings-modal-matchcard-add">
+                            <div class="mb-3">
+                                <label for="settingsModalAddScope" class="form-label fw-semibold">Sektion wählen</label>
+                                <select id="settingsModalAddScope" class="form-select"
+                                        value="@settingsModalScopeKey"
+                                        @onchange="args => settingsModalScopeKey = args.Value?.ToString() ?? string.Empty">
+                                    <option value="">-- Sektion wählen --</option>
+                                    @foreach (var opt in GetAddableScopeOptions())
+                                    {
+                                        <option value="@opt.ScopeKey">@opt.Label</option>
+                                    }
+                                </select>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(settingsModalScopeKey))
+                            {
+                                <div class="small text-muted">Die Konfiguration startet mit den aktuell geerbten Einstellungen dieser Sektion.</div>
+                            }
+                            else
+                            {
+                                <div class="alert alert-info py-2 mb-0 small">Bitte eine Sektion auswählen.</div>
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => CloseSettingsModal()">Schliessen</button>
+                    @if (settingsModalKind == "matchcard")
+                    {
+                        <button class="btn btn-primary" @onclick="SaveMatchCardFromModalAsync" disabled="@isSavingMatchCardPreferences">Speichern</button>
+                    }
+                    else if (settingsModalKind == "matchcard-add")
+                    {
+                        <button class="btn btn-primary" @onclick="CreateAndEditScope" disabled="@string.IsNullOrWhiteSpace(settingsModalScopeKey)">Weiter ›</button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "tab")]
+    public string? QueryTab { get; set; }
+
+    [SupplyParameterFromQuery(Name = "edit")]
+    public string? QueryEdit { get; set; }
+
+    [SupplyParameterFromQuery(Name = "scope")]
+    public string? QueryScope { get; set; }
+
+    private string activeTab = "general";
+    private bool hasLoadedGeneralPreferences;
+    private string? lastHandledDeepLinkToken;
+    private bool isAutodartsConnected;
+    private string? autodartsDisplayName;
+
+    private int tournamentsFallbackPollingSeconds = 5;
+    private int matchesFallbackPollingSeconds = 5;
+    private bool isSavingRealtimePreference;
+    private string? realtimePreferenceError;
+
+    private bool isSavingMatchCardPreferences;
+    private string? matchCardPreferenceError;
+    private readonly Dictionary<string, MatchCardViewSettings> matchCardSettingsByView = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _userOverriddenScopeKeys = new(StringComparer.OrdinalIgnoreCase);
+
+    private bool showSettingsModal;
+    private string settingsModalKind = string.Empty;
+    private string settingsModalTitle = string.Empty;
+    private string settingsModalScopeKey = BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardScopeSectionAll);
+    private MatchCardViewSettings settingsModalMatchCard = MatchCardViewSettings.CreateDefault();
+    private bool settingsModalUseDefaults;
+
+    private const string TournamentRealtimePreferenceContext = "TournamentRealtime";
+    private const string MatchesRealtimePreferenceContext = "MatchesRealtime";
+    private const string MatchCardPreferenceContext = "MatchCardDisplay";
+    private const string MatchCardLegacyViewKeyMatchesDetail = "matches-detail";
+    private const string MatchCardScopeDelimiter = "::";
+    private const string MatchCardScopeGlobalPage = "all";
+    private const string MatchCardScopePageTournaments = "tournaments";
+    private const string MatchCardScopePageMatches = "matches";
+    private const string MatchCardScopeSectionAll = "all";
+    private const string MatchCardSectionGeneral = "general";
+    private const string MatchCardSectionGroups = "groups";
+    private const string MatchCardSectionKnockout = "knockout";
+    private const string MatchCardSectionSchedule = "schedule";
+    private const string MatchCardSectionScheduleQueue = "schedule-queue";
+    private const string MatchCardSectionScheduleTimeline = "schedule-timeline";
+    private const string MatchCardSectionBoardDetail = "board-detail";
+    private const string MatchCardSectionDetail = "detail";
+
+    private sealed record RealtimeSettings(int FallbackPollingSeconds = 5);
+    private sealed record MatchCardScopeOption(string ScopeKey, string Label);
+
+    private static readonly IReadOnlyList<MatchCardScopeOption> MatchCardScopeOptions =
+    [
+        new(BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll), "Global / Alle Seiten / Alle Sektionen"),
+        new(BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardScopeSectionAll), "Turniere / Alle Sektionen"),
+        new(BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardSectionGeneral), "Turniere / Allgemein"),
+        new(BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardSectionGroups), "Turniere / Gruppenphase"),
+        new(BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardSectionKnockout), "Turniere / K.O.-Phase"),
+        new(BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardSectionSchedule), "Turniere / Spielplan (alle)"),
+        new(BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardSectionScheduleQueue), "Turniere / Spielplan Warteschlange"),
+        new(BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardSectionScheduleTimeline), "Turniere / Spielplan Zeitplan"),
+        new(BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardSectionBoardDetail), "Turniere / Board-Detail"),
+        new(BuildMatchCardScopeKey(MatchCardScopePageMatches, MatchCardScopeSectionAll), "Matches / Alle Sektionen"),
+        new(BuildMatchCardScopeKey(MatchCardScopePageMatches, MatchCardSectionDetail), "Matches / Detail"),
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await TryLoadAutodartsSessionAsync();
+        await LoadRealtimeSettingsAsync();
+        await LoadMatchCardSettingsAsync();
+        hasLoadedGeneralPreferences = true;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        activeTab = string.Equals(QueryTab, "user", StringComparison.OrdinalIgnoreCase) ? "user" : "general";
+
+        if (!hasLoadedGeneralPreferences || !string.Equals(activeTab, "general", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var token = $"{QueryEdit}|{QueryScope}";
+        if (string.Equals(token, lastHandledDeepLinkToken, StringComparison.Ordinal))
+            return;
+
+        lastHandledDeepLinkToken = token;
+
+        if (string.Equals(QueryEdit, "matchcard", StringComparison.OrdinalIgnoreCase))
+        {
+            OpenMatchCardEditor(NormalizeMatchCardScopeKey(QueryScope ?? BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardScopeSectionAll)));
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task TryLoadAutodartsSessionAsync()
+    {
+        try
+        {
+            var status = await Api.GetAutodartsStatusAsync();
+            isAutodartsConnected = status.IsConnected;
+            autodartsDisplayName = status.Profile?.DisplayName;
+        }
+        catch
+        {
+            isAutodartsConnected = false;
+            autodartsDisplayName = null;
+        }
+    }
+
+    private async Task LoadRealtimeSettingsAsync()
+    {
+        tournamentsFallbackPollingSeconds = await LoadRealtimeSettingAsync(TournamentRealtimePreferenceContext, 5);
+        matchesFallbackPollingSeconds = await LoadRealtimeSettingAsync(MatchesRealtimePreferenceContext, 5);
+    }
+
+    private async Task<int> LoadRealtimeSettingAsync(string context, int fallback)
+    {
+        if (string.IsNullOrWhiteSpace(autodartsDisplayName))
+            return fallback;
+
+        try
+        {
+            var preference = await Api.GetViewPreferenceAsync(autodartsDisplayName, context);
+            if (preference is null || string.IsNullOrWhiteSpace(preference.SettingsJson))
+                return fallback;
+
+            var parsed = JsonSerializer.Deserialize<RealtimeSettings>(preference.SettingsJson);
+            if (parsed is null)
+                return fallback;
+
+            return Math.Clamp(parsed.FallbackPollingSeconds, 2, 30);
+        }
+        catch
+        {
+            return fallback;
+        }
+    }
+
+    private async Task OnTournamentFallbackChanged(ChangeEventArgs args)
+    {
+        if (!int.TryParse(args.Value?.ToString(), out var parsed))
+            return;
+
+        await SaveRealtimePreferenceAsync(TournamentRealtimePreferenceContext, parsed);
+    }
+
+    private async Task OnMatchesFallbackChanged(ChangeEventArgs args)
+    {
+        if (!int.TryParse(args.Value?.ToString(), out var parsed))
+            return;
+
+        await SaveRealtimePreferenceAsync(MatchesRealtimePreferenceContext, parsed);
+    }
+
+    private async Task SaveRealtimePreferenceAsync(string context, int seconds)
+    {
+        var normalizedSeconds = Math.Clamp(seconds, 2, 30);
+        if (string.Equals(context, TournamentRealtimePreferenceContext, StringComparison.OrdinalIgnoreCase))
+            tournamentsFallbackPollingSeconds = normalizedSeconds;
+        else
+            matchesFallbackPollingSeconds = normalizedSeconds;
+
+        realtimePreferenceError = null;
+
+        if (string.IsNullOrWhiteSpace(autodartsDisplayName))
+        {
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        try
+        {
+            isSavingRealtimePreference = true;
+            var payload = JsonSerializer.Serialize(new RealtimeSettings(normalizedSeconds));
+            await Api.SaveViewPreferenceAsync(autodartsDisplayName, context, payload);
+        }
+        catch (Exception ex)
+        {
+            realtimePreferenceError = $"Polling-Einstellung konnte nicht gespeichert werden: {ex.Message}";
+        }
+        finally
+        {
+            isSavingRealtimePreference = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadMatchCardSettingsAsync()
+    {
+        matchCardPreferenceError = null;
+        matchCardSettingsByView.Clear();
+        _userOverriddenScopeKeys.Clear();
+
+        matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
+
+        if (string.IsNullOrWhiteSpace(autodartsDisplayName))
+            return;
+
+        try
+        {
+            var preference = await Api.GetViewPreferenceAsync(autodartsDisplayName, MatchCardPreferenceContext);
+            if (preference is null || string.IsNullOrWhiteSpace(preference.SettingsJson))
+                return;
+
+            var payload = JsonSerializer.Deserialize<MatchCardViewPreferencePayload>(preference.SettingsJson);
+            if (payload?.Views is null)
+                return;
+
+            foreach (var (key, configured) in payload.Views)
+            {
+                if (string.IsNullOrWhiteSpace(key) || configured is null)
+                    continue;
+
+                var normalizedKey = string.Equals(key, MatchCardLegacyViewKeyMatchesDetail, StringComparison.OrdinalIgnoreCase)
+                    ? BuildMatchCardScopeKey(MatchCardScopePageMatches, MatchCardSectionDetail)
+                    : key.Contains(MatchCardScopeDelimiter, StringComparison.Ordinal)
+                        ? NormalizeMatchCardScopeKey(key)
+                        : BuildMatchCardScopeKey(MatchCardScopePageTournaments, NormalizeLegacyMatchCardViewKey(key));
+
+                configured.Normalize();
+                matchCardSettingsByView[normalizedKey] = configured;
+                _userOverriddenScopeKeys.Add(normalizedKey);
+            }
+        }
+        catch
+        {
+            // Fallback to defaults.
+        }
+    }
+
+    private MatchCardViewSettings ResolveMatchCardSettingsForScope(string scopeKey)
+    {
+        var normalizedScopeKey = NormalizeMatchCardScopeKey(scopeKey);
+        var candidates = new List<string> { normalizedScopeKey };
+
+        if (TryParseMatchCardScopeKey(normalizedScopeKey, out var page, out var section))
+        {
+            if (section.StartsWith("schedule-", StringComparison.OrdinalIgnoreCase))
+                candidates.Add(BuildMatchCardScopeKey(page, MatchCardSectionSchedule));
+
+            if (!string.Equals(section, MatchCardScopeSectionAll, StringComparison.OrdinalIgnoreCase))
+                candidates.Add(BuildMatchCardScopeKey(page, MatchCardScopeSectionAll));
+        }
+
+        candidates.Add(BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll));
+
+        foreach (var candidate in candidates)
+        {
+            if (matchCardSettingsByView.TryGetValue(candidate, out var found))
+                return found;
+        }
+
+        return MatchCardViewSettings.CreateDefault();
+    }
+
+    private MatchCardViewSettings GetEditableMatchCardSettings(string scopeKey)
+    {
+        var normalizedScopeKey = NormalizeMatchCardScopeKey(scopeKey);
+        if (!matchCardSettingsByView.TryGetValue(normalizedScopeKey, out var settings))
+        {
+            settings = ResolveMatchCardSettingsForScope(normalizedScopeKey).Clone();
+            settings.Normalize();
+            matchCardSettingsByView[normalizedScopeKey] = settings;
+        }
+
+        settings.Normalize();
+        return settings;
+    }
+
+    private async Task PersistMatchCardSettingsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(autodartsDisplayName))
+            return;
+
+        var payload = new MatchCardViewPreferencePayload
+        {
+            Views = matchCardSettingsByView
+                .Where(entry => _userOverriddenScopeKeys.Contains(entry.Key))
+                .ToDictionary(
+                    entry => entry.Key,
+                    entry => entry.Value.Clone(),
+                    StringComparer.OrdinalIgnoreCase)
+        };
+
+        var json = JsonSerializer.Serialize(payload);
+        await Api.SaveViewPreferenceAsync(autodartsDisplayName, MatchCardPreferenceContext, json);
+    }
+
+    private static string BuildMatchCardScopeKey(string page, string section)
+    {
+        var normalizedPage = string.IsNullOrWhiteSpace(page) ? MatchCardScopePageTournaments : page.Trim().ToLowerInvariant();
+        var normalizedSection = NormalizeMatchCardSection(section);
+        return $"{normalizedPage}{MatchCardScopeDelimiter}{normalizedSection}";
+    }
+
+    private static bool TryParseMatchCardScopeKey(string scopeKey, out string page, out string section)
+    {
+        page = MatchCardScopePageTournaments;
+        section = MatchCardSectionGeneral;
+
+        if (string.IsNullOrWhiteSpace(scopeKey))
+            return false;
+
+        var split = scopeKey.Split(MatchCardScopeDelimiter, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (split.Length != 2)
+            return false;
+
+        page = string.IsNullOrWhiteSpace(split[0]) ? MatchCardScopePageTournaments : split[0].Trim().ToLowerInvariant();
+        section = NormalizeMatchCardSection(split[1]);
+        return true;
+    }
+
+    private static string NormalizeMatchCardScopeKey(string scopeKey)
+    {
+        if (TryParseMatchCardScopeKey(scopeKey, out var page, out var section))
+            return BuildMatchCardScopeKey(page, section);
+
+        return BuildMatchCardScopeKey(MatchCardScopePageTournaments, NormalizeLegacyMatchCardViewKey(scopeKey));
+    }
+
+    private static string NormalizeLegacyMatchCardViewKey(string key)
+    {
+        var normalized = key.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            MatchCardSectionGeneral => MatchCardSectionGeneral,
+            MatchCardSectionGroups => MatchCardSectionGroups,
+            MatchCardSectionKnockout => MatchCardSectionKnockout,
+            MatchCardSectionSchedule => MatchCardSectionSchedule,
+            MatchCardSectionBoardDetail => MatchCardSectionBoardDetail,
+            MatchCardSectionDetail => MatchCardSectionDetail,
+            _ => MatchCardSectionGeneral
+        };
+    }
+
+    private static string NormalizeMatchCardSection(string? section)
+    {
+        var normalized = (section ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            MatchCardScopeSectionAll => MatchCardScopeSectionAll,
+            MatchCardSectionGeneral => MatchCardSectionGeneral,
+            MatchCardSectionGroups => MatchCardSectionGroups,
+            MatchCardSectionKnockout => MatchCardSectionKnockout,
+            MatchCardSectionSchedule => MatchCardSectionSchedule,
+            MatchCardSectionScheduleQueue => MatchCardSectionScheduleQueue,
+            MatchCardSectionScheduleTimeline => MatchCardSectionScheduleTimeline,
+            MatchCardSectionBoardDetail => MatchCardSectionBoardDetail,
+            MatchCardSectionDetail => MatchCardSectionDetail,
+            _ => MatchCardSectionGeneral
+        };
+    }
+
+    private static string BuildScopePanelId(string scopeKey)
+    {
+        var sanitized = NormalizeMatchCardScopeKey(scopeKey)
+            .Replace(MatchCardScopeDelimiter, "-", StringComparison.Ordinal)
+            .Replace(" ", "-", StringComparison.Ordinal);
+        return $"settings-matchcard-section-{sanitized}";
+    }
+
+    private string GetScopeLabel(string scopeKey)
+        => MatchCardScopeOptions.FirstOrDefault(x => x.ScopeKey == NormalizeMatchCardScopeKey(scopeKey))?.Label
+           ?? NormalizeMatchCardScopeKey(scopeKey);
+
+    private IEnumerable<MatchCardScopeOption> GetAddableScopeOptions()
+    {
+        var globalKey = BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll);
+        return MatchCardScopeOptions
+            .Where(o => !string.Equals(o.ScopeKey, globalKey, StringComparison.OrdinalIgnoreCase)
+                     && !_userOverriddenScopeKeys.Contains(o.ScopeKey));
+    }
+
+    private void CreateAndEditScope()
+    {
+        if (string.IsNullOrWhiteSpace(settingsModalScopeKey))
+            return;
+
+        var normalizedKey = NormalizeMatchCardScopeKey(settingsModalScopeKey);
+        settingsModalScopeKey = normalizedKey;
+        settingsModalMatchCard = ResolveMatchCardSettingsForScope(normalizedKey).Clone();
+        settingsModalMatchCard.Normalize();
+        settingsModalKind = "matchcard";
+        settingsModalTitle = $"MatchCard bearbeiten ({GetScopeLabel(normalizedKey)})";
+    }
+
+    private void OpenAddScopeModal()
+    {
+        settingsModalKind = "matchcard-add";
+        settingsModalTitle = "Sektion hinzufügen";
+        settingsModalScopeKey = string.Empty;
+        settingsModalMatchCard = MatchCardViewSettings.CreateDefault();
+        showSettingsModal = true;
+    }
+
+    private async Task RemoveScopeOverrideAsync(string scopeKey)
+    {
+        var normalizedKey = NormalizeMatchCardScopeKey(scopeKey);
+        _userOverriddenScopeKeys.Remove(normalizedKey);
+        matchCardSettingsByView.Remove(normalizedKey);
+
+        matchCardPreferenceError = null;
+        if (!string.IsNullOrWhiteSpace(autodartsDisplayName))
+        {
+            try
+            {
+                isSavingMatchCardPreferences = true;
+                await PersistMatchCardSettingsAsync();
+            }
+            catch (Exception ex)
+            {
+                matchCardPreferenceError = $"MatchCard-Einstellungen konnten nicht gespeichert werden: {ex.Message}";
+            }
+            finally
+            {
+                isSavingMatchCardPreferences = false;
+            }
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OpenMatchCardEditor(string scopeKey)
+    {
+        settingsModalKind = "matchcard";
+        settingsModalScopeKey = NormalizeMatchCardScopeKey(scopeKey);
+        settingsModalMatchCard = GetEditableMatchCardSettings(settingsModalScopeKey).Clone();
+        settingsModalMatchCard.Normalize();
+        settingsModalUseDefaults = false;
+        settingsModalTitle = $"MatchCard bearbeiten ({GetScopeLabel(settingsModalScopeKey)})";
+        showSettingsModal = true;
+    }
+
+    private void CloseSettingsModal()
+    {
+        showSettingsModal = false;
+
+        if (!string.IsNullOrWhiteSpace(QueryEdit))
+            Navigation.NavigateTo("/settings?tab=general", replace: true);
+    }
+
+    private async Task OnModalMatchCardLayoutChanged(ChangeEventArgs args)
+    {
+        settingsModalMatchCard.Layout = args.Value?.ToString() ?? "Mixed";
+        settingsModalMatchCard.Normalize();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SaveMatchCardFromModalAsync()
+    {
+        if (settingsModalUseDefaults)
+        {
+            await RemoveScopeOverrideAsync(settingsModalScopeKey);
+            CloseSettingsModal();
+            return;
+        }
+
+        matchCardPreferenceError = null;
+        settingsModalMatchCard.Normalize();
+        matchCardSettingsByView[settingsModalScopeKey] = settingsModalMatchCard.Clone();
+        _userOverriddenScopeKeys.Add(settingsModalScopeKey);
+
+        if (string.IsNullOrWhiteSpace(autodartsDisplayName))
+        {
+            CloseSettingsModal();
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        try
+        {
+            isSavingMatchCardPreferences = true;
+            await PersistMatchCardSettingsAsync();
+            CloseSettingsModal();
+        }
+        catch (Exception ex)
+        {
+            matchCardPreferenceError = $"MatchCard-Einstellungen konnten nicht gespeichert werden: {ex.Message}";
+        }
+        finally
+        {
+            isSavingMatchCardPreferences = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static bool ParseBoolChangeEvent(ChangeEventArgs args)
+        => args.Value switch
+        {
+            bool b => b,
+            string s when bool.TryParse(s, out var parsed) => parsed,
+            _ => false
+        };
+    }
+}

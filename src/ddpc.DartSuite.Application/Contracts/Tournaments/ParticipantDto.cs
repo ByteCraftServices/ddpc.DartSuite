@@ -10,4 +10,5 @@ public sealed record ParticipantDto(
     int SeedPot = 0,
     int? GroupNumber = null,
     Guid? TeamId = null,
-    string NotificationPreference = "OwnMatches");
+    string NotificationPreference = "OwnMatches",
+    string Type = "Spieler");

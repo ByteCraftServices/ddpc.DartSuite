@@ -113,16 +113,50 @@ public sealed class BoardManagementService(DartSuiteDbContext dbContext) : IBoar
         board.UpdatedUtc = DateTimeOffset.UtcNow;
         board.LastExtensionPollUtc = DateTimeOffset.UtcNow;
 
-        // Store the Autodarts match ID on the DartSuite match for recovery & result fetching
-        if (!string.IsNullOrEmpty(externalMatchId) && board.CurrentMatchId.HasValue)
+        // Store/link the Autodarts match ID on a DartSuite match for recovery & result fetching.
+        if (!string.IsNullOrWhiteSpace(externalMatchId))
         {
-            var match = await dbContext.Matches.FirstOrDefaultAsync(
-                x => x.Id == board.CurrentMatchId.Value, cancellationToken);
-            if (match is not null && match.ExternalMatchId != externalMatchId)
+            Match? match = null;
+
+            if (board.CurrentMatchId.HasValue)
             {
-                match.ExternalMatchId = externalMatchId;
+                match = await dbContext.Matches.FirstOrDefaultAsync(
+                    x => x.Id == board.CurrentMatchId.Value,
+                    cancellationToken);
+            }
+
+            if (match is null && board.TournamentId.HasValue)
+            {
+                // First preference: exact external id match in the same tournament.
+                match = await dbContext.Matches
+                    .Where(x => x.TournamentId == board.TournamentId.Value && x.FinishedUtc == null)
+                    .FirstOrDefaultAsync(x => x.ExternalMatchId == externalMatchId, cancellationToken);
+            }
+
+            if (match is null && board.TournamentId.HasValue)
+            {
+                // Fallback: pick the most likely open match currently assigned to this board.
+                match = await dbContext.Matches
+                    .Where(x => x.TournamentId == board.TournamentId.Value
+                        && x.BoardId == board.Id
+                        && x.FinishedUtc == null)
+                    .OrderBy(x => x.StartedUtc ?? x.PlannedStartUtc ?? DateTimeOffset.MaxValue)
+                    .FirstOrDefaultAsync(cancellationToken);
+            }
+
+            if (match is not null)
+            {
+                if (!board.CurrentMatchId.HasValue)
+                    board.CurrentMatchId = match.Id;
+
+                if (match.ExternalMatchId != externalMatchId)
+                    match.ExternalMatchId = externalMatchId;
+
                 if (match.StartedUtc is null)
                     match.StartedUtc = DateTimeOffset.UtcNow;
+
+                if (match.FinishedUtc is null)
+                    match.RecomputeStatus();
             }
         }
 

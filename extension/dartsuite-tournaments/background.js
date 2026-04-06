@@ -12,15 +12,144 @@ const DEFAULT_API_BASE_URL = "http://localhost:5290";
 
 let dstStatus = "offline";   // current DST status
 let matchStatus = "available"; // current match status
+let dartsuiteEnabled = true;
+
+function sanitizeOptionsForLog(options) {
+    if (!options || typeof options !== "object") return null;
+    const safe = { ...options };
+
+    if (safe.headers && typeof safe.headers === "object") {
+        const headers = { ...safe.headers };
+        if (headers.Authorization || headers.authorization) {
+            headers.Authorization = "<redacted>";
+            headers.authorization = "<redacted>";
+        }
+        safe.headers = headers;
+    }
+
+    if (typeof safe.body === "string") {
+        try {
+            const parsed = JSON.parse(safe.body);
+            if (parsed && typeof parsed === "object" && typeof parsed.accessToken === "string") {
+                parsed.accessToken = `${parsed.accessToken.slice(0, 10)}...`;
+            }
+            safe.body = parsed;
+        } catch {
+            // Keep non-JSON payload as text.
+        }
+    }
+
+    return safe;
+}
+
+function logTraffic(direction, message, details) {
+    const prefix = `[DartSuite] [${direction}]: ${message}`;
+    if (details !== undefined) {
+        console.log(prefix, details);
+    } else {
+        console.log(prefix);
+    }
+
+    broadcastTrafficLog(direction, message, details).catch(() => { });
+}
+
+async function broadcastTrafficLog(direction, message, details) {
+    const tabs = await chrome.tabs.query({ url: "https://play.autodarts.io/*" });
+    for (const tab of tabs) {
+        chrome.tabs.sendMessage(tab.id, {
+            action: "debugTrafficLog",
+            direction,
+            message,
+            details
+        }).catch(() => { });
+    }
+}
+
+async function loggedFetch(url, options) {
+    const method = (options?.method || "GET").toUpperCase();
+    logTraffic("OUT", `${method} ${url}`, sanitizeOptionsForLog(options));
+
+    try {
+        const response = await fetch(url, options || {});
+        logTraffic("IN", `${method} ${url} -> ${response.status}`);
+        return response;
+    } catch (error) {
+        logTraffic("IN", `${method} ${url} -> ERROR`, { error: error?.message || String(error) });
+        throw error;
+    }
+}
+
+async function refreshExtensionEnabledState() {
+    try {
+        const stored = await chrome.storage.sync.get({ dartsuiteEnabled: true });
+        dartsuiteEnabled = stored.dartsuiteEnabled !== false;
+    } catch {
+        dartsuiteEnabled = true;
+    }
+
+    if (!dartsuiteEnabled) {
+        chrome.alarms.clear(POLL_ALARM_NAME);
+        chrome.alarms.clear(STATUS_ALARM_NAME);
+        setDstStatus("offline");
+        setMatchStatus("available");
+        return;
+    }
+
+    await scheduleStatusPolling();
+    await resumeBoardPollingIfNeeded();
+}
+
+async function resumeBoardPollingIfNeeded() {
+    const [{ pollingBoardId }, managed] = await Promise.all([
+        chrome.storage.local.get("pollingBoardId"),
+        chrome.storage.sync.get({ managedBoardId: null, managedTournamentId: null })
+    ]);
+
+    const boardId = managed.managedBoardId || null;
+    const tournamentId = managed.managedTournamentId || null;
+    if (!boardId || !tournamentId) {
+        chrome.alarms.clear(POLL_ALARM_NAME);
+        await chrome.storage.local.remove("pollingBoardId");
+        await setLastHandledCurrentMatchId(null);
+        return;
+    }
+
+    if (pollingBoardId !== boardId) {
+        await chrome.storage.local.set({ pollingBoardId: boardId });
+        await setLastHandledCurrentMatchId(null);
+    }
+
+    chrome.alarms.create(POLL_ALARM_NAME, { periodInMinutes: 10 / 60 });
+    await doPollCycle(boardId);
+}
 
 chrome.runtime.onInstalled.addListener(() => {
     console.log("DartSuite Tournaments extension installed v0.4.0");
+    chrome.storage.sync.get("dartsuiteEnabled").then(stored => {
+        if (typeof stored.dartsuiteEnabled !== "boolean") {
+            chrome.storage.sync.set({ dartsuiteEnabled: true });
+        }
+    }).catch(() => { });
+
     updateIcon();
-    scheduleStatusPolling();
+    refreshExtensionEnabledState();
 });
 
 chrome.runtime.onStartup.addListener(() => {
-    scheduleStatusPolling();
+    refreshExtensionEnabledState();
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "sync") return;
+    if (changes.dartsuiteEnabled) {
+        refreshExtensionEnabledState().catch(() => { });
+        return;
+    }
+
+    if (changes.managedBoardId || changes.managedTournamentId) {
+        if (!dartsuiteEnabled) return;
+        resumeBoardPollingIfNeeded().catch(() => { });
+    }
 });
 
 // When a play.autodarts.io tab finishes loading, notify content script
@@ -34,6 +163,12 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!message?.action) return;
+
+    const allowedWhileDisabled = new Set(["getStatus", "getApiBaseUrl", "updateStatusPolling"]);
+    if (!dartsuiteEnabled && !allowedWhileDisabled.has(message.action)) {
+        sendResponse({ ok: false, disabled: true });
+        return;
+    }
 
     switch (message.action) {
         case "reportUrl":
@@ -81,6 +216,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             sendResponse({ ok: true });
             break;
 
+        case "tournamentContextChanged":
+            broadcastTournamentContext(message.payload || null);
+            sendResponse({ ok: true });
+            break;
+
         case "managedModeChanged":
             handleManagedModeChanged(message);
             sendResponse({ ok: true });
@@ -92,7 +232,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             break;
 
         case "getStatus":
-            sendResponse({ dstStatus, matchStatus });
+            sendResponse({ dstStatus: dartsuiteEnabled ? dstStatus : "offline", matchStatus, enabled: dartsuiteEnabled });
             break;
 
         case "updateStatusPolling":
@@ -117,6 +257,41 @@ function setMatchStatus(newStatus) {
     if (matchStatus === newStatus) return;
     matchStatus = newStatus;
     updateIcon();
+    if (newStatus === "waitForPlayer" || newStatus === "waitForMatch") {
+        autoSyncLobbyStatusAsync(newStatus).catch(() => { });
+    }
+}
+
+async function autoSyncLobbyStatusAsync(status) {
+    try {
+        const [apiBaseUrl, local, sync] = await Promise.all([
+            getApiBaseUrl(),
+            chrome.storage.local.get("pollingBoardId"),
+            chrome.storage.sync.get({ managedTournamentId: null })
+        ]);
+        const boardId = local.pollingBoardId;
+        const tournamentId = sync.managedTournamentId;
+        if (!boardId) return;
+
+        const tabs = await chrome.tabs.query({ url: "https://play.autodarts.io/*" });
+        const pageState = await fetchFirstPageState(tabs);
+        const sourceUrl = pageState?.url || null;
+
+        await loggedFetch(`${apiBaseUrl}/api/boards/${boardId}/extension-sync/report`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                requestId: null,
+                tournamentId: tournamentId || null,
+                sourceUrl,
+                externalMatchId: null,
+                player1: null,
+                player2: null,
+                matchStatus: status
+            })
+        });
+        logTraffic("OUT", `autoSyncLobbyStatus board=${boardId} status=${status}`);
+    } catch { /* silent */ }
 }
 
 function updateIcon() {
@@ -165,6 +340,11 @@ async function broadcastStatus() {
 const STATUS_ALARM_NAME = "dsStatusCheck";
 
 async function scheduleStatusPolling() {
+    if (!dartsuiteEnabled) {
+        chrome.alarms.clear(STATUS_ALARM_NAME);
+        return;
+    }
+
     const { statusPollSeconds = 30 } = await chrome.storage.sync.get({ statusPollSeconds: 30 });
     const seconds = Math.max(10, Number(statusPollSeconds) || 30);
     const minutes = Math.max(seconds / 60, 0.5);
@@ -174,14 +354,20 @@ async function scheduleStatusPolling() {
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === STATUS_ALARM_NAME) {
+        if (!dartsuiteEnabled) return;
         await checkApiHealth();
     }
 });
 
 async function checkApiHealth() {
+    if (!dartsuiteEnabled) {
+        setDstStatus("offline");
+        return;
+    }
+
     const apiBaseUrl = await getApiBaseUrl();
     try {
-        const response = await fetch(`${apiBaseUrl}/api/boards`, { signal: AbortSignal.timeout(3000) });
+        const response = await loggedFetch(`${apiBaseUrl}/api/boards`, { signal: AbortSignal.timeout(3000) });
         if (!response.ok) {
             await chrome.storage.local.set({
                 apiLastError: `HTTP ${response.status}`,
@@ -190,9 +376,20 @@ async function checkApiHealth() {
             setDstStatus("offline");
             return;
         }
+
+        const boards = await response.json();
+
         const { tournamentId } = await chrome.storage.sync.get({ tournamentId: "" });
         await chrome.storage.local.remove(["apiLastError", "apiLastErrorUtc"]);
         setDstStatus(tournamentId ? "connected" : "ready");
+
+        // Safety net: if managed mode is configured but polling was lost,
+        // restore polling without requiring popup interaction.
+        await resumeBoardPollingIfNeeded();
+
+        // Allow manual board sync even without managed polling.
+        const tabs = await chrome.tabs.query({ url: "https://play.autodarts.io/*" });
+        await tryManualSyncSweep(apiBaseUrl, boards, tabs, null, { force: true });
     } catch {
         await chrome.storage.local.set({
             apiLastError: "API nicht erreichbar",
@@ -205,8 +402,11 @@ async function checkApiHealth() {
 // ─── Tournament Events ───
 
 function handleTournamentSelected(tournament) {
+    if (!dartsuiteEnabled) return;
+
     if (!tournament) {
         setDstStatus("ready");
+        broadcastTournamentContext(null);
         return;
     }
 
@@ -214,11 +414,28 @@ function handleTournamentSelected(tournament) {
     const today = new Date().toISOString().split("T")[0];
     const isActive = tournament.startDate <= today && tournament.endDate >= today;
     setDstStatus("connected");
+    broadcastTournamentContext({
+        tournamentId: tournament.id,
+        tournamentName: tournament.name || "",
+        host: tournament.organizerAccount || ""
+    });
 
     console.log("DartSuite BG: Tournament selected", tournament.name, tournament.joinCode);
 }
 
+async function broadcastTournamentContext(payload) {
+    const tabs = await chrome.tabs.query({ url: "https://play.autodarts.io/*" });
+    for (const tab of tabs) {
+        chrome.tabs.sendMessage(tab.id, {
+            action: "tournamentContextChanged",
+            payload
+        }).catch(() => { });
+    }
+}
+
 async function handleManagedModeChanged(message) {
+    if (!dartsuiteEnabled) return;
+
     const { boardId, mode, tournamentId, tournamentName, host, boardName } = message;
 
     if (mode === "Auto") {
@@ -236,7 +453,7 @@ async function handleManagedModeChanged(message) {
         // Set managed mode on the API
         const apiBaseUrl = await getApiBaseUrl();
         try {
-            await fetch(`${apiBaseUrl}/api/boards/${boardId}/managed?mode=Auto&tournamentId=${tournamentId}`, {
+            await loggedFetch(`${apiBaseUrl}/api/boards/${boardId}/managed?mode=Auto&tournamentId=${tournamentId}`, {
                 method: "PATCH"
             });
         } catch { /* silent */ }
@@ -257,7 +474,7 @@ async function handleManagedModeChanged(message) {
         // Clear managed mode on API
         const apiBaseUrl = await getApiBaseUrl();
         try {
-            await fetch(`${apiBaseUrl}/api/boards/${boardId}/managed?mode=Manual`, { method: "PATCH" });
+            await loggedFetch(`${apiBaseUrl}/api/boards/${boardId}/managed?mode=Manual`, { method: "PATCH" });
         } catch { /* silent */ }
 
         await stopSignalRConnection();
@@ -269,11 +486,60 @@ async function handleManagedModeChanged(message) {
 // chrome.alarms survives service worker restarts and wakes it back up.
 
 const POLL_ALARM_NAME = "dsPolling";
+const LAST_HANDLED_MATCH_ID_STORAGE_KEY = "lastHandledCurrentMatchId";
 let lastHandledCurrentMatchId = null;
+let hasLoadedLastHandledCurrentMatchId = false;
 let lastSyncedBoardStatuses = new Map(); // externalBoardId -> status
+let lastManualSyncSweepMs = 0;
+let lastApiSessionSyncMs = 0;
+let lastApiSessionToken = null;
+
+const MANUAL_SYNC_SWEEP_THROTTLE_MS = 2500;
+const API_SESSION_SYNC_INTERVAL_MS = 60 * 1000;
+
+async function ensureLastHandledCurrentMatchIdLoaded() {
+    if (hasLoadedLastHandledCurrentMatchId) return;
+
+    const stored = await chrome.storage.local.get({ [LAST_HANDLED_MATCH_ID_STORAGE_KEY]: null });
+    const storedMatchId = stored?.[LAST_HANDLED_MATCH_ID_STORAGE_KEY];
+    lastHandledCurrentMatchId = typeof storedMatchId === "string" && storedMatchId.trim()
+        ? storedMatchId
+        : null;
+    hasLoadedLastHandledCurrentMatchId = true;
+}
+
+async function setLastHandledCurrentMatchId(matchId) {
+    const normalized = typeof matchId === "string" && matchId.trim()
+        ? matchId
+        : null;
+
+    if (hasLoadedLastHandledCurrentMatchId && lastHandledCurrentMatchId === normalized) {
+        return;
+    }
+
+    lastHandledCurrentMatchId = normalized;
+    hasLoadedLastHandledCurrentMatchId = true;
+
+    if (normalized) {
+        await chrome.storage.local.set({ [LAST_HANDLED_MATCH_ID_STORAGE_KEY]: normalized });
+    } else {
+        await chrome.storage.local.remove(LAST_HANDLED_MATCH_ID_STORAGE_KEY);
+    }
+}
 
 async function startSignalRConnection(boardId) {
-    lastHandledCurrentMatchId = null;
+    if (!dartsuiteEnabled) return;
+
+    const { pollingBoardId } = await chrome.storage.local.get({ pollingBoardId: null });
+    const alreadyPollingSameBoard = pollingBoardId === boardId;
+    if (alreadyPollingSameBoard) {
+        // Keep current handled command state so a duplicate start does not re-dispatch.
+        chrome.alarms.create(POLL_ALARM_NAME, { periodInMinutes: 10 / 60 });
+        await doPollCycle(boardId);
+        return;
+    }
+
+    await setLastHandledCurrentMatchId(null);
     lastSyncedBoardStatuses.clear();
 
     // Persist polling state so it survives service worker restarts
@@ -291,27 +557,34 @@ async function startSignalRConnection(boardId) {
 // Alarm handler — Chrome wakes the service worker to run this
 chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name !== POLL_ALARM_NAME) return;
-    const { pollingBoardId } = await chrome.storage.local.get("pollingBoardId");
-    if (!pollingBoardId) {
+    if (!dartsuiteEnabled) return;
+
+    const [{ pollingBoardId }, { managedBoardId }] = await Promise.all([
+        chrome.storage.local.get("pollingBoardId"),
+        chrome.storage.sync.get({ managedBoardId: null })
+    ]);
+
+    const boardId = managedBoardId || pollingBoardId;
+    if (!boardId) {
         chrome.alarms.clear(POLL_ALARM_NAME);
         return;
     }
-    await doPollCycle(pollingBoardId);
-});
 
-// On service worker startup, resume polling if it was active
-chrome.runtime.onStartup.addListener(async () => {
-    const { pollingBoardId } = await chrome.storage.local.get("pollingBoardId");
-    if (pollingBoardId) {
-        console.log("DartSuite BG: Resuming polling after restart for", pollingBoardId);
-        chrome.alarms.create(POLL_ALARM_NAME, { periodInMinutes: 10 / 60 });
+    if (managedBoardId && pollingBoardId !== managedBoardId) {
+        await chrome.storage.local.set({ pollingBoardId: managedBoardId });
     }
+
+    await doPollCycle(boardId);
 });
 
 async function doPollCycle(boardId) {
+    if (!dartsuiteEnabled) return;
+
+    await ensureLastHandledCurrentMatchIdLoaded();
+
     try {
         const apiBaseUrl = await getApiBaseUrl();
-        const response = await fetch(`${apiBaseUrl}/api/boards`);
+        const response = await loggedFetch(`${apiBaseUrl}/api/boards`);
         if (!response.ok) {
             setDstStatus("offline");
             return;
@@ -323,6 +596,7 @@ async function doPollCycle(boardId) {
 
         // Broadcast board status to content script
         const tabs = await chrome.tabs.query({ url: "https://play.autodarts.io/*" });
+        await ensureApiAutodartsSessionFromTabs(apiBaseUrl, tabs);
         if (board) {
             for (const tab of tabs) {
                 chrome.tabs.sendMessage(tab.id, {
@@ -333,31 +607,106 @@ async function doPollCycle(boardId) {
             }
             // Send heartbeat so DartSuite knows extension is connected
             try {
-                await fetch(`${apiBaseUrl}/api/boards/${boardId}/heartbeat`, { method: "PATCH" });
+                await loggedFetch(`${apiBaseUrl}/api/boards/${boardId}/heartbeat`, { method: "PATCH" });
             } catch { /* silent */ }
         }
 
         // Sync Autodarts board status to DartSuite
         await syncBoardStatuses(apiBaseUrl, boards, tabs);
 
+        // Process pending manual sync requests across all boards.
+        await tryManualSyncSweep(apiBaseUrl, boards, tabs, boardId);
+
         // Update match status based on board state
         if (board) {
             await updateMatchStatusFromBoard(apiBaseUrl, board, tabs);
-            await handleManualBoardSyncRequest(apiBaseUrl, board, tabs);
         }
 
-        // Live match sync is handled server-side by AutodartsMatchListenerService
-
-        if (board && board.currentMatchId && board.currentMatchId !== lastHandledCurrentMatchId) {
-            lastHandledCurrentMatchId = board.currentMatchId;
-            // Resolve full match data and send prepareMatch
-            await resolveAndSendPrepareMatch(apiBaseUrl, board.tournamentId, board.currentMatchId, tabs);
+        // Live match sync is handled server-side by AutodartsMatchListenerService.
+        // A board current-match change from DartSuite is treated as explicit start command.
+        if (board?.currentMatchId && board.currentMatchId !== lastHandledCurrentMatchId && board.tournamentId) {
+            // Guard: never interrupt a live match — check both in-memory status and live tab URL.
+            // Tab URL is ground truth: matchStatus resets on service worker restart (MV3).
+            const hasActiveMatchTab = tabs.some(tab => /\/matches\/[\w-]+/i.test(tab.url || ""));
+            const blockedStatuses = new Set(["playing", "waitForPlayer", "waitForMatch"]);
+            if (!blockedStatuses.has(matchStatus) && !hasActiveMatchTab) {
+                const commandInfo = parseCommandInfoFromMatchLabel(board.currentMatchLabel);
+                const sent = await resolveAndSendPrepareMatch(
+                    apiBaseUrl,
+                    board.tournamentId,
+                    board.currentMatchId,
+                    tabs,
+                    commandInfo
+                );
+                if (sent) {
+                    setMatchStatus("waitForPlayer");
+                    await setLastHandledCurrentMatchId(board.currentMatchId);
+                }
+            } else {
+                const reason = hasActiveMatchTab ? "active match tab detected" : "board not idle";
+                logTraffic("IN", `prepareMatch skipped (${reason})`, {
+                    boardId,
+                    currentMatchId: board.currentMatchId,
+                    matchStatus,
+                    hasActiveMatchTab
+                });
+                // Do NOT update lastHandledCurrentMatchId — retry after match ends.
+            }
         } else if (board && !board.currentMatchId) {
-            lastHandledCurrentMatchId = null;
+            await setLastHandledCurrentMatchId(null);
         }
     } catch {
         // API may be offline
         setDstStatus("offline");
+    }
+}
+
+async function fetchAutodartsAccessToken(tabs) {
+    for (const tab of tabs) {
+        try {
+            const result = await chrome.tabs.sendMessage(tab.id, { action: "getAutodartsAccessToken" });
+            if (result?.ok && result.accessToken) {
+                return result.accessToken;
+            }
+        } catch { /* tab may not have content script */ }
+    }
+
+    return null;
+}
+
+async function ensureApiAutodartsSessionFromTabs(apiBaseUrl, tabs) {
+    const nowMs = Date.now();
+    if (nowMs - lastApiSessionSyncMs < API_SESSION_SYNC_INTERVAL_MS) {
+        return;
+    }
+
+    const accessToken = await fetchAutodartsAccessToken(tabs);
+    if (!accessToken) {
+        return;
+    }
+
+    if (lastApiSessionToken === accessToken && nowMs - lastApiSessionSyncMs < API_SESSION_SYNC_INTERVAL_MS * 5) {
+        return;
+    }
+
+    try {
+        const response = await loggedFetch(`${apiBaseUrl}/api/autodarts/token-login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accessToken })
+        });
+
+        if (response.ok) {
+            lastApiSessionSyncMs = nowMs;
+            lastApiSessionToken = accessToken;
+            return;
+        }
+
+        if (response.status === 401) {
+            lastApiSessionToken = null;
+        }
+    } catch {
+        // API may be unavailable; regular polling handles offline status.
     }
 }
 
@@ -445,7 +794,7 @@ async function resolvePlayersForSync(apiBaseUrl, board, pageState) {
     const externalMatchId = pageState?.matchId || null;
     if (externalMatchId) {
         try {
-            const matchResp = await fetch(`${apiBaseUrl}/api/autodarts/matches/${externalMatchId}`);
+            const matchResp = await loggedFetch(`${apiBaseUrl}/api/autodarts/matches/${externalMatchId}`);
             if (matchResp.ok) {
                 const rawMatch = await matchResp.json();
                 const externalPlayers = extractPlayersFromAutodartsMatch(rawMatch);
@@ -462,8 +811,8 @@ async function resolvePlayersForSync(apiBaseUrl, board, pageState) {
 
     try {
         const [matchesResp, participantsResp] = await Promise.all([
-            fetch(`${apiBaseUrl}/api/matches/${board.tournamentId}`),
-            fetch(`${apiBaseUrl}/api/tournaments/${board.tournamentId}/participants`)
+            loggedFetch(`${apiBaseUrl}/api/matches/${board.tournamentId}`),
+            loggedFetch(`${apiBaseUrl}/api/tournaments/${board.tournamentId}/participants`)
         ]);
         if (!matchesResp.ok || !participantsResp.ok) {
             return [pagePlayers[0] || null, pagePlayers[1] || null];
@@ -492,7 +841,7 @@ async function resolvePlayersForSync(apiBaseUrl, board, pageState) {
 
 async function handleManualBoardSyncRequest(apiBaseUrl, board, tabs) {
     try {
-        const consumeResp = await fetch(`${apiBaseUrl}/api/boards/${board.id}/extension-sync/consume`, {
+        const consumeResp = await loggedFetch(`${apiBaseUrl}/api/boards/${board.id}/extension-sync/consume`, {
             method: "POST"
         });
         if (!consumeResp.ok) return;
@@ -523,7 +872,7 @@ async function handleManualBoardSyncRequest(apiBaseUrl, board, tabs) {
 
         console.log("DartSuite BG: Manual board sync payload", payload);
 
-        const reportResp = await fetch(`${apiBaseUrl}/api/boards/${board.id}/extension-sync/report`, {
+        const reportResp = await loggedFetch(`${apiBaseUrl}/api/boards/${board.id}/extension-sync/report`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
@@ -531,7 +880,42 @@ async function handleManualBoardSyncRequest(apiBaseUrl, board, tabs) {
 
         const responseText = await reportResp.text();
         console.log(`DartSuite BG: Manual board sync response (${reportResp.status})`, responseText);
-    } catch { /* silent */ }
+        if (!reportResp.ok) {
+            console.warn("DartSuite BG: Manual board sync report failed", {
+                boardId: board.id,
+                status: reportResp.status,
+                responseText
+            });
+        }
+    } catch (error) {
+        console.warn("DartSuite BG: Manual board sync request failed", {
+            boardId: board?.id,
+            error: error?.message || String(error)
+        });
+    }
+}
+
+async function tryManualSyncSweep(apiBaseUrl, boards, tabs, preferredBoardId, options) {
+    if (!Array.isArray(boards) || boards.length === 0) return;
+
+    const force = !!options?.force;
+    const nowMs = Date.now();
+    if (!force && nowMs - lastManualSyncSweepMs < MANUAL_SYNC_SWEEP_THROTTLE_MS) {
+        return;
+    }
+
+    lastManualSyncSweepMs = nowMs;
+
+    const orderedBoards = preferredBoardId
+        ? [
+            ...boards.filter(board => board.id === preferredBoardId),
+            ...boards.filter(board => board.id !== preferredBoardId)
+        ]
+        : boards;
+
+    for (const board of orderedBoards) {
+        await handleManualBoardSyncRequest(apiBaseUrl, board, tabs);
+    }
 }
 
 // Derive match status from board and Autodarts state
@@ -615,7 +999,7 @@ async function syncBoardStatuses(apiBaseUrl, dsBoards, tabs) {
             if (adBoard.matchId) {
                 url += `&externalMatchId=${encodeURIComponent(adBoard.matchId)}`;
             }
-            await fetch(url, {
+            await loggedFetch(url, {
                 method: "PATCH"
             });
             lastSyncedBoardStatuses.set(dsBoard.externalBoardId, newStatus);
@@ -624,18 +1008,43 @@ async function syncBoardStatuses(apiBaseUrl, dsBoards, tabs) {
     }
 }
 
-async function resolveAndSendPrepareMatch(apiBaseUrl, tournamentId, matchId, tabs) {
-    if (!tournamentId) return;
+function parseCommandInfoFromMatchLabel(currentMatchLabel) {
+    if (typeof currentMatchLabel !== "string" || !currentMatchLabel.trim()) return null;
+
+    const initAndCode = currentMatchLabel.match(/\[ds:init=([^;\]]+);code=([^\]]+)\]/i);
+    if (initAndCode) {
+        const initiatorName = (initAndCode[1] || "").trim();
+        const commandLabel = (initAndCode[2] || "").trim();
+        return {
+            initiatorName: initiatorName || null,
+            commandLabel: commandLabel || null
+        };
+    }
+
+    const codeOnly = currentMatchLabel.match(/\[ds:code=([^\]]+)\]/i);
+    if (codeOnly) {
+        const commandLabel = (codeOnly[1] || "").trim();
+        return {
+            initiatorName: null,
+            commandLabel: commandLabel || null
+        };
+    }
+
+    return null;
+}
+
+async function resolveAndSendPrepareMatch(apiBaseUrl, tournamentId, matchId, tabs, commandInfo) {
+    if (!dartsuiteEnabled || !tournamentId) return false;
     try {
-        const response = await fetch(`${apiBaseUrl}/api/matches/${tournamentId}`);
-        if (!response.ok) return;
+        const response = await loggedFetch(`${apiBaseUrl}/api/matches/${tournamentId}`);
+        if (!response.ok) return false;
         const matches = await response.json();
         const match = matches.find(m => m.id === matchId);
-        if (!match) return;
+        if (!match) return false;
 
         let participants = [];
         try {
-            const pResp = await fetch(`${apiBaseUrl}/api/tournaments/${tournamentId}/participants`);
+            const pResp = await loggedFetch(`${apiBaseUrl}/api/tournaments/${tournamentId}/participants`);
             if (pResp.ok) participants = await pResp.json();
         } catch { /* silent */ }
 
@@ -646,56 +1055,89 @@ async function resolveAndSendPrepareMatch(apiBaseUrl, tournamentId, matchId, tab
 
         let roundSettings = null;
         try {
-            const rsResp = await fetch(`${apiBaseUrl}/api/tournaments/${tournamentId}/rounds`);
+            const rsResp = await loggedFetch(`${apiBaseUrl}/api/tournaments/${tournamentId}/rounds`);
             if (rsResp.ok) {
                 const rounds = await rsResp.json();
                 roundSettings = rounds.find(r => r.phase === match.phase && r.roundNumber === match.round);
             }
         } catch { /* silent */ }
 
+        let sent = false;
+
         for (const tab of tabs) {
-            chrome.tabs.sendMessage(tab.id, {
-                action: "prepareMatch",
-                payload: {
-                    matchId: match.id,
-                    players: [
-                        { name: homeName, isAutodarts: homeP?.isAutodartsAccount !== false },
-                        { name: awayName, isAutodarts: awayP?.isAutodartsAccount !== false }
-                    ],
-                    plannedStartUtc: match.plannedStartUtc || null,
-                    variant: "X01",
-                    settings: {
-                        baseScore: roundSettings?.baseScore || 501,
-                        inMode: roundSettings?.inMode || "Straight",
-                        outMode: roundSettings?.outMode || "Double",
-                        maxRounds: roundSettings?.maxRounds || 50,
-                        bullMode: roundSettings?.bullMode || "25/50"
-                    },
-                    bullOffMode: roundSettings?.bullOffMode || "Normal",
-                    gameMode: roundSettings?.gameMode || "Legs",
-                    legs: roundSettings?.legs || 3,
-                    sets: roundSettings?.sets || null,
-                    isPrivate: true
+            logTraffic("OUT", "prepareMatch", { tabId: tab.id, matchId: match.id, tournamentId });
+            try {
+                const response = await chrome.tabs.sendMessage(tab.id, {
+                    action: "prepareMatch",
+                    payload: {
+                        matchId: match.id,
+                        players: [
+                            { name: homeName, isAutodarts: homeP?.isAutodartsAccount !== false },
+                            { name: awayName, isAutodarts: awayP?.isAutodartsAccount !== false }
+                        ],
+                        plannedStartUtc: match.plannedStartUtc || null,
+                        variant: "X01",
+                        settings: {
+                            baseScore: roundSettings?.baseScore || 501,
+                            inMode: roundSettings?.inMode || "Straight",
+                            outMode: roundSettings?.outMode || "Double",
+                            maxRounds: roundSettings?.maxRounds || 50,
+                            bullMode: roundSettings?.bullMode || "25/50"
+                        },
+                        bullOffMode: roundSettings?.bullOffMode || "Normal",
+                        gameMode: roundSettings?.gameMode || "Legs",
+                        legs: roundSettings?.legs || 3,
+                        sets: roundSettings?.sets || null,
+                        isPrivate: true,
+                        commandInfo: {
+                            initiatorName: commandInfo?.initiatorName || null,
+                            commandLabel: commandInfo?.commandLabel || null
+                        }
+                    }
+                });
+
+                if (response?.ok) {
+                    logTraffic("IN", "prepareMatch acknowledged", { tabId: tab.id, matchId: match.id });
+                    sent = true;
+                } else {
+                    logTraffic("IN", "prepareMatch no-ack", { tabId: tab.id, matchId: match.id, response: response || null });
                 }
-            }).catch(() => { });
+            } catch (error) {
+                logTraffic("IN", "prepareMatch dispatch failed", {
+                    tabId: tab.id,
+                    matchId: match.id,
+                    error: error?.message || String(error)
+                });
+            }
         }
-    } catch { /* silent */ }
+
+        if (!sent) {
+            logTraffic("IN", "prepareMatch not delivered; retry on next poll", { matchId: match.id, tournamentId });
+        }
+
+        return sent;
+    } catch {
+        return false;
+    }
 }
 
 async function stopSignalRConnection() {
     chrome.alarms.clear(POLL_ALARM_NAME);
     await chrome.storage.local.remove("pollingBoardId");
+    await setLastHandledCurrentMatchId(null);
 }
 
 // ─── Request Next Match ───
 
 async function handleRequestNextMatch(message) {
+    if (!dartsuiteEnabled) return;
+
     const { tournamentId, boardId } = message;
     if (!tournamentId || !boardId) return;
 
     const apiBaseUrl = await getApiBaseUrl();
     try {
-        const response = await fetch(`${apiBaseUrl}/api/matches/${tournamentId}`);
+        const response = await loggedFetch(`${apiBaseUrl}/api/matches/${tournamentId}`);
         if (!response.ok) return;
         const matches = await response.json();
 
@@ -709,7 +1151,7 @@ async function handleRequestNextMatch(message) {
         // Get participants to resolve names
         let participants = [];
         try {
-            const pResp = await fetch(`${apiBaseUrl}/api/tournaments/${tournamentId}/participants`);
+            const pResp = await loggedFetch(`${apiBaseUrl}/api/tournaments/${tournamentId}/participants`);
             if (pResp.ok) participants = await pResp.json();
         } catch { /* silent */ }
 
@@ -721,7 +1163,7 @@ async function handleRequestNextMatch(message) {
         // Get round settings for this match
         let roundSettings = null;
         try {
-            const rsResp = await fetch(`${apiBaseUrl}/api/tournaments/${tournamentId}/rounds`);
+            const rsResp = await loggedFetch(`${apiBaseUrl}/api/tournaments/${tournamentId}/rounds`);
             if (rsResp.ok) {
                 const rounds = await rsResp.json();
                 roundSettings = rounds.find(r => r.phase === next.phase && r.roundNumber === next.round);
@@ -767,7 +1209,7 @@ async function handleRequestNextMatch(message) {
 
 async function proxyFetch(url, options) {
     try {
-        const response = await fetch(url, options || {});
+        const response = await loggedFetch(url, options || {});
         const contentType = response.headers.get("content-type") || "";
         let body;
         if (contentType.includes("application/json")) {
@@ -784,14 +1226,67 @@ async function proxyFetch(url, options) {
 // ─── Page Reporting ───
 
 async function reportPageToApi(url) {
+    if (!dartsuiteEnabled) return { ok: false, disabled: true };
+
     const apiBaseUrl = await getApiBaseUrl();
     const matchId = extractId(url, /\/matches\/([\w-]+)/i);
     const lobbyId = extractId(url, /\/lobbies\/([\w-]+)/i);
 
+    // Quick manual-sync sweep triggered by page activity.
+    try {
+        const [boardsResponse, tabs] = await Promise.all([
+            loggedFetch(`${apiBaseUrl}/api/boards`),
+            chrome.tabs.query({ url: "https://play.autodarts.io/*" })
+        ]);
+
+        if (boardsResponse.ok) {
+            const boards = await boardsResponse.json();
+            await tryManualSyncSweep(apiBaseUrl, boards, tabs, null);
+        }
+    } catch {
+        // Optional optimization only.
+    }
+
+    // Auto-sync board status from URL
+    if ((matchId || lobbyId) && dartsuiteEnabled) {
+        try {
+            const [local, sync] = await Promise.all([
+                chrome.storage.local.get("pollingBoardId"),
+                chrome.storage.sync.get({ managedTournamentId: null })
+            ]);
+            const boardId = local.pollingBoardId;
+            if (boardId) {
+                if (matchId) {
+                    // On match page → report Running + externalMatchId immediately
+                    await loggedFetch(
+                        `${apiBaseUrl}/api/boards/${boardId}/status?status=Running&externalMatchId=${encodeURIComponent(matchId)}`,
+                        { method: "PATCH" }
+                    );
+                } else if (lobbyId && !url.includes("/lobbies/new")) {
+                    // On lobby page → report Warten
+                    const tournamentId = sync.managedTournamentId;
+                    await loggedFetch(`${apiBaseUrl}/api/boards/${boardId}/extension-sync/report`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            requestId: null,
+                            tournamentId: tournamentId || null,
+                            sourceUrl: url,
+                            externalMatchId: null,
+                            player1: null,
+                            player2: null,
+                            matchStatus: matchStatus
+                        })
+                    });
+                }
+            }
+        } catch { /* silent — optional optimization */ }
+    }
+
     if (!matchId && !lobbyId) return { ok: true, skipped: true };
 
     try {
-        const response = await fetch(`${apiBaseUrl}/api/autodarts/page-event`, {
+        const response = await loggedFetch(`${apiBaseUrl}/api/autodarts/page-event`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ sourceUrl: url, matchId, lobbyId })
