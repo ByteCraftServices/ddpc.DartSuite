@@ -2892,6 +2892,8 @@ public partial class Tournaments : IAsyncDisposable
 
     private async Task OnSeedTopCountChangedAsync()
     {
+        var maxSeedCount = Math.Max(0, EffectiveDrawParticipants.Count);
+        editSeedTopCount = Math.Clamp(editSeedTopCount, 0, maxSeedCount);
         await AutoSaveSettingAsync();
         await NormalizeSeedRanksAsync();
     }
@@ -2959,6 +2961,8 @@ public partial class Tournaments : IAsyncDisposable
     private async Task LoadParticipantsAsync(Guid tournamentId)
     {
         participants = (await Api.GetParticipantsAsync(tournamentId)).ToList();
+        var maxSeedCount = Math.Max(0, EffectiveDrawParticipants.Count);
+        editSeedTopCount = Math.Clamp(editSeedTopCount, 0, maxSeedCount);
         if (selectedTournament?.Mode == "Knockout")
             EnsureKnockoutDrawCards();
         CleanupKnockoutDrawCards();
@@ -5932,12 +5936,20 @@ public partial class Tournaments : IAsyncDisposable
 
         var participant = participants.FirstOrDefault(p => p.Id == participantId);
         if (participant is null) return;
+        if (IsTeamplayActive && !IsTeamMember(participant))
+        {
+            editError = "Im Teamplay können nur Team-Teilnehmer (TT) gesetzt werden.";
+            return;
+        }
+
+        var maxSeedCount = Math.Max(0, EffectiveDrawParticipants.Count);
+        var clampedSeed = Math.Clamp(newSeed, 0, maxSeedCount);
         try
         {
             isWorking = true;
             await Api.UpdateParticipantAsync(selectedTournament.Id, new UpdateParticipantRequest(
                 selectedTournament.Id, participantId, participant.DisplayName, participant.AccountName,
-                participant.IsAutodartsAccount, participant.IsManager, newSeed, participant.SeedPot, participant.GroupNumber));
+                participant.IsAutodartsAccount, participant.IsManager, clampedSeed, participant.SeedPot, participant.GroupNumber));
             await LoadParticipantsAsync(selectedTournament.Id);
         }
         catch (Exception ex) { editError = ex.Message; }

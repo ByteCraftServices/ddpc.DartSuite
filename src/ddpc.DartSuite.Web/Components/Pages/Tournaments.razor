@@ -1032,7 +1032,7 @@
                                                                                                     {
                                                                                                         <div class="mb-0">
                                                                                                             <label class="form-label small" title="Anzahl gesetzter Spieler; beeinflusst Bracket- und Gruppenverteilung.">@(IsTeamplayActive ? "Anzahl gesetzter Teams" : "Anzahl gesetzter Spieler")</label>
-                                                                                                            <input type="number" class="form-control form-control-sm @(HasSeedingRequiredMissing() ? "border-danger" : "")" @bind="editSeedTopCount" @bind:after="OnSeedTopCountChangedAsync" min="0" max="@participants.Count" />
+                                                                                                            <input type="number" class="form-control form-control-sm @(HasSeedingRequiredMissing() ? "border-danger" : "")" @bind="editSeedTopCount" @bind:after="OnSeedTopCountChangedAsync" min="0" max="@EffectiveDrawParticipants.Count" />
                                                                                                         </div>
                                                                                                     }
                                                                                                 }
