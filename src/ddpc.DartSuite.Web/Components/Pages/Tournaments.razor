@@ -2641,10 +2641,10 @@
 
 @if (selectedTournament is not null)
 {
-    <div class="tournament-tab-footer-nav d-lg-none">
-        <button class="btn btn-outline-secondary btn-sm" @onclick="GoToPreviousTabAsync" disabled="@(isWorking || !CanGoToPreviousTab)">← @PreviousTabDisplayName</button>
+    <div class="tournament-tab-footer-nav">
+        <button class="@PreviousTabButtonCssClass" @onclick="GoToPreviousTabAsync" disabled="@(isWorking || !CanGoToPreviousTab)">← @PreviousTabDisplayName</button>
         <span class="small text-muted px-2">@ActiveTabDisplayName</span>
-        <button class="btn btn-primary btn-sm" @onclick="GoToNextTabAsync" disabled="@(isWorking || !CanGoToNextTab)">@NextTabDisplayName →</button>
+        <button class="@NextTabButtonCssClass" @onclick="GoToNextTabAsync" disabled="@(isWorking || !CanGoToNextTab)">@NextTabDisplayName →</button>
     </div>
 }
 

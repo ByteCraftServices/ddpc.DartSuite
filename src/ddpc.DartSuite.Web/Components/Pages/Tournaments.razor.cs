@@ -1100,7 +1100,7 @@ public partial class Tournaments : IAsyncDisposable
         get
         {
             if (selectedTournament?.Mode == "GroupAndKnockout")
-                return ["general", "boards-participants", "draw", "rounds", "groups", "knockout", "schedule"];
+                return ["general", "boards-participants", "draw", "rounds", "groups", "schedule", "knockout"];
             return ["general", "boards-participants", "draw", "rounds", "knockout", "schedule"];
         }
     }
@@ -1118,6 +1118,28 @@ public partial class Tournaments : IAsyncDisposable
 
     private string NextTabDisplayName
         => CanGoToNextTab ? TabDisplayName(VisibleTabSequence[ActiveTabSequenceIndex + 1]) : "Nächster Tab";
+
+    private bool HasDelayedPlannedMatches
+        => matches.Any(m => m.FinishedUtc is null
+                            && (m.DelayMinutes > 0 || string.Equals(m.SchedulingStatus, "Delayed", StringComparison.OrdinalIgnoreCase)));
+
+    private bool PreviousTabIsSchedule
+        => CanGoToPreviousTab
+           && string.Equals(VisibleTabSequence[ActiveTabSequenceIndex - 1], "schedule", StringComparison.Ordinal);
+
+    private bool NextTabIsSchedule
+        => CanGoToNextTab
+           && string.Equals(VisibleTabSequence[ActiveTabSequenceIndex + 1], "schedule", StringComparison.Ordinal);
+
+    private string PreviousTabButtonCssClass
+        => PreviousTabIsSchedule
+            ? (HasDelayedPlannedMatches ? "btn btn-warning btn-sm" : "btn btn-success btn-sm")
+            : "btn btn-outline-secondary btn-sm";
+
+    private string NextTabButtonCssClass
+        => NextTabIsSchedule
+            ? (HasDelayedPlannedMatches ? "btn btn-warning btn-sm" : "btn btn-success btn-sm")
+            : "btn btn-primary btn-sm";
 
     private static string TabDisplayName(string tab)
         => tab switch
