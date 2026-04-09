@@ -650,7 +650,7 @@
 
                                                     <dl class="row mb-3">
                                                         <dt class="col-sm-4">Account</dt>
-                                                        <dd class="col-sm-8">@detailParticipant.AccountName @if (detailParticipant.IsAutodartsAccount) { <span class="autodarts-icon"></span> } else { <span>(Lokal)</span> }</dd>
+                                                        <dd class="col-sm-8">@if (detailParticipant.IsAutodartsAccount) { <span class="autodarts-icon me-1"></span> } @detailParticipant.AccountName @if (!detailParticipant.IsAutodartsAccount) { <span>(Lokal)</span> }</dd>
                                                         <dt class="col-sm-4">Setzposition</dt>
                                                         <dd class="col-sm-8">@ParticipantSeedLabel(detailParticipant)</dd>
                                                         <dt class="col-sm-4">Gesamt</dt>
@@ -1248,18 +1248,18 @@
                                                                                             }
 
                                                                                             <h6 class="fw-semibold mb-2">Teilnehmer <span class="badge text-bg-secondary">@EffectivePlayerCount</span></h6>
-                                                                                            @if (participants.Any())
+                                                                                            @if (participants.Any(p => !IsTeamMember(p)))
                                                                                             {
                                                                                                 var sortedParticipants = editSeedingEnabled
-                                                                                                    ? participants.OrderBy(p => p.Seed > 0 ? p.Seed : int.MaxValue).ThenBy(p => p.DisplayName).ToList()
-                                                                                                    : participants;
+                                                                                                    ? participants.Where(p => !IsTeamMember(p)).OrderBy(p => p.Seed > 0 ? p.Seed : int.MaxValue).ThenBy(p => p.DisplayName).ToList()
+                                                                                                    : participants.Where(p => !IsTeamMember(p)).ToList();
                                                                                                 <div class="table-responsive mb-3">
                                                                                                     <table class="table table-sm table-hover align-middle mb-0">
                                                                                                         <thead>
                                                                                                             <tr>
                                                                                                                 <th>Teilnehmer</th>
-                                                                                                                <th class="d-none d-lg-table-cell">Account</th>
-                                                                                                                <th class="d-none d-xl-table-cell">Gruppe</th>
+                                                                                                                <th class="d-none d-xl-table-cell">Account</th>
+                                                                                                                <th class="d-none d-lg-table-cell">Gruppe</th>
                                                                                                                 @if (editTeamplay)
                                                                                                                 {
                                                                                                                     <th class="d-none d-lg-table-cell">Team</th>
@@ -1268,7 +1268,7 @@
                                                                                                             </tr>
                                                                                                         </thead>
                                                                                                         <tbody>
-                                                                                                            @foreach (var p in sortedParticipants.Where(p => !IsTeamMember(p)))
+                                                                                                            @foreach (var p in sortedParticipants)
                                                                                                             {
                                                                                                                 var isSeedTarget = editSeedingEnabled && p.Seed > 0 && p.Seed <= editSeedTopCount;
                                                                                                                 var teamName = GetTeamNameForParticipant(p.TeamId);
@@ -1293,6 +1293,10 @@
                                                                                                                             {
                                                                                                                                 <span class="badge @PotBadgeCss(p.SeedPot)" title="Lostopf">Topf @p.SeedPot</span>
                                                                                                                             }
+                                                                                                                            @if (p.IsAutodartsAccount)
+                                                                                                                            {
+                                                                                                                                <span class="autodarts-icon d-xl-none" title="Autodarts"></span>
+                                                                                                                            }
                                                                                                                             <span role="button" style="cursor:pointer;text-decoration:underline dotted" @onclick="() => OpenPlayerDetail(p.Id)">@p.DisplayName.ToUpperInvariant()</span>
                                                                                                                             @if (p.IsManager)
                                                                                                                             {
@@ -1308,7 +1312,7 @@
                                                                                                                             }
                                                                                                                         </span>
                                                                                                                     </td>
-                                                                                                                    <td class="d-none d-lg-table-cell">
+                                                                                                                    <td class="d-none d-xl-table-cell">
                                                                                                                         @if (p.IsAutodartsAccount)
                                                                                                                         {
                                                                                                                             <span class="autodarts-icon me-1" title="Autodarts"></span>
@@ -1320,7 +1324,7 @@
                                                                                                                             <span class="badge text-bg-secondary ms-1">Lokal</span>
                                                                                                                         }
                                                                                                                     </td>
-                                                                                                                    <td class="d-none d-xl-table-cell">
+                                                                                                                    <td class="d-none d-lg-table-cell">
                                                                                                                         @if (p.GroupNumber.HasValue && p.GroupNumber > 0)
                                                                                                                         {
                                                                                                                             <span class="badge text-bg-info">Gr. @GroupLabel(p.GroupNumber.Value)</span>
@@ -1388,11 +1392,14 @@
                                                                                                                             class="list-group-item list-group-item-action small py-1"
                                                                                                                             @onmousedown="() => SelectParticipantSuggestion(s)"
                                                                                                                             @onmousedown:preventDefault>
-                                                                                                                        @s.DisplayName <span class="text-muted">(@s.AccountName)</span>
-                                                                                                                        @if (s.IsAutodartsAccount)
-                                                                                                                        {
-                                                                                                                            <span class="autodarts-icon"></span>
-                                                                                                                        }
+                                                                                                                        @s.DisplayName
+                                                                                                                        <span class="text-muted">(
+                                                                                                                            @if (s.IsAutodartsAccount)
+                                                                                                                            {
+                                                                                                                                <span class="autodarts-icon me-1" title="Autodarts"></span>
+                                                                                                                            }
+                                                                                                                            @s.AccountName)
+                                                                                                                        </span>
                                                                                                                     </button>
                                                                                                                 }
                                                                                                             </div>
