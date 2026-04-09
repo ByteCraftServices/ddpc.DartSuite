@@ -941,192 +941,62 @@
                                             </div>
                                             <div class="card-body" id="tournament-tab-content">
                                                 @* ─── Tabs ─── *@
-                                                <ul class="nav nav-tabs mb-3">
-                                                    <li class="nav-item"><button class="nav-link @(activeTab == "general" ? "active" : "")"
-                                                                                     @onclick='() => SwitchTabAsync("general")'>Allgemein</button></li>
-                                                        <li class="nav-item"><button class="nav-link @(activeTab == "boards-participants" ? "active" : "")"
-                                                                                         @onclick='() => SwitchTabAsync("boards-participants")'>Boards &amp; Teilnehmer</button></li>
-                                                                <li class="nav-item"><button class="nav-link @(activeTab == "draw" ? "active" : "")"
-                                                                                                 @onclick='() => SwitchTabAsync("draw")'>Auslosung</button></li>
-                                                                    <li class="nav-item"><button class="nav-link @(activeTab == "rounds" ? "active" : "")"
-                                                                                             @onclick="SwitchToRoundsTabAsync">Spielmodus @if (HasMissingRoundConfig()) {<span class="badge text-bg-danger ms-1">@MissingRoundConfigCount() ⚠</span>}</button></li>
-                                                                    @if (selectedTournament.Mode == "GroupAndKnockout")
-                                                                    {
-                                                                        <li class="nav-item"><button class="nav-link @(activeTab == "groups" ? "active" : "")"
-                                                                                                         @onclick='() => SwitchTabAsync("groups")'>Gruppenphase <span class="badge @PhaseBadgeCss("Group") ms-1">@PhaseBadgeText("Group")</span></button></li>
-                                                                        }
-                                                                        <li class="nav-item"><button class="nav-link @(activeTab == "knockout" ? "active" : "")"
-                                                                                                         @onclick='() => SwitchTabAsync("knockout")'>K.O.-Phase <span class="badge @PhaseBadgeCss("Knockout") ms-1">@PhaseBadgeText("Knockout")</span></button></li>
-                                                                            <li class="nav-item"><button class="nav-link @(activeTab == "schedule" ? "active" : "")"
-                                                                                                         @onclick='() => SwitchTabAsync("schedule")'>Spielplan <span
-                                                                                class="badge @ScheduleBadgeCss ms-1">@ScheduleBadgeText</span></button></li>
-                                                                            </ul>
+                                                <TournamentTabNav ActiveTab="@activeTab"
+                                                                  ShowGroupsTab="@(selectedTournament.Mode == "GroupAndKnockout")"
+                                                                  HasMissingRoundConfig="@HasMissingRoundConfig()"
+                                                                  MissingRoundConfigCount="@MissingRoundConfigCount()"
+                                                                  GroupPhaseBadgeCss="@PhaseBadgeCss("Group")"
+                                                                  GroupPhaseBadgeText="@PhaseBadgeText("Group")"
+                                                                  KnockoutPhaseBadgeCss="@PhaseBadgeCss("Knockout")"
+                                                                  KnockoutPhaseBadgeText="@PhaseBadgeText("Knockout")"
+                                                                  ScheduleBadgeCss="@ScheduleBadgeCss"
+                                                                  ScheduleBadgeText="@ScheduleBadgeText"
+                                                                  OnTabSelected="HandleTabSelectionAsync" />
 
                                                                             @* ═══════ Tab: Allgemein ═══════ *@
                                                                             @if (activeTab == "general")
                                                                             {
-                                                                                @if (selectedTournament.IsLocked)
-                                                                                {
-                                                                                    <div class="alert alert-info py-2">🔒 Das Turnier ist gesperrt. Entsperren Sie es, um Änderungen
-                                                                                        vorzunehmen.</div>
-                                                                                }
-
-                                                                                <details class="card mb-3" open>
-                                                                                    <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
-                                                                                        <span>
-                                                                                            Grunddaten
-                                                                                            @if (HasGeneralRequiredMissing())
-                                                                                            {
-                                                                                                <span class="text-danger ms-2" title="Pflichteinstellungen fehlen">⚠</span>
-                                                                                            }
-                                                                                        </span>
-                                                                                        <span class="d-none d-md-inline small text-muted">@GeneralSettingsSummary()</span>
-                                                                                    </summary>
-                                                                                    <div class="card-body">
-                                                                                        @if (CanEditBasicSettings)
-                                                                                        {
-                                                                                            <div class="mb-3">
-                                                                                                <label class="form-label fw-semibold" title="Eindeutiger Turniername für Listen, Suche und Turnierlink.">Turniername</label>
-                                                                                                <input class="form-control @(string.IsNullOrWhiteSpace(editName) ? "border-danger" : "")" @bind="editName" @bind:after="AutoSaveSettingAsync" />
-                                                                                            </div>
-                                                                                            <div class="mb-3">
-                                                                                                <label class="form-label fw-semibold" title="Autodarts-Account des Veranstalters; steuert Sichtbarkeit und Berechtigungen.">Veranstalter-Account</label>
-                                                                                                <input class="form-control @(string.IsNullOrWhiteSpace(editOrganizer) ? "border-danger" : "")" @bind="editOrganizer" @bind:after="AutoSaveSettingAsync" list="organizerSuggestions" />
-                                                                                                <datalist id="organizerSuggestions">
-                                                                                                    @if (!string.IsNullOrEmpty(autodartsDisplayName))
-                                                                                                    {
-                                                                                                        <option value="@autodartsDisplayName" />
-                                                                                                    }
-                                                                                                    @foreach (var p in participants.Where(p => p.IsAutodartsAccount))
-                                                                                                    {
-                                                                                                        <option value="@p.AccountName">@p.DisplayName</option>
-                                                                                                    }
-                                                                                                </datalist>
-                                                                                            </div>
-                                                                                            <div class="row g-2 mb-3">
-                                                                                                <div class="col-md-4">
-                                                                                                    <label class="form-label fw-semibold" title="Startdatum des Turniers. Grundlage für aktive/kommende Turniere.">Startdatum</label>
-                                                                                                    <input type="date" class="form-control" @bind="editStartDate" @bind:after="AutoSaveSettingAsync" />
-                                                                                                </div>
-                                                                                                <div class="col-md-4">
-                                                                                                    <label class="form-label fw-semibold" title="Enddatum des Turniers; darf nicht vor dem Startdatum liegen.">Enddatum</label>
-                                                                                                    <input type="date" class="form-control @((editEndDate < editStartDate) ? "border-danger" : "")" @bind="editEndDate" @bind:after="AutoSaveSettingAsync" />
-                                                                                                </div>
-                                                                                                <div class="col-md-4">
-                                                                                                    <label class="form-label fw-semibold" title="Optional: Uhrzeit für Start und Spielplan-Generierung.">Startzeit</label>
-                                                                                                    <input type="time" class="form-control" @bind="editStartTimeInput" @bind:after="AutoSaveSettingAsync" />
-                                                                                                </div>
-                                                                                            </div>
-                                                                                            <div class="mb-3">
-                                                                                                <label class="form-label fw-semibold" title="Turniermodus: K.O. oder Gruppe + K.O. beeinflusst Auslosung und Gruppen-Tab.">Modus</label>
-                                                                                                <select class="form-select" @bind="editMode" @bind:after="AutoSaveSettingAsync">
-                                                                                                    <option value="Knockout">K.O.-Modus</option>
-                                                                                                    <option value="GroupAndKnockout">Gruppenphase + K.O.</option>
-                                                                                                </select>
-                                                                                            </div>
-                                                                                            <div class="mb-3">
-                                                                                                <label class="form-label fw-semibold" title="Vor-Ort: Board-Zuweisung und lokale Steuerung; Online: ohne Board-Zwang.">Variante</label>
-                                                                                                <select class="form-select" @bind="editVariant" @bind:after="AutoSaveSettingAsync">
-                                                                                                    <option value="OnSite">Vor-Ort</option>
-                                                                                                    <option value="Online">Online</option>
-                                                                                                </select>
-                                                                                            </div>
-                                                                                            <div class="form-check mb-0">
-                                                                                                <input class="form-check-input" type="checkbox" id="editThirdPlace" @bind="editThirdPlaceMatch" @bind:after="AutoSaveSettingAsync" />
-                                                                                                <label class="form-check-label" for="editThirdPlace" title="Erzeugt nach dem Halbfinale ein zusätzliches Spiel um Platz 3.">Spiel um Platz 3</label>
-                                                                                            </div>
-                                                                                        }
-                                                                                        else
-                                                                                        {
-                                                                                            <div class="small text-muted d-flex flex-wrap gap-2">
-                                                                                                <span class="badge text-bg-secondary">@ModeDisplay(editMode)</span>
-                                                                                                <span class="badge text-bg-secondary">@VariantDisplay(editVariant)</span>
-                                                                                                <span class="badge @(editThirdPlaceMatch ? "text-bg-info" : "text-bg-light")">Platz 3: @(editThirdPlaceMatch ? "Ja" : "Nein")</span>
-                                                                                                <span class="badge text-bg-light border">Start: @editStartDate.ToString("dd.MM.yyyy")</span>
-                                                                                                <span class="badge text-bg-light border">Ende: @editEndDate.ToString("dd.MM.yyyy")</span>
-                                                                                            </div>
-                                                                                        }
-                                                                                    </div>
-                                                                                </details>
-
-                                                                                @if (!string.IsNullOrEmpty(selectedTournament.JoinCode))
-                                                                                {
-                                                                                    <details class="card mb-3">
-                                                                                        <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
-                                                                                            <span>Turnier-Link</span>
-                                                                                            <span class="d-none d-md-inline small text-muted">Code: @selectedTournament.JoinCode</span>
-                                                                                        </summary>
-                                                                                        <div class="card-body">
-                                                                                            <div class="input-group">
-                                                                                                <input type="text" class="form-control form-control-sm" readonly value="@TournamentLink" />
-                                                                                                @if (CanEditTournamentSettings)
-                                                                                                {
-                                                                                                    <button class="btn btn-outline-secondary btn-sm" @onclick="CopyTournamentLink" title="Kopiert den direkten Turnierlink in die Zwischenablage.">📋 Kopieren</button>
-                                                                                                }
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    </details>
-                                                                                }
-
-                                                                                <details class="card mb-3">
-                                                                                    <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
-                                                                                        <span>Discord Webhook</span>
-                                                                                        <span class="d-none d-md-inline small text-muted">@(string.IsNullOrWhiteSpace(editDiscordWebhookUrl) ? "Nicht konfiguriert" : "Konfiguriert")</span>
-                                                                                    </summary>
-                                                                                    <div class="card-body">
-                                                                                        @if (CanEditTournamentSettings)
-                                                                                        {
-                                                                                            <div class="mb-2">
-                                                                                                <label class="form-label small" title="Webhook-URL für automatische Ergebnisposts bei Matchende.">Webhook URL</label>
-                                                                                                <div class="input-group">
-                                                                                                    <input type="url" class="form-control form-control-sm" @bind="editDiscordWebhookUrl" @bind:after="AutoSaveSettingAsync"
-                                                                                                           placeholder="https://discord.com/api/webhooks/..." />
-                                                                                                    @if (!string.IsNullOrEmpty(editDiscordWebhookUrl))
-                                                                                                    {
-                                                                                                        <button class="btn btn-outline-secondary btn-sm" @onclick="TestDiscordWebhookAsync" disabled="@isWorking" title="Sendet eine Testnachricht an den konfigurierten Channel.">🔔 Testen</button>
-                                                                                                    }
-                                                                                                </div>
-                                                                                            </div>
-                                                                                            <div class="mb-3">
-                                                                                                <label class="form-label small" title="Optionaler Anzeigename für Bot-Nachrichten, z.B. Turnier-Bot.">Anzeigename (optional)</label>
-                                                                                                <input type="text" class="form-control form-control-sm" @bind="editDiscordWebhookDisplayText" @bind:after="AutoSaveSettingAsync" placeholder="z.B. Turnier-Bot" />
-                                                                                            </div>
-                                                                                        }
-                                                                                        else
-                                                                                        {
-                                                                                            <div class="small text-muted">@(string.IsNullOrWhiteSpace(editDiscordWebhookUrl) ? "Kein Webhook hinterlegt." : "Webhook hinterlegt.")</div>
-                                                                                        }
-
-                                                                                        @if (discordTestResult is not null)
-                                                                                        {
-                                                                                            <div class="alert @(discordTestSuccess ? "alert-success" : "alert-danger") py-1 small">@discordTestResult</div>
-                                                                                        }
-                                                                                    </div>
-                                                                                </details>
-
-                                                                                @if (IsCurrentUserManager)
-                                                                                {
-                                                                                    <details class="card mb-3">
-                                                                                        <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
-                                                                                            <span>Gefährliche Aktionen</span>
-                                                                                            <span class="d-none d-md-inline small text-muted">Nur für Spielleiter</span>
-                                                                                        </summary>
-                                                                                        <div class="card-body">
-                                                                                            <p class="small text-muted mb-2">Das Löschen entfernt das Turnier dauerhaft inklusive Plan-, Match- und Teilnehmerdaten.</p>
-                                                                                            <button class="btn btn-outline-danger btn-sm" @onclick="RequestDeleteTournamentAsync" disabled="@isWorking">🗑 Turnier löschen</button>
-                                                                                        </div>
-                                                                                    </details>
-                                                                                }
-
-                                                                                    @if (editError is not null)
-                                                                                    {
-                                                                                        <div class="alert alert-danger py-2">@editError</div>
-                                                                                    }
-                                                                                    @if (editSuccess is not null)
-                                                                                    {
-                                                                                        <div class="alert alert-success py-2">@editSuccess</div>
-                                                                                    }
-                                                                                    }
+                                                                                <TournamentGeneralTab IsLocked="@selectedTournament.IsLocked"
+                                                                                                    HasGeneralRequiredMissing="@HasGeneralRequiredMissing()"
+                                                                                                    GeneralSettingsSummary="@GeneralSettingsSummary()"
+                                                                                                    CanEditBasicSettings="@CanEditBasicSettings"
+                                                                                                    EditName="@editName"
+                                                                                                    EditNameChanged="OnEditNameChangedAsync"
+                                                                                                    EditOrganizer="@editOrganizer"
+                                                                                                    EditOrganizerChanged="OnEditOrganizerChangedAsync"
+                                                                                                    AutodartsDisplayName="@autodartsDisplayName"
+                                                                                                    Participants="@participants"
+                                                                                                    EditStartDate="@editStartDate"
+                                                                                                    EditStartDateChanged="OnEditStartDateChangedAsync"
+                                                                                                    EditEndDate="@editEndDate"
+                                                                                                    EditEndDateChanged="OnEditEndDateChangedAsync"
+                                                                                                    EditStartTimeInput="@editStartTimeInput"
+                                                                                                    EditStartTimeInputChanged="OnEditStartTimeInputChangedAsync"
+                                                                                                    EditMode="@editMode"
+                                                                                                    EditModeChanged="OnEditModeChangedAsync"
+                                                                                                    EditVariant="@editVariant"
+                                                                                                    EditVariantChanged="OnEditVariantChangedAsync"
+                                                                                                    EditThirdPlaceMatch="@editThirdPlaceMatch"
+                                                                                                    EditThirdPlaceMatchChanged="OnEditThirdPlaceMatchChangedAsync"
+                                                                                                    EditModeDisplay="@ModeDisplay(editMode)"
+                                                                                                    EditVariantDisplay="@VariantDisplay(editVariant)"
+                                                                                                    JoinCode="@selectedTournament.JoinCode"
+                                                                                                    TournamentLink="@TournamentLink"
+                                                                                                    CanEditTournamentSettings="@CanEditTournamentSettings"
+                                                                                                    OnCopyTournamentLink="CopyTournamentLink"
+                                                                                                    EditDiscordWebhookUrl="@editDiscordWebhookUrl"
+                                                                                                    EditDiscordWebhookUrlChanged="OnEditDiscordWebhookUrlChangedAsync"
+                                                                                                    OnTestDiscordWebhook="TestDiscordWebhookAsync"
+                                                                                                    EditDiscordWebhookDisplayText="@editDiscordWebhookDisplayText"
+                                                                                                    EditDiscordWebhookDisplayTextChanged="OnEditDiscordWebhookDisplayTextChangedAsync"
+                                                                                                    DiscordTestResult="@discordTestResult"
+                                                                                                    DiscordTestSuccess="@discordTestSuccess"
+                                                                                                    IsWorking="@isWorking"
+                                                                                                    IsCurrentUserManager="@IsCurrentUserManager"
+                                                                                                    OnDeleteTournament="RequestDeleteTournamentAsync"
+                                                                                                    EditError="@editError"
+                                                                                                    EditSuccess="@editSuccess" />
+                                                                            }
 
                                                                                     @* ═══════ Tab: Boards & Teilnehmer ═══════ *@
                                                                                     @if (activeTab == "boards-participants")
@@ -1612,206 +1482,61 @@
                                                                                         @* ═══════ Tab: Spielmodus ═══════ *@
                                                                                         @if (activeTab == "rounds")
                                                                                         {
-                                                                                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                                                                                <h6 class="fw-semibold mb-0">Spielmodus je Runde</h6>
-                                                                                                <button class="btn btn-sm @(editAreGameModesLocked ? "btn-outline-success" : "btn-outline-warning")"
-                                                                                                        @onclick="ToggleGameModesLockAsync" disabled="@(isWorking || selectedTournament.IsLocked)">
-                                                                                                    @(editAreGameModesLocked ? "🔓 Spielmodi entsperren" : "🔒 Spielmodi sperren")
-                                                                                                </button>
-                                                                                            </div>
-                                                                                            @if (editAreGameModesLocked)
-                                                                                            {
-                                                                                                <div class="alert alert-info py-2 small">🔒 Spielmodi sind gesperrt. Entsperren Sie die Spielmodi, um Änderungen vorzunehmen.</div>
-                                                                                            }
-                                                                                            @if (HasMissingRoundConfig())
-                                                                                            {
-                                                                                                <div class="alert alert-danger py-2 small">⚠ <strong>@MissingRoundConfigCount()</strong> Runde(n) ohne Spielmodus-Konfiguration. Bitte legen Sie für jede Runde den Spielmodus fest.</div>
-                                                                                            }
-                                                                                            <p class="text-muted small mb-3">Klicken Sie auf eine Runde, um die Einstellungen zu bearbeiten.</p>
-                                                                                            <div class="form-check mb-3">
-                                                                                                <input class="form-check-input" type="checkbox" id="showCompletedRounds" @bind="showCompletedRounds" />
-                                                                                                <label class="form-check-label small" for="showCompletedRounds">Abgeschlossene Runden anzeigen</label>
-                                                                                            </div>
-                                                                                            @if (roundSettings.Any())
-                                                                                            {
-                                                                                                @foreach (var rnd in roundSettings.OrderBy(r => r.Phase).ThenBy(r => r.RoundNumber))
-                                                                                                {
-                                                                                                    var started = IsRoundStarted(rnd.Phase, rnd.RoundNumber);
-                                                                                                    var completed = IsRoundCompleted(rnd.Phase, rnd.RoundNumber);
-                                                                                                    @if (!completed || showCompletedRounds)
-                                                                                                    {
-                                                                                                        <div class="card mb-2 @(completed ? "border-success" : started ? "border-warning" : "")" style="cursor:pointer" @onclick="() => OpenRoundDetail(rnd)">
-                                                                                                            <div class="card-body py-2">
-                                                                                                                <div class="d-flex justify-content-between align-items-center mb-1">
-                                                                                                                    <span>
-                                                                                                                        <strong class="small">@RoundDisplayLabel(rnd)</strong>
-                                                                                                                        @if (completed) { <span class="badge text-bg-success ms-1">✓ Abgeschlossen</span> }
-                                                                                                                        else if (started) { <span class="badge text-bg-warning ms-1">▶ Gestartet</span> }
-                                                                                                                    </span>
-                                                                                                                    <span class="badge text-bg-light">First to @rnd.Legs Legs | @rnd.BaseScore @rnd.OutMode</span>
-                                                                                                                </div>
-                                                                                                                <div class="small text-muted">
-                                                                                                                    Spielzeit/Leg: @rnd.LegDurationSeconds s | Pause: @rnd.PauseBetweenMatchesMinutes min | Spielerpause: @rnd.MinPlayerPauseMinutes min | Board: @rnd.BoardAssignment
-                                                                                                                </div>
-                                                                                                            </div>
-                                                                                                        </div>
-                                                                                                    }
-                                                                                                }
-                                                                                            }
-                                                                                            @if (!selectedTournament.IsLocked && !editAreGameModesLocked && CanEditTournamentStructure)
-                                                                                            {
-                                                                                                <div class="card border-primary mt-3">
-                                                                                                    <div class="card-header bg-primary text-white py-2"><strong class="small">Runde hinzufügen / bearbeiten</strong></div>
-                                                                                                    <div class="card-body">
-                                                                                                        <div class="row g-2 mb-2">
-                                                                                                            <div class="col-md-3">
-                                                                                                                <label class="form-label small">Phase</label>
-                                                                                                                <select class="form-select form-select-sm" @bind="newRoundPhase">
-                                                                                                                    <option value="Knockout">Knockout</option>
-                                                                                                                    <option value="Group">Gruppe</option>
-                                                                                                                </select>
-                                                                                                            </div>
-                                                                                                            <div class="col-md-2">
-                                                                                                                <label class="form-label small">Rundennr.</label>
-                                                                                                                <input type="number" class="form-control form-control-sm" @bind="newRoundNumber" min="1" />
-                                                                                                            </div>
-                                                                                                            <div class="col-md-2">
-                                                                                                                <label class="form-label small">Base Score</label>
-                                                                                                                <select class="form-select form-select-sm" @bind="newRoundBaseScore">
-                                                                                                                    <option value="121">121</option>
-                                                                                                                    <option value="170">170</option>
-                                                                                                                    <option value="301">301</option>
-                                                                                                                    <option value="501">501</option>
-                                                                                                                    <option value="701">701</option>
-                                                                                                                    <option value="901">901</option>
-                                                                                                                </select>
-                                                                                                            </div>
-                                                                                                            <div class="col-md-2">
-                                                                                                                <label class="form-label small">Spielmodus</label>
-                                                                                                                <select class="form-select form-select-sm" @bind="newRoundGameMode">
-                                                                                                                    <option value="Legs">Legs</option>
-                                                                                                                    <option value="Sets">Sets</option>
-                                                                                                                </select>
-                                                                                                            </div>
-                                                                                                            <div class="col-md-2">
-                                                                                                                <label class="form-label small">Legs (First to)</label>
-                                                                                                                @if (newRoundGameMode == "Sets")
-                                                                                                                {
-                                                                                                                    <select class="form-select form-select-sm" @bind="newRoundLegs">
-                                                                                                                        <option value="2">2</option>
-                                                                                                                        <option value="3">3</option>
-                                                                                                                    </select>
-                                                                                                                }
-                                                                                                                else
-                                                                                                                {
-                                                                                                                    <input type="number" class="form-control form-control-sm" @bind="newRoundLegs" min="1" max="11" />
-                                                                                                                }
-                                                                                                            </div>
-                                                                                                            @if (newRoundGameMode == "Sets")
-                                                                                                            {
-                                                                                                                <div class="col-md-2">
-                                                                                                                    <label class="form-label small">Sets (First to)</label>
-                                                                                                                    <input type="number" class="form-control form-control-sm" @bind="newRoundSets" min="2" max="7" />
-                                                                                                                </div>
-                                                                                                            }
-                                                                                                            <div class="col-md-2">
-                                                                                                                <label class="form-label small">In-Modus</label>
-                                                                                                                <select class="form-select form-select-sm" @bind="newRoundInMode">
-                                                                                                                    <option value="Straight">Straight In (SI)</option>
-                                                                                                                    <option value="Double">Double In (DI)</option>
-                                                                                                                    <option value="Master">Master In (MI)</option>
-                                                                                                                </select>
-                                                                                                            </div>
-                                                                                                            <div class="col-md-3">
-                                                                                                                <label class="form-label small">Out-Modus</label>
-                                                                                                                <select class="form-select form-select-sm" @bind="newRoundOutMode">
-                                                                                                                    <option value="Straight">Straight Out (SO)</option>
-                                                                                                                    <option value="Double">Double Out (DO)</option>
-                                                                                                                    <option value="Master">Master Out (MO)</option>
-                                                                                                                </select>
-                                                                                                            </div>
-                                                                                                        </div>
-                                                                                                        <div class="row g-2 mb-2">
-                                                                                                            <div class="col-md-2">
-                                                                                                                <label class="form-label small">Max Runden</label>
-                                                                                                                <select class="form-select form-select-sm" @bind="newRoundMaxRounds">
-                                                                                                                    <option value="15">15</option>
-                                                                                                                    <option value="20">20</option>
-                                                                                                                    <option value="50">50</option>
-                                                                                                                    <option value="80">80</option>
-                                                                                                                </select>
-                                                                                                            </div>
-                                                                                                            <div class="col-md-2">
-                                                                                                                <label class="form-label small">Bull Mode</label>
-                                                                                                                <select class="form-select form-select-sm" @bind="newRoundBullMode">
-                                                                                                                    <option value="25/50">25/50</option>
-                                                                                                                    <option value="50/50">50/50</option>
-                                                                                                                </select>
-                                                                                                            </div>
-                                                                                                            <div class="col-md-2">
-                                                                                                                <label class="form-label small">Bull-off</label>
-                                                                                                                <select class="form-select form-select-sm" @bind="newRoundBullOffMode">
-                                                                                                                    <option value="Off">Off</option>
-                                                                                                                    <option value="Normal">Normal</option>
-                                                                                                                    <option value="Official">Official</option>
-                                                                                                                </select>
-                                                                                                            </div>
-                                                                                                            <div class="col-md-3">
-                                                                                                                <label class="form-label small">Spielzeit pro Leg (s)</label>
-                                                                                                                <input type="number" class="form-control form-control-sm" @bind="newRoundDuration" min="0" />
-                                                                                                            </div>
-                                                                                                            <div class="col-md-3">
-                                                                                                                <label class="form-label small">Pause (min)</label>
-                                                                                                                <input type="number" class="form-control form-control-sm" @bind="newRoundPause" min="0" />
-                                                                                                            </div>
-                                                                                                            <div class="col-md-3">
-                                                                                                                <label class="form-label small">Min. Spielerpause (min)</label>
-                                                                                                                <input type="number" class="form-control form-control-sm" @bind="newRoundPlayerPause" min="0" />
-                                                                                                            </div>
-                                                                                                            <div class="col-md-3">
-                                                                                                                <label class="form-label small">Boardauswahl</label>
-                                                                                                                <select class="form-select form-select-sm" @bind="newRoundBoardAssignment">
-                                                                                                                    <option value="Dynamic">Dynamisch</option>
-                                                                                                                    @foreach (var b in boards)
-                                                                                                                    {
-                                                                                                                        <option value="Fixed:@b.Id">@b.Name (fix)</option>
-                                                                                                                    }
-                                                                                                                </select>
-                                                                                                            </div>
-                                                                                                        </div>
-                                                                                                        <div class="d-flex gap-2 flex-wrap">
-                                                                                                            <button class="btn btn-primary btn-sm" @onclick="SaveRoundAsync" disabled="@(isWorking || !CanEditTournamentStructure)">Runde speichern</button>
-                                                                                                            <button class="btn btn-outline-secondary btn-sm" @onclick="ApplyRoundToAllAsync" disabled="@(isWorking || !CanEditTournamentStructure)">Für alle Runden festlegen</button>
-                                                                                                            <button class="btn btn-outline-secondary btn-sm" @onclick="ApplyRoundToSubsequentAsync" disabled="@(isWorking || !CanEditTournamentStructure)">Für alle nachfolgenden Runden festlegen</button>
-                                                                                                        </div>
-                                                                                                        @if (roundError is not null)
-                                                                                                        {
-                                                                                                            <div class="alert alert-danger py-1 mt-2 small">@roundError</div>
-                                                                                                        }
-                                                                                                    </div>
-                                                                                                </div>
-                                                                                            }
+                                                                                            <TournamentRoundsTab SelectedTournamentIsLocked="@selectedTournament.IsLocked"
+                                                                                                               EditAreGameModesLocked="@editAreGameModesLocked"
+                                                                                                               HasMissingRoundConfig="@HasMissingRoundConfig()"
+                                                                                                               MissingRoundConfigCount="@MissingRoundConfigCount()"
+                                                                                                               ShowCompletedRounds="@showCompletedRounds"
+                                                                                                               ShowCompletedRoundsChanged="OnShowCompletedRoundsChangedAsync"
+                                                                                                               RoundSettings="@roundSettings"
+                                                                                                               IsRoundStarted="@(rnd => IsRoundStarted(rnd.Phase, rnd.RoundNumber))"
+                                                                                                               IsRoundCompleted="@(rnd => IsRoundCompleted(rnd.Phase, rnd.RoundNumber))"
+                                                                                                               RoundDisplayLabel="@RoundDisplayLabel"
+                                                                                                               OnOpenRoundDetail="OpenRoundDetail"
+                                                                                                               CanEditTournamentStructure="@CanEditTournamentStructure"
+                                                                                                               IsWorking="@isWorking"
+                                                                                                               OnToggleGameModesLock="ToggleGameModesLockAsync"
+                                                                                                               OnSaveRound="SaveRoundAsync"
+                                                                                                               OnApplyRoundToAll="ApplyRoundToAllAsync"
+                                                                                                               OnApplyRoundToSubsequent="ApplyRoundToSubsequentAsync"
+                                                                                                               NewRoundPhase="@newRoundPhase"
+                                                                                                               NewRoundPhaseChanged="OnNewRoundPhaseChangedAsync"
+                                                                                                               NewRoundNumber="@newRoundNumber"
+                                                                                                               NewRoundNumberChanged="OnNewRoundNumberChangedAsync"
+                                                                                                               NewRoundBaseScore="@newRoundBaseScore"
+                                                                                                               NewRoundBaseScoreChanged="OnNewRoundBaseScoreChangedAsync"
+                                                                                                               NewRoundGameMode="@newRoundGameMode"
+                                                                                                               NewRoundGameModeChanged="OnNewRoundGameModeChangedAsync"
+                                                                                                               NewRoundLegs="@newRoundLegs"
+                                                                                                               NewRoundLegsChanged="OnNewRoundLegsChangedAsync"
+                                                                                                               NewRoundSets="@newRoundSets"
+                                                                                                               NewRoundSetsChanged="OnNewRoundSetsChangedAsync"
+                                                                                                               NewRoundInMode="@newRoundInMode"
+                                                                                                               NewRoundInModeChanged="OnNewRoundInModeChangedAsync"
+                                                                                                               NewRoundOutMode="@newRoundOutMode"
+                                                                                                               NewRoundOutModeChanged="OnNewRoundOutModeChangedAsync"
+                                                                                                               NewRoundMaxRounds="@newRoundMaxRounds"
+                                                                                                               NewRoundMaxRoundsChanged="OnNewRoundMaxRoundsChangedAsync"
+                                                                                                               NewRoundBullMode="@newRoundBullMode"
+                                                                                                               NewRoundBullModeChanged="OnNewRoundBullModeChangedAsync"
+                                                                                                               NewRoundBullOffMode="@newRoundBullOffMode"
+                                                                                                               NewRoundBullOffModeChanged="OnNewRoundBullOffModeChangedAsync"
+                                                                                                               NewRoundDuration="@newRoundDuration"
+                                                                                                               NewRoundDurationChanged="OnNewRoundDurationChangedAsync"
+                                                                                                               NewRoundPause="@newRoundPause"
+                                                                                                               NewRoundPauseChanged="OnNewRoundPauseChangedAsync"
+                                                                                                               NewRoundPlayerPause="@newRoundPlayerPause"
+                                                                                                               NewRoundPlayerPauseChanged="OnNewRoundPlayerPauseChangedAsync"
+                                                                                                               NewRoundBoardAssignment="@newRoundBoardAssignment"
+                                                                                                               NewRoundBoardAssignmentChanged="OnNewRoundBoardAssignmentChangedAsync"
+                                                                                                               Boards="@boards"
+                                                                                                               RoundError="@roundError" />
                                                                                         }
 
                                                                                                         @* ═══════ Tab: Auslosung ═══════ *@
                                                                                                         @if (activeTab == "draw")
                                                                                                         {
-                                                                                                            @if (!CanEditTournamentStructure && HasProgressedMatches)
-                                                                                                            {
-                                                                                                                <div class="alert alert-warning py-2 small mb-3">
-                                                                                                                    Die Turnierstruktur ist gesperrt, weil bereits ein Match gestartet oder beendet wurde. Auslosung und Paarungen sind nur noch read-only.
-                                                                                                                </div>
-                                                                                                            }
-
-                                                                                                            <div class="d-flex align-items-center gap-2 mb-2">
-                                                                                                                <span class="badge text-bg-secondary">Auslosung</span>
-                                                                                                                <span class="small text-muted">Fortschritt: @EffectiveDrawParticipants.Count(p => p.GroupNumber.HasValue && p.GroupNumber > 0)/@EffectiveDrawParticipants.Count (@TeamFormationProgressPercent%)</span>
-                                                                                                            </div>
-
-                                                                                                            @* ─── Group/Draw Settings (moved from Gruppenphase) ─── *@
-                                                                                                            @if (ShowGroupSettingsSection())
-                                                                                                            {
-                                                                                                                <details class="card mb-3" open>
+                                                                                                                <div class="card mb-3">
                                                                                                                     <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
                                                                                                                         <span>
                                                                                                                             Gruppenphase-Einstellungen
@@ -1902,9 +1627,9 @@
                                                                                                                             </div>
                                                                                                                         }
                                                                                                                     </div>
-                                                                                                                </details>
+                                                                                                                </div>
 
-                                                                                                                <details class="card mb-3">
+                                                                                                                <div class="card mb-3">
                                                                                                                     <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
                                                                                                                         <span>
                                                                                                                             Punktemodus
@@ -1972,7 +1697,7 @@
                                                                                                                             }
                                                                                                                         }
                                                                                                                     </div>
-                                                                                                                </details>
+                                                                                                                </div>
                                                                                                             }
 
                                                                                                             @* ─── Auto-Draw Actions (GroupAndKnockout) ─── *@
@@ -2343,243 +2068,75 @@
                                                                                                         @* ═══════ Tab: Gruppenphase ═══════ *@
                                                                                                         @if (activeTab == "groups")
                                                                                                         {
-                                                                                                            var groupMatches = matches.Where(m => m.Phase == "Group").ToList();
-                                                                                                                            @if (groupMatches.Any())
-                                                                                                                            {
-                                                                                                                                <div id="section-tournaments-groups" class="d-flex justify-content-between align-items-center mb-2">
-                                                                                                                                    <h6 class="fw-semibold mb-0">Gruppenphase</h6>
-                                                                                                                                    <div class="d-flex gap-2">
-                                                                                                                                        <button class="btn btn-sm btn-outline-secondary"
-                                                                                                                                                title="MatchCard-Einstellungen fuer Gruppenphase"
-                                                                                                                                                @onclick='() => OpenMatchCardScopeEditor("tournaments::groups")'
-                                                                                                                                                @onclick:stopPropagation>⚙</button>
-                                                                                                                                        <div class="btn-group btn-group-sm" role="group" aria-label="Gruppenansicht">
-                                                                                                                                            <button class="btn @(EffectiveGroupMatchesViewMode == "vertical" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetGroupMatchesViewModeAsync("vertical")'>Vertikal</button>
-                                                                                                                                            <button class="btn @(EffectiveGroupMatchesViewMode == "horizontal" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetGroupMatchesViewModeAsync("horizontal")' disabled="@isCompactViewport">Horizontal</button>
-                                                                                                                                        </div>
-                                                                                                                                        <button class="btn btn-sm @(showFlashTable ? "btn-warning" : "btn-outline-warning")"
-                                                                                                                                            @onclick="() => showFlashTable = !showFlashTable">
-                                                                                                                                            ⚡ @(showFlashTable ? "Blitztabelle ausblenden" : "Blitztabelle anzeigen")
-                                                                                                                                        </button>
-                                                                                                                                    </div>
-                                                                                                                                </div>
-                                                                                                                                @if (isCompactViewport)
-                                                                                                                                {
-                                                                                                                                    <div class="small text-muted mb-2">Mobil ist die Matchliste immer vertikal.</div>
-                                                                                                                                }
-                                                                                                                                var groups = groupMatches.Select(m => m.GroupNumber ?? 0).Distinct().OrderBy(g => g).ToList();
-                                                                                                                                @foreach (var groupNum in groups)
-                                                                                                                                {
-                                                                                                                                    var groupComplete = IsGroupCompleted(groupNum);
-                                                                                                                                    <h6 class="fw-semibold mt-3">Gruppe @GroupLabel(groupNum)
-                                                                                                                                        @if (groupComplete) { <span class="badge text-bg-success ms-1">✓</span> }
-                                                                                                                                    </h6>
-                                                                                                                                    @if (groupStandings.Any(s => s.GroupNumber == groupNum))
-                                                                                                                                    {
-                                                                                                                                        var standingsData = showFlashTable
-                                                                                                                                            ? GetFlashStandings(groupNum)
-                                                                                                                                            : groupStandings.Where(x => x.GroupNumber == groupNum).OrderBy(x => x.Rank > 0 ? x.Rank : int.MaxValue).ThenByDescending(x => x.Points).ThenByDescending(x => x.LegDifference).ToList();
-                                                                                                                                        @if (showFlashTable)
-                                                                                                                                        {
-                                                                                                                                            <div class="alert alert-warning py-1 small mb-1">⚡ Blitztabelle — enthält vorläufige Wertungen laufender Matches</div>
-                                                                                                                                        }
-                                                                                                                                        <GroupTable Standings="@standingsData" QualificationSlots="@selectedTournament.PlayoffAdvancers"
-                                                                                                                                                    ShowExtendedStats="true" ShowTiebreaker="true" />
-                                                                                                                                    }
-                                                                                                                                    @* Collapsed match list — toggle *@
-                                                                                                                                    <button class="btn btn-sm btn-outline-secondary mb-2"
-                                                                                                                                            @onclick="() => showGroupMatches = !showGroupMatches">
-                                                                                                                                        @(showGroupMatches ? "▼ Matches ausblenden" : "▶ Matches anzeigen")
-                                                                                                                                    </button>
-                                                                                                                                    @if (showGroupMatches)
-                                                                                                                                    {
-                                                                                                                                        var groupListCardSettings = GetMatchCardSettings("groups");
-                                                                                                                                            <div class="@(EffectiveGroupMatchesViewMode == "horizontal" ? "groups-match-horizontal mb-2" : "d-flex flex-column gap-2 mb-2")">
-                                                                                                                                            @foreach (var match in groupMatches.Where(m => m.GroupNumber == groupNum).OrderBy(m =>
-                                                                                                                                                                m.Round).ThenBy(m => m.MatchNumber))
-                                                                                                                                            {
-                                                                                                                                                    <div class="@(EffectiveGroupMatchesViewMode == "horizontal" ? "groups-match-horizontal-item" : string.Empty)">
-                                                                                                                                                        <MatchCard Match="@match"
-                                                                                                                                                           ViewSettings="@groupListCardSettings"
-                                                                                                                                                           Layout="@groupListCardSettings.Layout"
-                                                                                                                                                           Label="@MatchLabel(match)"
-                                                                                                                                                           ShowRuntimeBadge="@groupListCardSettings.ShowRuntimeBadge"
-                                                                                                                                                           ShowMonitoringStatus="@ShowMatchCardMonitoring(groupListCardSettings)"
-                                                                                                                                                           MonitoringStatusText="@GetMonitoringBadgeText(match)"
-                                                                                                                                                           MonitoringStatusCssClass="@GetMonitoringBadgeCss(match)"
-                                                                                                                                                           EnablePlayerLinks="@groupListCardSettings.EnablePlayerLinks"
-                                                                                                                                                           EnableBoardLink="@groupListCardSettings.EnableBoardLink"
-                                                                                                                                                           HomeName="@ParticipantName(match.HomeParticipantId)"
-                                                                                                                                                           AwayName="@ParticipantName(match.AwayParticipantId)"
-                                                                                                                                                           BoardName="@MatchBoardName(match)"
-                                                                                                                                                           SlotOrigin="@BuildSlotOrigin(match)"
-                                                                                                                                                           SetModeActive="@IsSetMode(match)"
-                                                                                                                                                           LiveScoreEnabled="@groupListCardSettings.LiveScoreEnabled"
-                                                                                                                                                           ShowMatchStatus="@groupListCardSettings.ShowMatchStatus"
-                                                                                                                                                           ShowSchedulingStatus="@groupListCardSettings.ShowSchedulingStatus"
-                                                                                                                                                           ShowAverage="@groupListCardSettings.ShowAverage"
-                                                                                                                                                           ShowHighestPpr="@groupListCardSettings.ShowHighestPpr"
-                                                                                                                                                           ShowHighestCheckout="@groupListCardSettings.ShowHighestCheckout"
-                                                                                                                                                           ShowAverageDartsPerLeg="@groupListCardSettings.ShowAverageDartsPerLeg"
-                                                                                                                                                           ShowMinimalDartsPerLeg="@groupListCardSettings.ShowMinimalDartsPerLeg"
-                                                                                                                                                          OnHomePlayerClick="BuildPlayerDetailCallback(match.HomeParticipantId)"
-                                                                                                                                                          OnAwayPlayerClick="BuildPlayerDetailCallback(match.AwayParticipantId)"
-                                                                                                                                                          OnBoardClick="BuildMatchBoardDetailCallback(match)"
-                                                                                                                                                           EnableDetailPanel="true"
-                                                                                                                                                           DetailsExpandedByDefault="@MatchCardDetailsExpandedByDefault(groupListCardSettings)"
-                                                                                                                                                           ForceDetailsExpanded="@forcedMatchDetailsExpanded"
-                                                                                                                                                           EnableRealtimeConsumer="@(match.StartedUtc is not null && match.FinishedUtc is null)"
-                                                                                                                                                           OnClick="() => OpenMatchDetail(match)" />
-                                                                                                                                                    </div>
-                                                                                                                                                }
-                                                                                                                                        </div>
-                                                                                                                                        }
-                                                                                                                                    }
-                                                                                                                                }
-                else
-                                                                                                                                {
-                                                                                                                                    <p class="text-muted">Keine Gruppenmatches vorhanden. Generieren Sie den Plan im Tab „Auslosung".</p>
-                                                                                                                                }
-                                                                                                                            }
+                                                                                                            <TournamentGroupsTab Matches="@matches"
+                                                                                                                               GroupStandings="@groupStandings"
+                                                                                                                               PlayoffAdvancers="@selectedTournament.PlayoffAdvancers"
+                                                                                                                               IsWorking="@isWorking"
+                                                                                                                               IsCompactViewport="@isCompactViewport"
+                                                                                                                               ShowFlashTable="@showFlashTable"
+                                                                                                                               ShowFlashTableChanged="OnShowFlashTableChangedAsync"
+                                                                                                                               ShowGroupMatches="@showGroupMatches"
+                                                                                                                               ShowGroupMatchesChanged="OnShowGroupMatchesChangedAsync"
+                                                                                                                               EffectiveGroupMatchesViewMode="@EffectiveGroupMatchesViewMode"
+                                                                                                                               OnSetGroupMatchesViewMode="SetGroupMatchesViewModeAsync"
+                                                                                                                               OnOpenMatchCardScopeEditor="OpenMatchCardScopeEditorAsync"
+                                                                                                                               OnOpenMatchDetail="OpenMatchDetailAsync"
+                                                                                                                               IsGroupCompleted="@IsGroupCompleted"
+                                                                                                                               GroupLabel="@GroupLabel"
+                                                                                                                               GetFlashStandings="@GetFlashStandings"
+                                                                                                                               GetMatchCardSettings="@GetMatchCardSettings"
+                                                                                                                               ShowMatchCardMonitoring="@ShowMatchCardMonitoring"
+                                                                                                                               MatchLabel="@MatchLabel"
+                                                                                                                               GetMonitoringBadgeText="@GetMonitoringBadgeText"
+                                                                                                                               GetMonitoringBadgeCss="@GetMonitoringBadgeCss"
+                                                                                                                               ParticipantName="@ParticipantName"
+                                                                                                                               MatchBoardName="@MatchBoardName"
+                                                                                                                               BuildSlotOrigin="@BuildSlotOrigin"
+                                                                                                                               IsSetMode="@IsSetMode"
+                                                                                                                               BuildPlayerDetailCallback="@BuildPlayerDetailCallback"
+                                                                                                                               BuildMatchBoardDetailCallback="@BuildMatchBoardDetailCallback"
+                                                                                                                               MatchCardDetailsExpandedByDefault="@MatchCardDetailsExpandedByDefault"
+                                                                                                                               ForceDetailsExpanded="@forcedMatchDetailsExpanded" />
+                                                                                                        }
 
                                                                                                                             @* ═══════ Tab: K.O.-Phase ═══════ *@
                                                                                                                             @if (activeTab == "knockout")
                                                                                                                             {
-                                                                                                                                @if (selectedTournament.Variant == "OnSite" && boards.Any() && matches.Any())
-                                                                                                                                {
-                                                                                                                                    <div class="p-2 border rounded mb-3 bg-light">
-                                                                                                                                        <div class="small fw-semibold text-muted mb-2">Verfügbare Boards — auf Match ziehen zum Zuweisen
-                                                                                                                                        </div>
-                                                                                                                                        <div class="d-flex flex-wrap gap-2">
-                                                                                                                                            @foreach (var board in boards)
-                                                                                                                                            {
-                                                                                                                                                <div class="badge bg-dark p-2 user-select-none" draggable="true"
-                                                                                                                                                     @ondragstart="() => draggedBoardId = board.Id" style="cursor:grab; font-size:.85em">
-                                                                                                                                                    📋 @board.Name
-                                                                                                                                                    <span class="badge @BoardStatusBadge(board.Status) ms-1"
-                                                                                                                                                          style="font-size:.75em">@board.Status</span>
-                                                                                                                                                </div>
-                                                                                                                                            }
-                                                                                                                                        </div>
-                                                                                                                                    </div>
-                                                                                                                                }
-
-                                                                                                                                var koMatches = matches.Where(m => m.Phase == "Knockout").ToList();
-                                                                                                                                var koMaxRound = koMatches.Select(m => m.Round).DefaultIfEmpty(1).Max();
-                                                                                                                                @if (koMatches.Any())
-                                                                                                                                {
-                                                                                                                                    <div id="section-tournaments-knockout" class="d-flex gap-2 mb-3">
-                                                                                                                                        <button class="btn btn-sm @(koViewMode == "tree" ? "btn-primary" : "btn-outline-primary")" @onclick='() => koViewMode = "tree"'>🌳 Bracket</button>
-                                                                                                                                        <button class="btn btn-sm @(koViewMode == "round" ? "btn-primary" : "btn-outline-primary")" @onclick='() => koViewMode = "round"'>📋 Rundenliste</button>
-                                                                                                                                        <button class="btn btn-sm btn-outline-secondary"
-                                                                                                                                                title="MatchCard-Einstellungen fuer K.O.-Phase"
-                                                                                                                                                @onclick='() => OpenMatchCardScopeEditor("tournaments::knockout")'
-                                                                                                                                                @onclick:stopPropagation>⚙</button>
-                                                                                                                                    </div>
-
-                                                                                                                                    @if (koViewMode == "tree")
-                                                                                                                                    {
-                                                                                                                                        <BracketView Matches="@koMatches"
-                                                                                                                                                     ResolvePlayerName="id => ParticipantName(id)"
-                                                                                                                                                     OnMatchClick="OpenMatchDetail"
-                                                                                                                                                     OnBoardClick="OpenBoardDetailFromMatch" />
-                                                                                                                                    }
-                                                                                                                                    else
-                                                                                                                                    {
-                                                                                                                                    var koRounds = koMatches.Select(m => m.Round).Distinct().OrderBy(r => r).ToList();
-                                                                                                                                    @foreach (var round in koRounds)
-                                                                                                                                    {
-                                                                                                                                        <div class="small fw-semibold text-muted mb-1 mt-2">@KoRoundLabel(round, koMaxRound)</div>
-                                                                                                                                        <ul class="list-group mb-2">
-                                                                                                                                            @foreach (var match in koMatches.Where(m => m.Round == round).OrderBy(m => m.MatchNumber))
-                                                                                                                                            {
-                                                                                                                                                var assignedBoard = boards.FirstOrDefault(b => b.Id == match.BoardId);
-                                                                                                                                                var isTarget = dropTargetMatchId == match.Id;
-                                                                                                                                                var isActive = match.WinnerParticipantId is null && match.FinishedUtc is null && match.BoardId is
-                                                                                                                                                not null;
-                                                                                                                                                var isBye = match.Status == "WalkOver";
-                                                                                                                                                var roundListCardSettings = MatchCardSettingsForMatchList(match);
-                                                                                                                                                <li class="list-group-item @(isTarget ? "border-primary border-2" : "") @(isActive ? "border-start border-success border-3" : "") @(isBye ? "list-group-item-light" : "")"
-                                                                                                                                                    style="cursor:pointer; @(isTarget ? "background:rgba(13,110,253,.08)" : "")"
-                                                                                                                                                    @ondragover:preventDefault @ondragover="() => dropTargetMatchId = match.Id"
-                                                                                                                                                    @ondragleave="() => { if (dropTargetMatchId == match.Id) dropTargetMatchId = null; }"
-                                                                                                                                                    @ondrop="() => AssignBoardToMatchAsync(match.Id)" @onclick="() => OpenMatchDetail(match)">
-                                                                                                                                                    <MatchCard Match="@match"
-                                                                                                                                                               ViewSettings="@roundListCardSettings"
-                                                                                                                                                               Layout="@roundListCardSettings.Layout"
-                                                                                                                                                               Label="@KoMatchLabel(match)"
-                                                                                                                                                               ShowRuntimeBadge="@roundListCardSettings.ShowRuntimeBadge"
-                                                                                                                                                               ShowMonitoringStatus="@ShowMatchCardMonitoring(roundListCardSettings)"
-                                                                                                                                                               MonitoringStatusText="@GetMonitoringBadgeText(match)"
-                                                                                                                                                               MonitoringStatusCssClass="@GetMonitoringBadgeCss(match)"
-                                                                                                                                                               EnablePlayerLinks="@roundListCardSettings.EnablePlayerLinks"
-                                                                                                                                                               EnableBoardLink="@roundListCardSettings.EnableBoardLink"
-                                                                                                                                                               HomeName="@(match.HomeParticipantId == Guid.Empty && match.WinnerParticipantId is null ? KoParticipantLabel(match.HomeParticipantId, match, true) : ParticipantName(match.HomeParticipantId))"
-                                                                                                                                                               AwayName="@(match.AwayParticipantId == Guid.Empty && match.WinnerParticipantId is null ? KoParticipantLabel(match.AwayParticipantId, match, false) : ParticipantName(match.AwayParticipantId))"
-                                                                                                                                                               BoardName="@assignedBoard?.Name"
-                                                                                                                                                               SlotOrigin="@BuildSlotOrigin(match)"
-                                                                                                                                                               SetModeActive="@IsSetMode(match)"
-                                                                                                                                                               LiveScoreEnabled="@roundListCardSettings.LiveScoreEnabled"
-                                                                                                                                                               ShowMatchStatus="@roundListCardSettings.ShowMatchStatus"
-                                                                                                                                                               ShowSchedulingStatus="@roundListCardSettings.ShowSchedulingStatus"
-                                                                                                                                                               ShowAverage="@roundListCardSettings.ShowAverage"
-                                                                                                                                                               ShowHighestPpr="@roundListCardSettings.ShowHighestPpr"
-                                                                                                                                                               ShowHighestCheckout="@roundListCardSettings.ShowHighestCheckout"
-                                                                                                                                                               ShowAverageDartsPerLeg="@roundListCardSettings.ShowAverageDartsPerLeg"
-                                                                                                                                                               ShowMinimalDartsPerLeg="@roundListCardSettings.ShowMinimalDartsPerLeg"
-                                                                                                                                                              OnHomePlayerClick="BuildPlayerDetailCallback(match.HomeParticipantId)"
-                                                                                                                                                              OnAwayPlayerClick="BuildPlayerDetailCallback(match.AwayParticipantId)"
-                                                                                                                                                              OnBoardClick="BuildMatchBoardDetailCallback(match)"
-                                                                                                                                                               EnableDetailPanel="true"
-                                                                                                                                                               DetailsExpandedByDefault="@MatchCardDetailsExpandedByDefault(roundListCardSettings)"
-                                                                                                                                                               ForceDetailsExpanded="@forcedMatchDetailsExpanded"
-                                                                                                                                                               EnableRealtimeConsumer="@(match.StartedUtc is not null && match.FinishedUtc is null)"
-                                                                                                                                                               OnClick="() => OpenMatchDetail(match)" />
-
-                                                                                                                                                    <div class="d-flex align-items-center gap-1 mt-2">
-                                                                                                                                                        @if (assignedBoard is not null)
-                                                                                                                                                        {
-                                                                                                                                                            <a href="https://play.autodarts.io/boards/@(assignedBoard.ExternalBoardId)/follow"
-                                                                                                                                                               target="_blank" rel="noopener" class="badge text-bg-success text-decoration-none"
-                                                                                                                                                               @onclick:stopPropagation>📋 @assignedBoard.Name</a>
-                                                                                                                                                        }
-                                                                                                                                                        else if (selectedTournament.Variant == "OnSite")
-                                                                                                                                                        {
-                                                                                                                                                            <span class="badge text-bg-light text-muted border" style="font-size:.75em">Board zuweisen</span>
-                                                                                                                                                        }
-
-                                                                                                                                                        @if (match.IsBoardLocked)
-                                                                                                                                                        {
-                                                                                                                                                            <span class="badge text-bg-primary">🔒 Board</span>
-                                                                                                                                                        }
-
-                                                                                                                                                        @if (match.WinnerParticipantId.HasValue)
-                                                                                                                                                        {
-                                                                                                                                                            <span class="badge text-bg-warning">🏆 @ParticipantName(match.WinnerParticipantId)</span>
-                                                                                                                                                        }
-                                                                                                                                                    </div>
-                                                                                                                                                                </li>
-                                                                                                                                                            }
-                                                                                                                                                        </ul>
-                                                                                                                                                    }
-                                                                                                                                                } @* end else (round list view) *@
-                                                                                                                                                }
-                else
-                                                                                                                                                {
-                                                                                                                                                    <p class="text-muted">Noch keine K.O.-Matches vorhanden.</p>
-                                                                                                                                                }
-
-                                                                                                                                                <div class="mt-3 d-flex flex-wrap align-items-center gap-2">
-                                                                                                                                                    @if (CanShowDrawCreatePlanButton)
-                                                                                                                                                    {
-                                                                                                                                                        <button class="btn btn-success btn-sm" @onclick="CreateTournamentPlanAsync" disabled="@(isWorking || !CanProceedWithTeamDraw || !CanEditTournamentStructure)">✓ Turnierplan erstellen</button>
-                                                                                                                                                    }
-                                                                                                                                                    else if (CanShowDrawDeletePlanButton)
-                                                                                                                                                    {
-                                                                                                                                                        <button class="btn btn-outline-danger btn-sm" @onclick="DeleteTournamentPlanAsync" disabled="@(isWorking || !CanEditTournamentStructure)">🗑 Turnierplan löschen</button>
-                                                                                                                                                    }
-                                                                                                                                                </div>
-                                                                                                                                            }
+                                                                                                                                <TournamentKnockoutTab Matches="@matches"
+                                                                                                                                                     Boards="@boards"
+                                                                                                                                                     SelectedTournamentVariantIsOnSite="@(selectedTournament.Variant == "OnSite")"
+                                                                                                                                                     IsWorking="@isWorking"
+                                                                                                                                                     KoViewMode="@koViewMode"
+                                                                                                                                                     OnSetKoViewMode="SetKoViewModeAsync"
+                                                                                                                                                     DropTargetMatchId="@dropTargetMatchId"
+                                                                                                                                                     OnDropTargetMatchIdChanged="SetDropTargetMatchIdAsync"
+                                                                                                                                                     OnAssignBoardToMatch="AssignBoardToMatchAsync"
+                                                                                                                                                     OnBoardDragStart="SetDraggedBoardIdAsync"
+                                                                                                                                                     OnOpenMatchCardScopeEditor="OpenMatchCardScopeEditorAsync"
+                                                                                                                                                     OnOpenMatchDetail="OpenMatchDetailAsync"
+                                                                                                                                                     OnOpenBoardDetailFromMatch="OpenBoardDetailFromMatchAsync"
+                                                                                                                                                     OnCreateTournamentPlan="CreateTournamentPlanAsync"
+                                                                                                                                                     OnDeleteTournamentPlan="DeleteTournamentPlanAsync"
+                                                                                                                                                     CanEditTournamentStructure="@CanEditTournamentStructure"
+                                                                                                                                                     CanProceedWithTeamDraw="@CanProceedWithTeamDraw"
+                                                                                                                                                     CanShowDrawCreatePlanButton="@CanShowDrawCreatePlanButton"
+                                                                                                                                                     CanShowDrawDeletePlanButton="@CanShowDrawDeletePlanButton"
+                                                                                                                                                     BoardStatusBadge="@BoardStatusBadge"
+                                                                                                                                                     GetMatchCardSettings="@GetMatchCardSettings"
+                                                                                                                                                     ShowMatchCardMonitoring="@ShowMatchCardMonitoring"
+                                                                                                                                                     KoMatchLabel="@KoMatchLabel"
+                                                                                                                                                     KoRoundLabel="@KoRoundLabel"
+                                                                                                                                                     KoParticipantLabel="@KoParticipantLabel"
+                                                                                                                                                     GetMonitoringBadgeText="@GetMonitoringBadgeText"
+                                                                                                                                                     GetMonitoringBadgeCss="@GetMonitoringBadgeCss"
+                                                                                                                                                     ParticipantName="@ParticipantName"
+                                                                                                                                                     BuildSlotOrigin="@BuildSlotOrigin"
+                                                                                                                                                     IsSetMode="@IsSetMode"
+                                                                                                                                                     BuildPlayerDetailCallback="@BuildPlayerDetailCallback"
+                                                                                                                                                     BuildMatchBoardDetailCallback="@BuildMatchBoardDetailCallback"
+                                                                                                                                                     MatchCardDetailsExpandedByDefault="@MatchCardDetailsExpandedByDefault"
+                                                                                                                                                     ForceDetailsExpanded="@forcedMatchDetailsExpanded" />
+                                                                                                                            }
 
                                                                                                                                             @* ═══════ Tab: Spielplan (chronologisch) ═══════ *@
                                                                                                                                             @if (activeTab == "schedule")
@@ -3433,6 +2990,18 @@
         background: #0d6efd;
         border-color: #0d6efd;
         color: #fff;
+    }
+
+    .tournament-tabs-nowrap {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        white-space: nowrap;
+    }
+
+    .tournament-tabs-nowrap .nav-link {
+        white-space: nowrap;
     }
 
     .tournament-tab-footer-nav {

@@ -1,0 +1,159 @@
+@using System.Linq
+@using ddpc.DartSuite.Application.Contracts.Matches
+@using ddpc.DartSuite.Application.Contracts.Tournaments
+
+@{
+    var groupMatches = Matches.Where(m => m.Phase == "Group").ToList();
+}
+
+@if (groupMatches.Any())
+{
+    <div id="section-tournaments-groups" class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="fw-semibold mb-0">Gruppenphase</h6>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary"
+                    title="MatchCard-Einstellungen fuer Gruppenphase"
+                    @onclick="HandleOpenMatchCardScopeEditorAsync"
+                    @onclick:stopPropagation>⚙</button>
+            <div class="btn-group btn-group-sm" role="group" aria-label="Gruppenansicht">
+                <button class="btn @(EffectiveGroupMatchesViewMode == "vertical" ? "btn-primary" : "btn-outline-primary")" @onclick='() => HandleGroupMatchesViewModeChangedAsync("vertical")'>Vertikal</button>
+                <button class="btn @(EffectiveGroupMatchesViewMode == "horizontal" ? "btn-primary" : "btn-outline-primary")" @onclick='() => HandleGroupMatchesViewModeChangedAsync("horizontal")' disabled="@IsCompactViewport">Horizontal</button>
+            </div>
+            <button class="btn btn-sm @(ShowFlashTable ? "btn-warning" : "btn-outline-warning")"
+                    @onclick="ToggleFlashTableAsync">
+                ⚡ @(ShowFlashTable ? "Blitztabelle ausblenden" : "Blitztabelle anzeigen")
+            </button>
+        </div>
+    </div>
+
+    @if (IsCompactViewport)
+    {
+        <div class="small text-muted mb-2">Mobil ist die Matchliste immer vertikal.</div>
+    }
+
+    var groups = groupMatches.Select(m => m.GroupNumber ?? 0).Distinct().OrderBy(g => g).ToList();
+    @foreach (var groupNum in groups)
+    {
+        var groupComplete = IsGroupCompleted(groupNum);
+        <h6 class="fw-semibold mt-3">Gruppe @GroupLabel(groupNum)
+            @if (groupComplete)
+            {
+                <span class="badge text-bg-success ms-1">✓</span>
+            }
+        </h6>
+
+        @if (GroupStandings.Any(s => s.GroupNumber == groupNum))
+        {
+            var standingsData = ShowFlashTable
+                ? GetFlashStandings(groupNum)
+                : GroupStandings.Where(x => x.GroupNumber == groupNum)
+                    .OrderBy(x => x.Rank > 0 ? x.Rank : int.MaxValue)
+                    .ThenByDescending(x => x.Points)
+                    .ThenByDescending(x => x.LegDifference)
+                    .ToList();
+
+            @if (ShowFlashTable)
+            {
+                <div class="alert alert-warning py-1 small mb-1">⚡ Blitztabelle — enthält vorläufige Wertungen laufender Matches</div>
+            }
+
+            <GroupTable Standings="@standingsData" QualificationSlots="@PlayoffAdvancers"
+                        ShowExtendedStats="true" ShowTiebreaker="true" />
+        }
+
+        <button class="btn btn-sm btn-outline-secondary mb-2"
+                @onclick="ToggleGroupMatchesAsync">
+            @(ShowGroupMatches ? "▼ Matches ausblenden" : "▶ Matches anzeigen")
+        </button>
+
+        @if (ShowGroupMatches)
+        {
+            var groupListCardSettings = GetMatchCardSettings("groups");
+            <div class="@(EffectiveGroupMatchesViewMode == "horizontal" ? "groups-match-horizontal mb-2" : "d-flex flex-column gap-2 mb-2")">
+                @foreach (var match in groupMatches.Where(m => m.GroupNumber == groupNum).OrderBy(m => m.Round).ThenBy(m => m.MatchNumber))
+                {
+                    <div class="@(EffectiveGroupMatchesViewMode == "horizontal" ? "groups-match-horizontal-item" : string.Empty)">
+                        <MatchCard Match="@match"
+                                   ViewSettings="@groupListCardSettings"
+                                   Layout="@groupListCardSettings.Layout"
+                                   Label="@MatchLabel(match)"
+                                   ShowRuntimeBadge="@groupListCardSettings.ShowRuntimeBadge"
+                                   ShowMonitoringStatus="@ShowMatchCardMonitoring(groupListCardSettings)"
+                                   MonitoringStatusText="@GetMonitoringBadgeText(match)"
+                                   MonitoringStatusCssClass="@GetMonitoringBadgeCss(match)"
+                                   EnablePlayerLinks="@groupListCardSettings.EnablePlayerLinks"
+                                   EnableBoardLink="@groupListCardSettings.EnableBoardLink"
+                                   HomeName="@ParticipantName(match.HomeParticipantId)"
+                                   AwayName="@ParticipantName(match.AwayParticipantId)"
+                                   BoardName="@MatchBoardName(match)"
+                                   SlotOrigin="@BuildSlotOrigin(match)"
+                                   SetModeActive="@IsSetMode(match)"
+                                   LiveScoreEnabled="@groupListCardSettings.LiveScoreEnabled"
+                                   ShowMatchStatus="@groupListCardSettings.ShowMatchStatus"
+                                   ShowSchedulingStatus="@groupListCardSettings.ShowSchedulingStatus"
+                                   ShowAverage="@groupListCardSettings.ShowAverage"
+                                   ShowHighestPpr="@groupListCardSettings.ShowHighestPpr"
+                                   ShowHighestCheckout="@groupListCardSettings.ShowHighestCheckout"
+                                   ShowAverageDartsPerLeg="@groupListCardSettings.ShowAverageDartsPerLeg"
+                                   ShowMinimalDartsPerLeg="@groupListCardSettings.ShowMinimalDartsPerLeg"
+                                   OnHomePlayerClick="@BuildPlayerDetailCallback(match.HomeParticipantId)"
+                                   OnAwayPlayerClick="@BuildPlayerDetailCallback(match.AwayParticipantId)"
+                                   OnBoardClick="@BuildMatchBoardDetailCallback(match)"
+                                   EnableDetailPanel="true"
+                                   DetailsExpandedByDefault="@MatchCardDetailsExpandedByDefault(groupListCardSettings)"
+                                   ForceDetailsExpanded="@ForceDetailsExpanded"
+                                   EnableRealtimeConsumer="@(match.StartedUtc is not null && match.FinishedUtc is null)"
+                                   OnClick="() => OnOpenMatchDetail.InvokeAsync(match)" />
+                    </div>
+                }
+            </div>
+        }
+    }
+}
+else
+{
+    <p class="text-muted">Keine Gruppenmatches vorhanden. Generieren Sie den Plan im Tab „Auslosung".</p>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<MatchDto> Matches { get; set; } = [];
+    [Parameter] public IReadOnlyList<GroupStandingDto> GroupStandings { get; set; } = [];
+    [Parameter] public int PlayoffAdvancers { get; set; }
+    [Parameter] public bool IsWorking { get; set; }
+    [Parameter] public bool IsCompactViewport { get; set; }
+
+    [Parameter] public bool ShowFlashTable { get; set; }
+    [Parameter] public EventCallback<bool> ShowFlashTableChanged { get; set; }
+    [Parameter] public bool ShowGroupMatches { get; set; }
+    [Parameter] public EventCallback<bool> ShowGroupMatchesChanged { get; set; }
+
+    [Parameter] public string EffectiveGroupMatchesViewMode { get; set; } = "vertical";
+    [Parameter] public EventCallback<string> OnSetGroupMatchesViewMode { get; set; }
+    [Parameter] public EventCallback<string> OnOpenMatchCardScopeEditor { get; set; }
+    [Parameter] public EventCallback<MatchDto> OnOpenMatchDetail { get; set; }
+
+    [Parameter] public Func<int, bool> IsGroupCompleted { get; set; } = _ => false;
+    [Parameter] public Func<int, string> GroupLabel { get; set; } = _ => string.Empty;
+    [Parameter] public Func<int, List<GroupStandingDto>> GetFlashStandings { get; set; } = _ => [];
+    [Parameter] public Func<string, MatchCardViewSettings> GetMatchCardSettings { get; set; } = _ => new MatchCardViewSettings();
+    [Parameter] public Func<MatchCardViewSettings, bool> ShowMatchCardMonitoring { get; set; } = _ => false;
+    [Parameter] public Func<MatchDto, string> MatchLabel { get; set; } = _ => string.Empty;
+    [Parameter] public Func<MatchDto, string> GetMonitoringBadgeText { get; set; } = _ => string.Empty;
+    [Parameter] public Func<MatchDto, string> GetMonitoringBadgeCss { get; set; } = _ => string.Empty;
+    [Parameter] public Func<Guid?, string> ParticipantName { get; set; } = _ => string.Empty;
+    [Parameter] public Func<MatchDto, string?> MatchBoardName { get; set; } = _ => null;
+    [Parameter] public Func<MatchDto, string?> BuildSlotOrigin { get; set; } = _ => null;
+    [Parameter] public Func<MatchDto, bool> IsSetMode { get; set; } = _ => false;
+    [Parameter] public Func<Guid?, EventCallback> BuildPlayerDetailCallback { get; set; } = _ => default;
+    [Parameter] public Func<MatchDto, EventCallback> BuildMatchBoardDetailCallback { get; set; } = _ => default;
+    [Parameter] public Func<MatchCardViewSettings, bool> MatchCardDetailsExpandedByDefault { get; set; } = _ => false;
+    [Parameter] public bool? ForceDetailsExpanded { get; set; }
+
+    private Task ToggleFlashTableAsync() => ShowFlashTableChanged.InvokeAsync(!ShowFlashTable);
+
+    private Task ToggleGroupMatchesAsync() => ShowGroupMatchesChanged.InvokeAsync(!ShowGroupMatches);
+
+    private Task HandleOpenMatchCardScopeEditorAsync() => OnOpenMatchCardScopeEditor.InvokeAsync("tournaments::groups");
+
+    private Task HandleGroupMatchesViewModeChangedAsync(string mode) => OnSetGroupMatchesViewMode.InvokeAsync(mode);
+}

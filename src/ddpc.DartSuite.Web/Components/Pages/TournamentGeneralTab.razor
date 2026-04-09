@@ -1,0 +1,259 @@
+@using System.Globalization
+@using System.Linq
+@using ddpc.DartSuite.Application.Contracts.Tournaments
+
+@if (IsLocked)
+{
+    <div class="alert alert-info py-2">🔒 Das Turnier ist gesperrt. Entsperren Sie es, um Änderungen vorzunehmen.</div>
+}
+
+<details class="card mb-3" open>
+    <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
+        <span>
+            Grunddaten
+            @if (HasGeneralRequiredMissing)
+            {
+                <span class="text-danger ms-2" title="Pflichteinstellungen fehlen">⚠</span>
+            }
+        </span>
+        <span class="d-none d-md-inline small text-muted">@GeneralSettingsSummary</span>
+    </summary>
+    <div class="card-body">
+        @if (CanEditBasicSettings)
+        {
+            <div class="mb-3">
+                <label class="form-label fw-semibold" title="Eindeutiger Turniername für Listen, Suche und Turnierlink.">Turniername</label>
+                <input class="form-control @(string.IsNullOrWhiteSpace(EditName) ? "border-danger" : "")" value="@EditName" @onchange="HandleEditNameChanged" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold" title="Autodarts-Account des Veranstalters; steuert Sichtbarkeit und Berechtigungen.">Veranstalter-Account</label>
+                <input class="form-control @(string.IsNullOrWhiteSpace(EditOrganizer) ? "border-danger" : "")" value="@EditOrganizer" @onchange="HandleEditOrganizerChanged" list="organizerSuggestions" />
+                <datalist id="organizerSuggestions">
+                    @if (!string.IsNullOrEmpty(AutodartsDisplayName))
+                    {
+                        <option value="@AutodartsDisplayName" />
+                    }
+                    @foreach (var p in Participants.Where(p => p.IsAutodartsAccount))
+                    {
+                        <option value="@p.AccountName">@p.DisplayName</option>
+                    }
+                </datalist>
+            </div>
+            <div class="row g-2 mb-3">
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold" title="Startdatum des Turniers. Grundlage für aktive/kommende Turniere.">Startdatum</label>
+                    <input type="date" class="form-control" value="@EditStartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" @onchange="HandleEditStartDateChanged" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold" title="Enddatum des Turniers; darf nicht vor dem Startdatum liegen.">Enddatum</label>
+                    <input type="date" class="form-control @((EditEndDate < EditStartDate) ? "border-danger" : "")" value="@EditEndDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" @onchange="HandleEditEndDateChanged" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold" title="Optional: Uhrzeit für Start und Spielplan-Generierung.">Startzeit</label>
+                    <input type="time" class="form-control" value="@(EditStartTimeInput?.ToString("HH:mm", CultureInfo.InvariantCulture))" @onchange="HandleEditStartTimeInputChanged" />
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold" title="Turniermodus: K.O. oder Gruppe + K.O. beeinflusst Auslosung und Gruppen-Tab.">Modus</label>
+                <select class="form-select" value="@EditMode" @onchange="HandleEditModeChanged">
+                    <option value="Knockout">K.O.-Modus</option>
+                    <option value="GroupAndKnockout">Gruppenphase + K.O.</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="form-label fw-semibold" title="Vor-Ort: Board-Zuweisung und lokale Steuerung; Online: ohne Board-Zwang.">Variante</label>
+                <select class="form-select" value="@EditVariant" @onchange="HandleEditVariantChanged">
+                    <option value="OnSite">Vor-Ort</option>
+                    <option value="Online">Online</option>
+                </select>
+            </div>
+            <div class="form-check mb-0">
+                <input class="form-check-input" type="checkbox" id="editThirdPlace" checked="@EditThirdPlaceMatch" @onchange="HandleEditThirdPlaceMatchChanged" />
+                <label class="form-check-label" for="editThirdPlace" title="Erzeugt nach dem Halbfinale ein zusätzliches Spiel um Platz 3.">Spiel um Platz 3</label>
+            </div>
+        }
+        else
+        {
+            <div class="small text-muted d-flex flex-wrap gap-2">
+                <span class="badge text-bg-secondary">@EditModeDisplay</span>
+                <span class="badge text-bg-secondary">@EditVariantDisplay</span>
+                <span class="badge @(EditThirdPlaceMatch ? "text-bg-info" : "text-bg-light")">Platz 3: @(EditThirdPlaceMatch ? "Ja" : "Nein")</span>
+                <span class="badge text-bg-light border">Start: @EditStartDate.ToString("dd.MM.yyyy")</span>
+                <span class="badge text-bg-light border">Ende: @EditEndDate.ToString("dd.MM.yyyy")</span>
+            </div>
+        }
+    </div>
+</details>
+
+@if (!string.IsNullOrEmpty(JoinCode))
+{
+    <details class="card mb-3">
+        <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
+            <span>Turnier-Link</span>
+            <span class="d-none d-md-inline small text-muted">Code: @JoinCode</span>
+        </summary>
+        <div class="card-body">
+            <div class="input-group">
+                <input type="text" class="form-control form-control-sm" readonly value="@TournamentLink" />
+                @if (CanEditTournamentSettings)
+                {
+                    <button class="btn btn-outline-secondary btn-sm" @onclick="OnCopyTournamentLink" title="Kopiert den direkten Turnierlink in die Zwischenablage.">📋 Kopieren</button>
+                }
+            </div>
+        </div>
+    </details>
+}
+
+<details class="card mb-3">
+    <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
+        <span>Discord Webhook</span>
+        <span class="d-none d-md-inline small text-muted">@(string.IsNullOrWhiteSpace(EditDiscordWebhookUrl) ? "Nicht konfiguriert" : "Konfiguriert")</span>
+    </summary>
+    <div class="card-body">
+        @if (CanEditTournamentSettings)
+        {
+            <div class="mb-2">
+                <label class="form-label small" title="Webhook-URL für automatische Ergebnisposts bei Matchende.">Webhook URL</label>
+                <div class="input-group">
+                    <input type="url" class="form-control form-control-sm" value="@EditDiscordWebhookUrl" @onchange="HandleEditDiscordWebhookUrlChanged" placeholder="https://discord.com/api/webhooks/..." />
+                    @if (!string.IsNullOrEmpty(EditDiscordWebhookUrl))
+                    {
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="OnTestDiscordWebhook" disabled="@IsWorking" title="Sendet eine Testnachricht an den konfigurierten Channel.">🔔 Testen</button>
+                    }
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label small" title="Optionaler Anzeigename für Bot-Nachrichten, z.B. Turnier-Bot.">Anzeigename (optional)</label>
+                <input type="text" class="form-control form-control-sm" value="@EditDiscordWebhookDisplayText" @onchange="HandleEditDiscordWebhookDisplayTextChanged" placeholder="z.B. Turnier-Bot" />
+            </div>
+        }
+        else
+        {
+            <div class="small text-muted">@(string.IsNullOrWhiteSpace(EditDiscordWebhookUrl) ? "Kein Webhook hinterlegt." : "Webhook hinterlegt.")</div>
+        }
+
+        @if (DiscordTestResult is not null)
+        {
+            <div class="alert @(DiscordTestSuccess ? "alert-success" : "alert-danger") py-1 small">@DiscordTestResult</div>
+        }
+    </div>
+</details>
+
+@if (IsCurrentUserManager)
+{
+    <details class="card mb-3">
+        <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
+            <span>Gefährliche Aktionen</span>
+            <span class="d-none d-md-inline small text-muted">Nur für Spielleiter</span>
+        </summary>
+        <div class="card-body">
+            <p class="small text-muted mb-2">Das Löschen entfernt das Turnier dauerhaft inklusive Plan-, Match- und Teilnehmerdaten.</p>
+            <button class="btn btn-outline-danger btn-sm" @onclick="OnDeleteTournament" disabled="@IsWorking">🗑 Turnier löschen</button>
+        </div>
+    </details>
+}
+
+@if (EditError is not null)
+{
+    <div class="alert alert-danger py-2">@EditError</div>
+}
+@if (EditSuccess is not null)
+{
+    <div class="alert alert-success py-2">@EditSuccess</div>
+}
+
+@code {
+    [Parameter] public bool IsLocked { get; set; }
+    [Parameter] public bool HasGeneralRequiredMissing { get; set; }
+    [Parameter] public string GeneralSettingsSummary { get; set; } = string.Empty;
+    [Parameter] public bool CanEditBasicSettings { get; set; }
+    [Parameter] public string EditName { get; set; } = string.Empty;
+    [Parameter] public string EditOrganizer { get; set; } = string.Empty;
+    [Parameter] public string? AutodartsDisplayName { get; set; }
+    [Parameter] public IReadOnlyList<ParticipantDto> Participants { get; set; } = [];
+    [Parameter] public DateTime EditStartDate { get; set; }
+    [Parameter] public DateTime EditEndDate { get; set; }
+    [Parameter] public TimeOnly? EditStartTimeInput { get; set; }
+    [Parameter] public string EditMode { get; set; } = "Knockout";
+    [Parameter] public string EditVariant { get; set; } = "OnSite";
+    [Parameter] public bool EditThirdPlaceMatch { get; set; }
+    [Parameter] public string EditModeDisplay { get; set; } = string.Empty;
+    [Parameter] public string EditVariantDisplay { get; set; } = string.Empty;
+    [Parameter] public string? JoinCode { get; set; }
+    [Parameter] public string TournamentLink { get; set; } = string.Empty;
+    [Parameter] public bool CanEditTournamentSettings { get; set; }
+    [Parameter] public string? EditDiscordWebhookUrl { get; set; }
+    [Parameter] public string? EditDiscordWebhookDisplayText { get; set; }
+    [Parameter] public string? DiscordTestResult { get; set; }
+    [Parameter] public bool DiscordTestSuccess { get; set; }
+    [Parameter] public bool IsWorking { get; set; }
+    [Parameter] public bool IsCurrentUserManager { get; set; }
+    [Parameter] public string? EditError { get; set; }
+    [Parameter] public string? EditSuccess { get; set; }
+
+    [Parameter] public EventCallback<string> EditNameChanged { get; set; }
+    [Parameter] public EventCallback<string> EditOrganizerChanged { get; set; }
+    [Parameter] public EventCallback<DateTime> EditStartDateChanged { get; set; }
+    [Parameter] public EventCallback<DateTime> EditEndDateChanged { get; set; }
+    [Parameter] public EventCallback<TimeOnly?> EditStartTimeInputChanged { get; set; }
+    [Parameter] public EventCallback<string> EditModeChanged { get; set; }
+    [Parameter] public EventCallback<string> EditVariantChanged { get; set; }
+    [Parameter] public EventCallback<bool> EditThirdPlaceMatchChanged { get; set; }
+    [Parameter] public EventCallback<string?> EditDiscordWebhookUrlChanged { get; set; }
+    [Parameter] public EventCallback<string?> EditDiscordWebhookDisplayTextChanged { get; set; }
+    [Parameter] public EventCallback OnCopyTournamentLink { get; set; }
+    [Parameter] public EventCallback OnTestDiscordWebhook { get; set; }
+    [Parameter] public EventCallback OnDeleteTournament { get; set; }
+
+    private Task HandleEditNameChanged(ChangeEventArgs args)
+        => EditNameChanged.InvokeAsync(args.Value?.ToString() ?? string.Empty);
+
+    private Task HandleEditOrganizerChanged(ChangeEventArgs args)
+        => EditOrganizerChanged.InvokeAsync(args.Value?.ToString() ?? string.Empty);
+
+    private Task HandleEditStartDateChanged(ChangeEventArgs args)
+    {
+        if (DateTime.TryParse(args.Value?.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+        {
+            return EditStartDateChanged.InvokeAsync(parsed.Date);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task HandleEditEndDateChanged(ChangeEventArgs args)
+    {
+        if (DateTime.TryParse(args.Value?.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+        {
+            return EditEndDateChanged.InvokeAsync(parsed.Date);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task HandleEditStartTimeInputChanged(ChangeEventArgs args)
+    {
+        var raw = args.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(raw))
+            return EditStartTimeInputChanged.InvokeAsync(null);
+
+        return TimeOnly.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
+            ? EditStartTimeInputChanged.InvokeAsync(parsed)
+            : Task.CompletedTask;
+    }
+
+    private Task HandleEditModeChanged(ChangeEventArgs args)
+        => EditModeChanged.InvokeAsync(args.Value?.ToString() ?? "Knockout");
+
+    private Task HandleEditVariantChanged(ChangeEventArgs args)
+        => EditVariantChanged.InvokeAsync(args.Value?.ToString() ?? "OnSite");
+
+    private Task HandleEditThirdPlaceMatchChanged(ChangeEventArgs args)
+        => EditThirdPlaceMatchChanged.InvokeAsync(args.Value is bool b && b);
+
+    private Task HandleEditDiscordWebhookUrlChanged(ChangeEventArgs args)
+        => EditDiscordWebhookUrlChanged.InvokeAsync(args.Value?.ToString());
+
+    private Task HandleEditDiscordWebhookDisplayTextChanged(ChangeEventArgs args)
+        => EditDiscordWebhookDisplayTextChanged.InvokeAsync(args.Value?.ToString());
+}

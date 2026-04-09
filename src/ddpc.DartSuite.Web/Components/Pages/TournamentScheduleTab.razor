@@ -1,0 +1,17 @@
+﻿@using System.Linq
+@using ddpc.DartSuite.Application.Contracts.Boards
+@using ddpc.DartSuite.Application.Contracts.Matches
+@using ddpc.DartSuite.Application.Contracts.Tournaments
+
+@* Schedule/Zeitplan Tab - Placeholder *@
+
+<div class="alert alert-info">
+    <h6>Spielplan (noch nicht vollständig implementiert)</h6>
+    <p class="mb-0">Die Komponente zur Spielplan-Anzeige wird derzeit entwickelt.</p>
+</div>
+
+@code {
+    [Parameter] public bool TournamentIsLocked { get; set; }
+    [Parameter] public bool IsCurrentUserManager { get; set; }
+    [Parameter] public bool IsWorking { get; set; }
+}

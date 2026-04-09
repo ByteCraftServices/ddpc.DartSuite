@@ -1,0 +1,18 @@
+@* Draw/Auslosung Tab - Wrapper für die Draw-Sektion *@
+
+@if (!CanEditTournamentStructure && HasProgressedMatches)
+{
+    <div class="alert alert-warning py-2 small mb-3">
+        Die Turnierstruktur ist gesperrt, weil bereits ein Match gestartet oder beendete wurde. Auslosung und Paarungen sind nur noch read-only.
+    </div>
+}
+
+<div class="d-flex align-items-center gap-2 mb-2">
+    <span class="badge text-bg-secondary">Auslosung</span>
+    <span class="small text-muted">Draw-Sektion placeholder</span>
+</div>
+
+@code {
+    [Parameter] public bool CanEditTournamentStructure { get; set; }
+    [Parameter] public bool HasProgressedMatches { get; set; }
+}

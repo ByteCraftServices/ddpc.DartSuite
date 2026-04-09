@@ -1244,6 +1244,233 @@ public partial class Tournaments : IAsyncDisposable
 
     private Task GoToNextTabAsync() => NavigateTabRelativeAsync(1);
 
+    private Task HandleTabSelectionAsync(string tab)
+        => string.Equals(tab, "rounds", StringComparison.Ordinal)
+            ? SwitchToRoundsTabAsync()
+            : SwitchTabAsync(tab);
+
+    private async Task OnEditNameChangedAsync(string value)
+    {
+        editName = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditOrganizerChangedAsync(string value)
+    {
+        editOrganizer = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditStartDateChangedAsync(DateTime value)
+    {
+        editStartDate = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditEndDateChangedAsync(DateTime value)
+    {
+        editEndDate = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditStartTimeInputChangedAsync(TimeOnly? value)
+    {
+        editStartTimeInput = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditModeChangedAsync(string value)
+    {
+        editMode = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditVariantChangedAsync(string value)
+    {
+        editVariant = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditThirdPlaceMatchChangedAsync(bool value)
+    {
+        editThirdPlaceMatch = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditDiscordWebhookUrlChangedAsync(string? value)
+    {
+        editDiscordWebhookUrl = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditDiscordWebhookDisplayTextChangedAsync(string? value)
+    {
+        editDiscordWebhookDisplayText = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private Task OnShowCompletedRoundsChangedAsync(bool value)
+    {
+        showCompletedRounds = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnNewRoundPhaseChangedAsync(string value)
+    {
+        newRoundPhase = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnNewRoundNumberChangedAsync(int value)
+    {
+        newRoundNumber = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnNewRoundBaseScoreChangedAsync(int value)
+    {
+        newRoundBaseScore = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnNewRoundGameModeChangedAsync(string value)
+    {
+        newRoundGameMode = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnNewRoundLegsChangedAsync(int value)
+    {
+        newRoundLegs = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnNewRoundSetsChangedAsync(int? value)
+    {
+        newRoundSets = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnNewRoundInModeChangedAsync(string value)
+    {
+        newRoundInMode = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnNewRoundOutModeChangedAsync(string value)
+    {
+        newRoundOutMode = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnNewRoundMaxRoundsChangedAsync(int value)
+    {
+        newRoundMaxRounds = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnNewRoundBullModeChangedAsync(string value)
+    {
+        newRoundBullMode = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnNewRoundBullOffModeChangedAsync(string value)
+    {
+        newRoundBullOffMode = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnNewRoundDurationChangedAsync(int value)
+    {
+        newRoundDuration = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnNewRoundPauseChangedAsync(int value)
+    {
+        newRoundPause = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnNewRoundPlayerPauseChangedAsync(int value)
+    {
+        newRoundPlayerPause = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnNewRoundBoardAssignmentChangedAsync(string value)
+    {
+        newRoundBoardAssignment = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnShowFlashTableChangedAsync(bool value)
+    {
+        showFlashTable = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnShowGroupMatchesChangedAsync(bool value)
+    {
+        showGroupMatches = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OpenMatchCardScopeEditorAsync(string scopeKey)
+    {
+        OpenMatchCardScopeEditor(scopeKey);
+        return Task.CompletedTask;
+    }
+
+    private Task OpenMatchDetailAsync(MatchDto match)
+    {
+        OpenMatchDetail(match);
+        return Task.CompletedTask;
+    }
+
+    private Task SetKoViewModeAsync(string mode)
+    {
+        koViewMode = mode;
+        return Task.CompletedTask;
+    }
+
+    private Task SetDropTargetMatchIdAsync(Guid? matchId)
+    {
+        dropTargetMatchId = matchId;
+        return Task.CompletedTask;
+    }
+
+    private Task OpenBoardDetailFromMatchAsync(MatchDto match)
+    {
+        OpenBoardDetailFromMatch(match);
+        return Task.CompletedTask;
+    }
+
+    private Task SetDraggedBoardIdAsync(Guid boardId)
+    {
+        draggedBoardId = boardId;
+        return Task.CompletedTask;
+    }
+
+    private Task OnHideFinishedChangedAsync(bool value)
+    {
+        scheduleHideFinished = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnShowNoBoardChangedAsync(bool value)
+    {
+        scheduleShowNoBoard = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnStatusFilterChangedAsync(string value)
+    {
+        scheduleStatusFilter = value;
+        return Task.CompletedTask;
+    }
+
     private async Task NavigateTabRelativeAsync(int delta)
     {
         if (selectedTournament is null || delta == 0)
