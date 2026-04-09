@@ -711,6 +711,24 @@ public partial class Tournaments : IAsyncDisposable
     private bool CanProceedWithTeamDraw
         => !IsTeamplayActive || IsTeamFormationComplete;
 
+    private bool CanShowDrawCreatePlanButton
+        => selectedTournament is not null
+           && !matches.Any()
+           && participants.Count >= 2
+           && !selectedTournament.IsLocked
+           && IsCurrentUserManager;
+
+    private bool CanShowDrawDeletePlanButton
+        => selectedTournament is not null
+           && matches.Any()
+           && !selectedTournament.IsLocked
+           && IsCurrentUserManager;
+
+    private bool ShouldShowDrawTeamFormationWarning
+        => IsTeamplayActive
+           && !CanProceedWithTeamDraw
+           && CanShowDrawCreatePlanButton;
+
     private string? GetTeamNameForParticipant(Guid? teamId)
         => teamId.HasValue ? teams.FirstOrDefault(t => t.Id == teamId.Value)?.Name : null;
 
