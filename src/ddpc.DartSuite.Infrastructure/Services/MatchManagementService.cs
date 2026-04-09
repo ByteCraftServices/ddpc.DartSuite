@@ -491,8 +491,13 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         var tournament = await dbContext.Tournaments.AsNoTracking().FirstOrDefaultAsync(x => x.Id == tournamentId, cancellationToken);
         if (tournament is null) return [];
 
-        var participants = await dbContext.Participants.AsNoTracking()
-            .Where(x => x.TournamentId == tournamentId && x.GroupNumber != null)
+        var participantsQuery = dbContext.Participants.AsNoTracking()
+            .Where(x => x.TournamentId == tournamentId && x.GroupNumber != null);
+
+        if (tournament.TeamplayEnabled)
+            participantsQuery = participantsQuery.Where(x => x.Type == ParticipantType.TeamMember);
+
+        var participants = await participantsQuery
             .ToListAsync(cancellationToken);
 
         if (participants.Count == 0)

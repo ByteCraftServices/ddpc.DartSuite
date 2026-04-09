@@ -6,4 +6,5 @@ public sealed record AddParticipantRequest(
     string AccountName,
     bool IsAutodartsAccount,
     bool IsManager,
-    int Seed);
+    int Seed,
+    string? Type = null);

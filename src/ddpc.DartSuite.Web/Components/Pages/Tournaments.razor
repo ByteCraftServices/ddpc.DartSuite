@@ -246,8 +246,11 @@
                 </div>
                 <div class="modal-body">
                     <p>@confirmationMessage</p>
-                    <p class="text-muted small mb-0">Der bestehende Turnierplan und Spielplan werden dadurch ungültig und
-                        müssen neu generiert werden.</p>
+                    @if (showConfirmationPlanImpact)
+                    {
+                        <p class="text-muted small mb-0">Der bestehende Turnierplan und Spielplan werden dadurch ungültig und
+                            müssen neu generiert werden.</p>
+                    }
                     </div>
                     <div class="modal-footer">
                         <button class="btn btn-secondary" @onclick="RejectConfirmation">Abbrechen</button>
@@ -752,7 +755,7 @@
 
                             @* ─── Tournament List + Detail ─── *@
                             <div class="row g-3">
-                                <div class="@(selectedTournament is not null ? "col-lg-3" : "col-12")">
+                                <div class="@(selectedTournament is not null ? (tournamentListCollapsed ? "d-none" : "col-lg-3") : "col-12")">
                                     @if (ActiveTournaments.Any())
                                     {
                                         <h6 class="mb-1 fw-semibold text-success">▶ Aktiv</h6>
@@ -831,15 +834,16 @@
                                 @* ─── Detail Panel ─── *@
                                 @if (selectedTournament is not null)
                                 {
-                                    <div class="col-lg-9">
+                                    <div class="@(tournamentListCollapsed ? "col-12" : "col-lg-9")">
                                         <div class="card shadow-sm">
-                                            <div class="card-header d-flex justify-content-between align-items-center">
+                                            <div class="card-header d-flex justify-content-between align-items-center gap-1">
                                                 <div>
                                                     <span class="fw-semibold">@selectedTournament.Name</span>
                                                     @if (!string.IsNullOrEmpty(selectedTournament.JoinCode))
                                                     {
                                                         <span class="badge text-bg-primary ms-2 font-monospace">@selectedTournament.JoinCode</span>
                                                     }
+                                                    <span class="badge text-bg-dark ms-2" title="Aktuelle Rolle im Turnier">@(IsCurrentUserManager ? "Rolle: Spielleiter" : "Rolle: Teilnehmer")</span>
                                                     @if (selectedTournament.IsLocked)
                                                     {
                                                         <span class="badge text-bg-danger ms-2">🔒 Gesperrt</span>
@@ -867,21 +871,25 @@
                                                         <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleLockAsync" title="@(selectedTournament.IsLocked ? "Entsperren" : "Sperren")">
                                                             @(selectedTournament.IsLocked ? "🔒" : "🔓")
                                                         </button>
-                                                        <button class="btn btn-sm btn-outline-danger" @onclick="DeleteTournamentAsync" title="Turnier löschen">🗑</button>
                                                     }
+                                                    <button class="btn btn-sm btn-outline-secondary d-none d-lg-inline-flex align-items-center"
+                                                            title="@(tournamentListCollapsed ? "Turnierliste einblenden" : "Turnierliste ausblenden")"
+                                                            @onclick="() => tournamentListCollapsed = !tournamentListCollapsed">
+                                                        <i class="bi @(tournamentListCollapsed ? "bi-layout-sidebar" : "bi-layout-sidebar-inset")"></i>
+                                                    </button>
                                                 </div>
                                             </div>
-                                            <div class="card-body">
+                                            <div class="card-body" id="tournament-tab-content">
                                                 @* ─── Tabs ─── *@
                                                 <ul class="nav nav-tabs mb-3">
                                                     <li class="nav-item"><button class="nav-link @(activeTab == "general" ? "active" : "")"
                                                                                      @onclick='() => SwitchTabAsync("general")'>Allgemein</button></li>
                                                         <li class="nav-item"><button class="nav-link @(activeTab == "boards-participants" ? "active" : "")"
                                                                                          @onclick='() => SwitchTabAsync("boards-participants")'>Boards &amp; Teilnehmer</button></li>
-                                                            <li class="nav-item"><button class="nav-link @(activeTab == "rounds" ? "active" : "")"
-                                                                                             @onclick="SwitchToRoundsTabAsync">Spielmodus @if (HasMissingRoundConfig()) {<span class="badge text-bg-danger ms-1">@MissingRoundConfigCount() ⚠</span>}</button></li>
                                                                 <li class="nav-item"><button class="nav-link @(activeTab == "draw" ? "active" : "")"
                                                                                                  @onclick='() => SwitchTabAsync("draw")'>Auslosung</button></li>
+                                                                    <li class="nav-item"><button class="nav-link @(activeTab == "rounds" ? "active" : "")"
+                                                                                             @onclick="SwitchToRoundsTabAsync">Spielmodus @if (HasMissingRoundConfig()) {<span class="badge text-bg-danger ms-1">@MissingRoundConfigCount() ⚠</span>}</button></li>
                                                                     @if (selectedTournament.Mode == "GroupAndKnockout")
                                                                     {
                                                                         <li class="nav-item"><button class="nav-link @(activeTab == "groups" ? "active" : "")"
@@ -1036,6 +1044,20 @@
                                                                                     </div>
                                                                                 </details>
 
+                                                                                @if (IsCurrentUserManager)
+                                                                                {
+                                                                                    <details class="card mb-3">
+                                                                                        <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
+                                                                                            <span>Gefährliche Aktionen</span>
+                                                                                            <span class="d-none d-md-inline small text-muted">Nur für Spielleiter</span>
+                                                                                        </summary>
+                                                                                        <div class="card-body">
+                                                                                            <p class="small text-muted mb-2">Das Löschen entfernt das Turnier dauerhaft inklusive Plan-, Match- und Teilnehmerdaten.</p>
+                                                                                            <button class="btn btn-outline-danger btn-sm" @onclick="RequestDeleteTournamentAsync" disabled="@isWorking">🗑 Turnier löschen</button>
+                                                                                        </div>
+                                                                                    </details>
+                                                                                }
+
                                                                                     @if (editError is not null)
                                                                                     {
                                                                                         <div class="alert alert-danger py-2">@editError</div>
@@ -1079,7 +1101,7 @@
                                                                                                     @if (editSeedingEnabled)
                                                                                                     {
                                                                                                         <div class="mb-0">
-                                                                                                            <label class="form-label small" title="Anzahl gesetzter Spieler; beeinflusst Bracket- und Gruppenverteilung.">Anzahl gesetzter Spieler</label>
+                                                                                                            <label class="form-label small" title="Anzahl gesetzter Spieler; beeinflusst Bracket- und Gruppenverteilung.">@(IsTeamplayActive ? "Anzahl gesetzter Teams" : "Anzahl gesetzter Spieler")</label>
                                                                                                             <input type="number" class="form-control form-control-sm @(HasSeedingRequiredMissing() ? "border-danger" : "")" @bind="editSeedTopCount" @bind:after="OnSeedTopCountChangedAsync" min="0" max="@participants.Count" />
                                                                                                         </div>
                                                                                                     }
@@ -1149,7 +1171,7 @@
                                                                                             <li class="nav-item">
                                                                                                 <button class="nav-link @(activeBoardsParticipantsSubTab == "spieler" ? "active" : "")"
                                                                                                         @onclick='() => activeBoardsParticipantsSubTab = "spieler"'>
-                                                                                                    Spieler <span class="badge text-bg-secondary ms-1">@participants.Count</span>
+                                                                                                    Spieler <span class="badge text-bg-secondary ms-1">@EffectivePlayerCount</span>
                                                                                                 </button>
                                                                                             </li>
                                                                                             @if (editTeamplay)
@@ -1225,7 +1247,7 @@
                                                                                                 <p class="text-muted small mb-4">Keine Boards konfiguriert. Boards können über die <a href="/boards">Boards-Seite</a> oder die Chrome-Extension hinzugefügt werden.</p>
                                                                                             }
 
-                                                                                            <h6 class="fw-semibold mb-2">Teilnehmer <span class="badge text-bg-secondary">@participants.Count</span></h6>
+                                                                                            <h6 class="fw-semibold mb-2">Teilnehmer <span class="badge text-bg-secondary">@EffectivePlayerCount</span></h6>
                                                                                             @if (participants.Any())
                                                                                             {
                                                                                                 var sortedParticipants = editSeedingEnabled
@@ -1236,27 +1258,27 @@
                                                                                                         <thead>
                                                                                                             <tr>
                                                                                                                 <th>Teilnehmer</th>
-                                                                                                                <th class="d-none d-md-table-cell">Account</th>
-                                                                                                                <th class="d-none d-md-table-cell">Gruppe</th>
+                                                                                                                <th class="d-none d-lg-table-cell">Account</th>
+                                                                                                                <th class="d-none d-xl-table-cell">Gruppe</th>
                                                                                                                 @if (editTeamplay)
                                                                                                                 {
-                                                                                                                    <th class="d-none d-md-table-cell">Team</th>
+                                                                                                                    <th class="d-none d-lg-table-cell">Team</th>
                                                                                                                 }
                                                                                                                 <th></th>
                                                                                                             </tr>
                                                                                                         </thead>
                                                                                                         <tbody>
-                                                                                                            @foreach (var p in sortedParticipants)
+                                                                                                            @foreach (var p in sortedParticipants.Where(p => !IsTeamMember(p)))
                                                                                                             {
                                                                                                                 var isSeedTarget = editSeedingEnabled && p.Seed > 0 && p.Seed <= editSeedTopCount;
                                                                                                                 var teamName = GetTeamNameForParticipant(p.TeamId);
-                                                                                                                <tr draggable="@(editSeedingEnabled && CanEditParticipantSettings ? "true" : "false")"
+                                                                                                                <tr draggable="@(editSeedingEnabled && !IsTeamplayActive && CanEditParticipantSettings ? "true" : "false")"
                                                                                                                     @ondragstart="() => draggedSeedIndex = p.Seed"
                                                                                                                     @ondragover:preventDefault
                                                                                                                     @ondrop="async () => { if (draggedSeedIndex.HasValue && draggedSeedIndex != p.Seed) { var dragP = participants.FirstOrDefault(x => x.Seed == draggedSeedIndex.Value); if (dragP is not null) { await UpdateParticipantSeedAsync(dragP.Id, p.Seed); await UpdateParticipantSeedAsync(p.Id, draggedSeedIndex.Value); } draggedSeedIndex = null; } }">
                                                                                                                     <td>
                                                                                                                         <span class="d-flex align-items-center gap-2 flex-wrap">
-                                                                                                                            @if (editSeedingEnabled)
+                                                                                                                            @if (editSeedingEnabled && !IsTeamplayActive)
                                                                                                                             {
                                                                                                                                 @if (isSeedTarget)
                                                                                                                                 {
@@ -1286,18 +1308,19 @@
                                                                                                                             }
                                                                                                                         </span>
                                                                                                                     </td>
-                                                                                                                    <td class="d-none d-md-table-cell">
-                                                                                                                        <small class="text-muted">@p.AccountName</small>
+                                                                                                                    <td class="d-none d-lg-table-cell">
                                                                                                                         @if (p.IsAutodartsAccount)
                                                                                                                         {
-                                                                                                                            <span class="autodarts-icon ms-1" title="Autodarts"></span>
+                                                                                                                            <span class="autodarts-icon me-1" title="Autodarts"></span>
+                                                                                                                            <small class="text-muted">@p.AccountName</small>
                                                                                                                         }
                                                                                                                         else
                                                                                                                         {
+                                                                                                                            <small class="text-muted">@p.AccountName</small>
                                                                                                                             <span class="badge text-bg-secondary ms-1">Lokal</span>
                                                                                                                         }
                                                                                                                     </td>
-                                                                                                                    <td class="d-none d-md-table-cell">
+                                                                                                                    <td class="d-none d-xl-table-cell">
                                                                                                                         @if (p.GroupNumber.HasValue && p.GroupNumber > 0)
                                                                                                                         {
                                                                                                                             <span class="badge text-bg-info">Gr. @GroupLabel(p.GroupNumber.Value)</span>
@@ -1309,7 +1332,7 @@
                                                                                                                     </td>
                                                                                                                     @if (editTeamplay)
                                                                                                                     {
-                                                                                                                        <td class="d-none d-md-table-cell">
+                                                                                                                        <td class="d-none d-lg-table-cell">
                                                                                                                             @if (!string.IsNullOrWhiteSpace(teamName))
                                                                                                                             {
                                                                                                                                 <span class="badge text-bg-secondary">@teamName</span>
@@ -1325,7 +1348,7 @@
                                                                                                                             @if (!selectedTournament.IsLocked)
                                                                                                                             {
                                                                                                                                 <button class="btn btn-sm btn-outline-secondary" @onclick="() => StartEditParticipant(p)" disabled="@isWorking">✏️</button>
-                                                                                                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveParticipantAsync(p)" disabled="@isWorking">✕</button>
+                                                                                                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => RemoveParticipantAsync(p)" disabled="@(!CanRemoveParticipant(p))" title="@RemoveParticipantDisabledReason(p)">✕</button>
                                                                                                                             }
                                                                                                                         </div>
                                                                                                                     </td>
@@ -1411,7 +1434,7 @@
                                                                                             }
                                                                                             @if (!TeamSizeDividesParticipants)
                                                                                             {
-                                                                                                <div class="alert alert-warning py-2 small mb-3">Die Teilnehmeranzahl (@participants.Count) ist nicht durch Spieler/Team (@editPlayersPerTeam) teilbar. Bitte Teamgröße oder Teilnehmer anpassen.</div>
+                                                                                                <div class="alert alert-warning py-2 small mb-3">Die Teilnehmeranzahl (@EffectivePlayerCount) ist nicht durch Spieler/Team (@editPlayersPerTeam) teilbar. Bitte Teamgröße oder Teilnehmer anpassen.</div>
                                                                                             }
                                                                                             <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
                                                                                                 <button class="btn btn-sm btn-primary" @onclick="GenerateRandomTeamsAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure || !TeamSizeDividesParticipants)">⚡ Teams zufällig bilden</button>
@@ -1457,25 +1480,44 @@
                                                                                                             var idx = teamIdx;
                                                                                                             var team = teamDrafts[idx];
                                                                                                             var members = team.MemberParticipantIds
-                                                                                                                .Select(id => participants.FirstOrDefault(p => p.Id == id))
+                                                                                                                .Select(id => EffectivePlayerParticipants.FirstOrDefault(p => p.Id == id))
                                                                                                                 .Where(p => p is not null)
                                                                                                                 .Cast<ParticipantDto>()
                                                                                                                 .ToList();
                                                                                                             <div class="col-md-6">
                                                                                                                 <div class="card @DrawTeamAnimationCss(idx) @(dropTargetTeamIndex == idx ? "draw-target-group" : "") @(draggedTeamParticipantId != null && IsTeamFull(idx) ? "team-slot-full" : "") @(draggedTeamParticipantId != null && !IsTeamFull(idx) && dropTargetTeamIndex != idx ? "team-slot-available" : "")"
                                                                                                                      @ondragover:preventDefault
-                                                                                                                     @ondragover="() => { if (CanEditTournamentStructure && !IsTeamFull(idx)) dropTargetTeamIndex = idx; }"
+                                                                                                                     @ondragover="() => { if (draggedTeamSeedIndex.HasValue) return; if (CanEditTournamentStructure && !IsTeamFull(idx)) dropTargetTeamIndex = idx; }"
                                                                                                                      @ondragleave="() => { if (dropTargetTeamIndex == idx) dropTargetTeamIndex = null; }"
-                                                                                                                     @ondrop="() => AssignDraggedParticipantToTeam(idx)">
+                                                                                                                     @ondrop="async () => { if (draggedTeamSeedIndex.HasValue) await DropTeamSeedAtAsync(idx); else AssignDraggedParticipantToTeam(idx); }">
                                                                                                                     <div class="card-header py-2 d-flex justify-content-between align-items-center">
-                                                                                                                        <strong class="small">@(string.IsNullOrWhiteSpace(team.Name) ? $"Team {idx + 1}" : team.Name)</strong>
+                                                                                                                        <div class="d-flex align-items-center gap-2 flex-grow-1 team-name-editable-wrap"
+                                                                                                                             draggable="@(CanSeedTeams ? "true" : "false")"
+                                                                                                                             @ondragstart="() => StartTeamSeedDrag(idx)">
+                                                                                                                            @if (editSeedingEnabled)
+                                                                                                                            {
+                                                                                                                                <span class="badge text-bg-warning" title="Setzlistenposition Team">#@TeamSeedForDraft(team, idx + 1)</span>
+                                                                                                                            }
+                                                                                                                            @if (editingTeamNameIndex == idx)
+                                                                                                                            {
+                                                                                                                                <input class="form-control form-control-sm"
+                                                                                                                                       style="max-width:220px"
+                                                                                                                                       @bind="editingTeamNameValue"
+                                                                                                                                       @bind:event="oninput"
+                                                                                                                                      @onblur="async () => await CommitTeamNameEditAsync(idx)" />
+                                                                                                                            }
+                                                                                                                            else
+                                                                                                                            {
+                                                                                                                                <strong class="small text-truncate team-name-editable" style="max-width:220px" @onclick="() => BeginTeamNameEdit(idx)">@(string.IsNullOrWhiteSpace(team.Name) ? $"Team {idx + 1}" : team.Name)</strong>
+                                                                                                                                <span class="team-name-actions">
+                                                                                                                                    <button class="btn btn-sm btn-link p-0 text-muted" title="Teamnamen bearbeiten" @onclick="() => BeginTeamNameEdit(idx)" @onclick:stopPropagation disabled="@(isWorking || !CanEditTournamentStructure)">✎</button>
+                                                                                                                                    <button class="btn btn-sm btn-link p-0 text-muted ms-1" title="Namen automatisch aus Mitgliedern erzeugen" @onclick="async () => await ResetTeamDraftNameToAutoAsync(idx)" @onclick:stopPropagation disabled="@(isWorking || !CanEditTournamentStructure)">↺</button>
+                                                                                                                                </span>
+                                                                                                                            }
+                                                                                                                        </div>
                                                                                                                         <span class="badge @(members.Count == editPlayersPerTeam ? "text-bg-success" : "text-bg-secondary")">@members.Count / @editPlayersPerTeam</span>
                                                                                                                     </div>
                                                                                                                     <div class="card-body p-2">
-                                                                                                                        <div class="input-group input-group-sm mb-2">
-                                                                                                                            <input class="form-control" value="@team.Name" @onchange="async args => await OnTeamDraftNameChanged(idx, args)" disabled="@(isWorking || !CanEditTournamentStructure)" />
-                                                                                                                            <button class="btn btn-outline-secondary" title="Namen automatisch aus Mitgliedern erzeugen" @onclick="async () => await ResetTeamDraftNameToAutoAsync(idx)" disabled="@(isWorking || !CanEditTournamentStructure)">↺</button>
-                                                                                                                        </div>
                                                                                                                         <div class="team-slot-area" style="min-height:64px">
                                                                                                                             @foreach (var member in members)
                                                                                                                             {
@@ -1694,6 +1736,11 @@
                                                                                                                 </div>
                                                                                                             }
 
+                                                                                                            <div class="d-flex align-items-center gap-2 mb-2">
+                                                                                                                <span class="badge text-bg-secondary">Auslosung</span>
+                                                                                                                <span class="small text-muted">Fortschritt: @EffectiveDrawParticipants.Count(p => p.GroupNumber.HasValue && p.GroupNumber > 0)/@EffectiveDrawParticipants.Count (@TeamFormationProgressPercent%)</span>
+                                                                                                            </div>
+
                                                                                                             @* ─── Group/Draw Settings (moved from Gruppenphase) ─── *@
                                                                                                             @if (ShowGroupSettingsSection())
                                                                                                             {
@@ -1839,6 +1886,10 @@
                                                                                                                         }
                                                                                                                         else
                                                                                                                         {
+                                                                                                                            @if (HasStartedGroupMatch)
+                                                                                                                            {
+                                                                                                                                <div class="alert alert-info py-1 small">Punkte- und Tiebreaker-Logik ist gesperrt, weil die Gruppenphase bereits gestartet wurde.</div>
+                                                                                                                            }
                                                                                                                             <div class="small text-muted d-flex flex-wrap gap-2">
                                                                                                                                 <span class="badge text-bg-light border">Siegpunkte: @editWinPoints</span>
                                                                                                                                 <span class="badge text-bg-light border">Leg-Faktor: @editLegFactor</span>
@@ -1855,6 +1906,40 @@
                                                                                                                         }
                                                                                                                     </div>
                                                                                                                 </details>
+                                                                                                            }
+
+                                                                                                            @* ─── Auto-Draw Actions (GroupAndKnockout) ─── *@
+                                                                                                            @if (ShowGroupSettingsSection() && IsCurrentUserManager && !selectedTournament.IsLocked
+                                                                                                                 && selectedTournament.Status is "Erstellt" or "Geplant")
+                                                                                                            {
+                                                                                                                <div class="d-flex flex-wrap gap-2 mb-3">
+                                                                                                                    <div class="d-flex align-items-center gap-2 me-2">
+                                                                                                                        <label class="small text-muted mb-0">Animation</label>
+                                                                                                                        <select class="form-select form-select-sm" style="width: 140px;" @bind="drawAnimationMode" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">
+                                                                                                                            <option value="Off">Aus</option>
+                                                                                                                            <option value="Exciting">Spannend</option>
+                                                                                                                            <option value="Moderate">Moderat</option>
+                                                                                                                        </select>
+                                                                                                                    </div>
+                                                                                                                    @if (editGroupDrawMode is "Random" or "SeededPots")
+                                                                                                                    {
+                                                                                                                        <span class="@(CanEditTournamentStructure ? "" : "btn-reason-wrap")" title="@CannotEditStructureReason">
+                                                                                                                            <button class="btn btn-primary btn-sm" @onclick="AutoDrawAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">⚡ Automatisch auslosen</button>
+                                                                                                                        </span>
+                                                                                                                    }
+                                                                                                                    @if (editGroupDrawMode == "SeededPots" && editSeedingEnabled)
+                                                                                                                    {
+                                                                                                                        <button class="btn btn-outline-secondary btn-sm" @onclick="AssignSeedPotsAndDistributeAsync" disabled="@(isWorking || !CanEditTournamentStructure)">🎲 Lostöpfe zuteilen</button>
+                                                                                                                    }
+                                                                                                                    @if (HasDrawAssignments())
+                                                                                                                    {
+                                                                                                                        <button class="btn btn-outline-warning btn-sm" @onclick="ResetDrawAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">↩ Auslosung zurücksetzen</button>
+                                                                                                                    }
+                                                                                                                </div>
+                                                                                                                @if (isDrawAnimating)
+                                                                                                                {
+                                                                                                                    <div class="alert alert-secondary py-1 small">Auslosung läuft…</div>
+                                                                                                                }
                                                                                                             }
 
                                                                                                                 @if (editGroupDrawMode == "SeededPots" && editSeedingEnabled && participants.Any(p => p.SeedPot > 0))
@@ -1913,7 +1998,7 @@
                                                                                                                             {
                                                                                                                                 <div class="card">
                                                                                                                                     <div class="card-header py-2">
-                                                                                                                                        <strong class="small">Teilnehmer</strong>
+                                                                                                                                            <strong class="small">@(IsTeamplayActive ? "Teams" : "Teilnehmer")</strong>
                                                                                                                                         <span class="badge text-bg-secondary ms-1">@unassigned.Count</span>
                                                                                                                                     </div>
                                                                                                                                     <div class="card-body p-2" style="max-height:500px; overflow-y:auto">
@@ -1999,10 +2084,9 @@
                                                                                                                             <option value="Moderate">Moderat</option>
                                                                                                                         </select>
                                                                                                                     </div>
-                                                                                                                    @if (editGroupDrawMode is "Random" or "SeededPots")
-                                                                                                                    {
-                                                                                                                        <button class="btn btn-primary btn-sm" @onclick="AutoDrawAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure || !CanProceedWithTeamDraw)">⚡ Auslosung starten</button>
-                                                                                                                    }
+                                                                                                                    <span class="@(CanEditTournamentStructure ? "" : "btn-reason-wrap")" title="@CannotEditStructureReason">
+                                                                                                                        <button class="btn btn-primary btn-sm" @onclick="AutoDrawAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">⚡ Auslosung starten</button>
+                                                                                                                    </span>
                                                                                                                     @if (KnockoutAssignedParticipants.Any())
                                                                                                                     {
                                                                                                                         <button class="btn btn-outline-warning btn-sm" @onclick="ResetKnockoutDrawCards" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">↩ Auslosung zurücksetzen</button>
@@ -2017,7 +2101,7 @@
                                                                                                                     <div class="col-md-4">
                                                                                                                         <div class="card">
                                                                                                                             <div class="card-header py-2">
-                                                                                                                                <strong class="small">Teilnehmer</strong>
+                                                                                                                                <strong class="small">@(IsTeamplayActive ? "Teams" : "Teilnehmer")</strong>
                                                                                                                                 <span class="badge text-bg-secondary ms-1">@KnockoutUnassignedParticipants.Count</span>
                                                                                                                             </div>
                                                                                                                             <div class="card-body p-2" style="max-height:500px; overflow-y:auto">
@@ -2097,96 +2181,47 @@
                                                                                                                 {
                                                                                                                     <div class="alert alert-warning py-2 small mb-2">Turnierplan kann erst erstellt werden, wenn die Teamzuordnung vollständig und gespeichert ist.</div>
                                                                                                                 }
-                                                                                                                @if (!matches.Any() && participants.Count >= 2 && !selectedTournament.IsLocked && IsCurrentUserManager)
-                                                                                                                {
-                                                                                                                    @if (selectedTournament.Mode == "GroupAndKnockout")
+                                                                                                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                                                                                                    @if (selectedTournament.Mode == "GroupAndKnockout" && editGroupDrawMode is "Random" or "SeededPots")
                                                                                                                     {
-                                                                                                                        @if (UnassignedParticipants.Count == 0)
-                                                                                                                        {
-                                                                                                                            <button class="btn btn-success" @onclick="CreateTournamentPlanAsync" disabled="@(isWorking || !CanProceedWithTeamDraw || !CanEditTournamentStructure)">✓ Turnierplan erstellen</button>
-                                                                                                                        }
-                                                                                                                        else
-                                                                                                                        {
-                                                                                                                            <div class="alert alert-info py-2 small">Alle Teilnehmer müssen einer Gruppe zugewiesen sein, bevor der Turnierplan erstellt werden kann. Noch @UnassignedParticipants.Count nicht zugewiesen.</div>
-                                                                                                                        }
+                                                                                                                        <span class="@(CanEditTournamentStructure ? "" : "btn-reason-wrap")" title="@CannotEditStructureReason">
+                                                                                                                            <button class="btn btn-primary btn-sm" @onclick="AutoDrawAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">⚡ Automatisch auslosen</button>
+                                                                                                                        </span>
                                                                                                                     }
-                                                                                                                    else
+                                                                                                                    @if (selectedTournament.Mode == "GroupAndKnockout" && HasDrawAssignments())
                                                                                                                     {
-                                                                                                                        @if (selectedTournament.Mode == "Knockout" && editGroupDrawMode == "Manual")
-                                                                                                                        {
-                                                                                                                            @if (IsKnockoutDrawComplete)
-                                                                                                                            {
-                                                                                                                                <button class="btn btn-primary" @onclick="CreateTournamentPlanAsync" disabled="@(isWorking || !CanProceedWithTeamDraw || !CanEditTournamentStructure)">⚡ K.O.-Plan generieren</button>
-                                                                                                                            }
-                                                                                                                            else
-                                                                                                                            {
-                                                                                                                                <div class="alert alert-info py-2 small">Bei manueller K.O.-Auslosung müssen alle Teilnehmer einem Match-Slot zugewiesen werden.</div>
-                                                                                                                            }
-                                                                                                                        }
-                                                                                                                        else
-                                                                                                                        {
-                                                                                                                            <button class="btn btn-primary" @onclick="CreateTournamentPlanAsync" disabled="@(isWorking || !CanProceedWithTeamDraw || !CanEditTournamentStructure)">⚡ K.O.-Plan generieren</button>
-                                                                                                                        }
+                                                                                                                        <button class="btn btn-outline-warning btn-sm" @onclick="ResetDrawAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">↩ Auslosung zurücksetzen</button>
                                                                                                                     }
-                                                                                                                }
-                                                                                                                else if (matches.Any() && !selectedTournament.IsLocked && IsCurrentUserManager)
-                                                                                                                {
-                                                                                                                    <div class="d-flex align-items-center gap-3">
+                                                                                                                    @if (selectedTournament.Mode == "Knockout" && KnockoutAssignedParticipants.Any())
+                                                                                                                    {
+                                                                                                                        <button class="btn btn-outline-warning btn-sm" @onclick="ResetKnockoutDrawCards" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">↩ Auslosung zurücksetzen</button>
+                                                                                                                    }
+
+                                                                                                                    @if (!matches.Any() && participants.Count >= 2 && !selectedTournament.IsLocked && IsCurrentUserManager)
+                                                                                                                    {
+                                                                                                                        <button class="btn btn-success btn-sm" @onclick="CreateTournamentPlanAsync" disabled="@(isWorking || !CanProceedWithTeamDraw || !CanEditTournamentStructure)">✓ Turnierplan erstellen</button>
+                                                                                                                    }
+                                                                                                                    else if (matches.Any() && !selectedTournament.IsLocked && IsCurrentUserManager)
+                                                                                                                    {
                                                                                                                         <button class="btn btn-outline-danger btn-sm" @onclick="DeleteTournamentPlanAsync" disabled="@(isWorking || !CanEditTournamentStructure)">🗑 Turnierplan löschen</button>
                                                                                                                         <button class="btn btn-warning btn-sm" @onclick="RegenerateMatchesAsync" disabled="@(isWorking || !CanEditTournamentStructure)">🔄 Turnierplan neu generieren</button>
-                                                                                                                    </div>
-                                                                                                                    @if (HasPlayedMatches())
-                                                                                                                    {
-                                                                                                                        <div class="alert alert-warning py-2 mt-2">⚠ Es wurden bereits Matches gespielt. Beim Neugenerieren werden alle Ergebnisse gelöscht.</div>
                                                                                                                     }
+                                                                                                                </div>
+
+                                                                                                                @if (!matches.Any() && selectedTournament.Mode == "GroupAndKnockout" && UnassignedParticipants.Count > 0)
+                                                                                                                {
+                                                                                                                    <div class="alert alert-info py-2 small mt-2">Alle Teilnehmer müssen einer Gruppe zugewiesen sein, bevor der Turnierplan erstellt werden kann. Noch @UnassignedParticipants.Count nicht zugewiesen.</div>
+                                                                                                                }
+                                                                                                                @if (!matches.Any() && selectedTournament.Mode == "Knockout" && editGroupDrawMode == "Manual" && !IsKnockoutDrawComplete)
+                                                                                                                {
+                                                                                                                    <div class="alert alert-info py-2 small mt-2">Bei manueller K.O.-Auslosung müssen alle Teilnehmer einem Match-Slot zugewiesen werden.</div>
+                                                                                                                }
+                                                                                                                @if (matches.Any() && HasPlayedMatches())
+                                                                                                                {
+                                                                                                                    <div class="alert alert-warning py-2 mt-2">⚠ Es wurden bereits Matches gespielt. Beim Neugenerieren werden alle Ergebnisse gelöscht.</div>
                                                                                                                 }
 
-                                                                                                                @* ─── KO Mode: Show round 1 pairings ─── *@
-                                                                                                                @if (selectedTournament.Mode == "Knockout" && matches.Any())
-                                                                                                                {
-                                                                                                                    var knockoutListCardSettings = GetMatchCardSettings("knockout");
-                                                                                                                    <h6 class="fw-semibold mt-3">Paarungen (Runde 1)</h6>
-                                                                                                                    <div class="d-flex flex-column gap-2">
-                                                                                                                        @foreach (var match in matches.Where(m => m.Round == 1 && m.Phase == "Knockout").OrderBy(m => m.MatchNumber))
-                                                                                                                        {
-                                                                                                                            var isBye = match.Status == "WalkOver";
-                                                                                                                            <div class="@(isBye ? "opacity-75" : string.Empty)">
-                                                                                                                                <MatchCard Match="@match"
-                                                                                                                                               ViewSettings="@knockoutListCardSettings"
-                                                                                                                                           Layout="@knockoutListCardSettings.Layout"
-                                                                                                                                           Label="@MatchLabel(match)"
-                                                                                                                                           ShowRuntimeBadge="@knockoutListCardSettings.ShowRuntimeBadge"
-                                                                                                                                           ShowMonitoringStatus="@ShowMatchCardMonitoring(knockoutListCardSettings)"
-                                                                                                                                           MonitoringStatusText="@GetMonitoringBadgeText(match)"
-                                                                                                                                           MonitoringStatusCssClass="@GetMonitoringBadgeCss(match)"
-                                                                                                                                           EnablePlayerLinks="@knockoutListCardSettings.EnablePlayerLinks"
-                                                                                                                                           EnableBoardLink="@knockoutListCardSettings.EnableBoardLink"
-                                                                                                                                           HomeName="@(match.HomeParticipantId == Guid.Empty ? "Freilos" : ParticipantName(match.HomeParticipantId))"
-                                                                                                                                           AwayName="@(match.AwayParticipantId == Guid.Empty ? "Freilos" : ParticipantName(match.AwayParticipantId))"
-                                                                                                                                           BoardName="@MatchBoardName(match)"
-                                                                                                                                           SlotOrigin="@BuildSlotOrigin(match)"
-                                                                                                                                           SetModeActive="@IsSetMode(match)"
-                                                                                                                                           LiveScoreEnabled="@knockoutListCardSettings.LiveScoreEnabled"
-                                                                                                                                           ShowMatchStatus="@knockoutListCardSettings.ShowMatchStatus"
-                                                                                                                                           ShowSchedulingStatus="@knockoutListCardSettings.ShowSchedulingStatus"
-                                                                                                                                           ShowAverage="@knockoutListCardSettings.ShowAverage"
-                                                                                                                                           ShowHighestPpr="@knockoutListCardSettings.ShowHighestPpr"
-                                                                                                                                           ShowHighestCheckout="@knockoutListCardSettings.ShowHighestCheckout"
-                                                                                                                                           ShowAverageDartsPerLeg="@knockoutListCardSettings.ShowAverageDartsPerLeg"
-                                                                                                                                           ShowMinimalDartsPerLeg="@knockoutListCardSettings.ShowMinimalDartsPerLeg"
-                                                                                                                                          OnHomePlayerClick="BuildPlayerDetailCallback(match.HomeParticipantId)"
-                                                                                                                                          OnAwayPlayerClick="BuildPlayerDetailCallback(match.AwayParticipantId)"
-                                                                                                                                          OnBoardClick="BuildMatchBoardDetailCallback(match)"
-                                                                                                                                           EnableDetailPanel="true"
-                                                                                                                                           DetailsExpandedByDefault="@MatchCardDetailsExpandedByDefault(knockoutListCardSettings)"
-                                                                                                                                           ForceDetailsExpanded="@forcedMatchDetailsExpanded"
-                                                                                                                                           EnableRealtimeConsumer="@(match.StartedUtc is not null && match.FinishedUtc is null)"
-                                                                                                                                           OnClick="() => OpenMatchDetail(match)" />
-                                                                                                                            </div>
-                                                                                                                        }
-                                                                                                                    </div>
-                                                                                                                }
-                                                                                                                else if (!matches.Any() && participants.Count < 2)
+                                                                                                                @if (!matches.Any() && participants.Count < 2)
                                                                                                                 {
                                                                                                                     <p class="text-muted">Mindestens 2 Teilnehmer erforderlich.</p>
                                                                                                                 }
@@ -2206,12 +2241,20 @@
                                                                                                                                                 title="MatchCard-Einstellungen fuer Gruppenphase"
                                                                                                                                                 @onclick='() => OpenMatchCardScopeEditor("tournaments::groups")'
                                                                                                                                                 @onclick:stopPropagation>⚙</button>
+                                                                                                                                        <div class="btn-group btn-group-sm" role="group" aria-label="Gruppenansicht">
+                                                                                                                                            <button class="btn @(EffectiveGroupMatchesViewMode == "vertical" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetGroupMatchesViewModeAsync("vertical")'>Vertikal</button>
+                                                                                                                                            <button class="btn @(EffectiveGroupMatchesViewMode == "horizontal" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetGroupMatchesViewModeAsync("horizontal")' disabled="@isCompactViewport">Horizontal</button>
+                                                                                                                                        </div>
                                                                                                                                         <button class="btn btn-sm @(showFlashTable ? "btn-warning" : "btn-outline-warning")"
                                                                                                                                             @onclick="() => showFlashTable = !showFlashTable">
                                                                                                                                             ⚡ @(showFlashTable ? "Blitztabelle ausblenden" : "Blitztabelle anzeigen")
                                                                                                                                         </button>
                                                                                                                                     </div>
                                                                                                                                 </div>
+                                                                                                                                @if (isCompactViewport)
+                                                                                                                                {
+                                                                                                                                    <div class="small text-muted mb-2">Mobil ist die Matchliste immer vertikal.</div>
+                                                                                                                                }
                                                                                                                                 var groups = groupMatches.Select(m => m.GroupNumber ?? 0).Distinct().OrderBy(g => g).ToList();
                                                                                                                                 @foreach (var groupNum in groups)
                                                                                                                                 {
@@ -2239,11 +2282,12 @@
                                                                                                                                     @if (showGroupMatches)
                                                                                                                                     {
                                                                                                                                         var groupListCardSettings = GetMatchCardSettings("groups");
-                                                                                                                                        <div class="d-flex flex-column gap-2 mb-2">
+                                                                                                                                            <div class="@(EffectiveGroupMatchesViewMode == "horizontal" ? "groups-match-horizontal mb-2" : "d-flex flex-column gap-2 mb-2")">
                                                                                                                                             @foreach (var match in groupMatches.Where(m => m.GroupNumber == groupNum).OrderBy(m =>
                                                                                                                                                                 m.Round).ThenBy(m => m.MatchNumber))
                                                                                                                                             {
-                                                                                                                                                <MatchCard Match="@match"
+                                                                                                                                                    <div class="@(EffectiveGroupMatchesViewMode == "horizontal" ? "groups-match-horizontal-item" : string.Empty)">
+                                                                                                                                                        <MatchCard Match="@match"
                                                                                                                                                            ViewSettings="@groupListCardSettings"
                                                                                                                                                            Layout="@groupListCardSettings.Layout"
                                                                                                                                                            Label="@MatchLabel(match)"
@@ -2274,6 +2318,7 @@
                                                                                                                                                            ForceDetailsExpanded="@forcedMatchDetailsExpanded"
                                                                                                                                                            EnableRealtimeConsumer="@(match.StartedUtc is not null && match.FinishedUtc is null)"
                                                                                                                                                            OnClick="() => OpenMatchDetail(match)" />
+                                                                                                                                                    </div>
                                                                                                                                                 }
                                                                                                                                         </div>
                                                                                                                                         }
@@ -2426,8 +2471,9 @@
                                                                                                                                                         @if (matches.Any() && !selectedTournament.IsLocked && IsCurrentUserManager &&
                                                                                                                                                                             !string.IsNullOrEmpty(selectedTournament.StartTime))
                                                                                                                                                         {
-                                                                                                                                                            <button class="btn btn-primary btn-sm" @onclick="GenerateScheduleAsync" disabled="@isWorking">⏰
-                                                                                                                                                                Spielplan generieren</button>
+                                                                                                                                                            <span class="@(IsCurrentUserManager && !selectedTournament.IsLocked ? "" : "btn-reason-wrap")" title="@(IsCurrentUserManager ? (selectedTournament.IsLocked ? "Turnier ist gesperrt." : "") : "Nur Spielleiter können den Spielplan generieren.")">
+                                                                                                                                                                <button class="btn btn-primary btn-sm" @onclick="GenerateScheduleAsync" disabled="@isWorking">⏰ Spielplan generieren</button>
+                                                                                                                                                            </span>
                                                                                                                                                         }
                                                                                                                                                     </div>
                                                                                                                                                     </div>
@@ -2477,13 +2523,13 @@
                                                                                                                                                                         @onclick='() => OpenMatchCardScopeEditor("tournaments::schedule-boards-upcoming")'
                                                                                                                                                                         @onclick:stopPropagation>⚙</button>
                                                                                                                                                             </div>
-                                                                                                                                                            <div class="row g-2 mb-3">
+                                                                                                                                                            <div class="row g-2 mb-3 schedule-board-strip">
                                                                                                                                                                 @foreach (var board in boards)
                                                                                                                                                                 {
                                                                                                                                                                     var queue = BoardQueues.GetValueOrDefault(board.Id) ?? [];
                                                                                                                                                                     var boardCount = boards.Count;
                                                                                                                                                                     var colClass = boardCount == 1 ? "col-md-12 col-lg-12" : boardCount == 2 ? "col-md-6 col-lg-6" : "col-md-4 col-lg-3";
-                                                                                                                                                                    <div class="@(colClass)">
+                                                                                                                                                                    <div class="@(colClass) schedule-board-item">
                                                                                                                                                                         <div class="card h-100">
                                                                                                                                                                             <div class="@BuildScheduleBoardHeaderCss(board.Id)"
                                                                                                                                                                                  draggable="true"
@@ -2682,6 +2728,15 @@
                                                                                                                                                     </div>
                                                                                                                                                 }
                                                                                                                                             </div>
+
+@if (selectedTournament is not null)
+{
+    <div class="tournament-tab-footer-nav d-lg-none">
+        <button class="btn btn-outline-secondary btn-sm" @onclick="GoToPreviousTabAsync" disabled="@(isWorking || !CanGoToPreviousTab)">← @PreviousTabDisplayName</button>
+        <span class="small text-muted px-2">@ActiveTabDisplayName</span>
+        <button class="btn btn-primary btn-sm" @onclick="GoToNextTabAsync" disabled="@(isWorking || !CanGoToNextTab)">@NextTabDisplayName →</button>
+    </div>
+}
 
 @* ─── Board Detail Modal ─── *@
 @if (detailBoard is not null)
@@ -3231,6 +3286,84 @@
                         OnClosed="OnMatchCardScopeModalClosedAsync" />
 
 <style>
+    details > summary {
+        list-style: none;
+        position: relative;
+        padding-left: 1.25rem;
+    }
+
+    details > summary::-webkit-details-marker {
+        display: none;
+    }
+
+    details > summary::before {
+        content: "▸";
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        transition: transform 0.18s ease;
+        opacity: 0.85;
+    }
+
+    details[open] > summary::before {
+        transform: translateY(-50%) rotate(90deg);
+    }
+
+    .team-name-editable-wrap .team-name-actions {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.16s ease;
+    }
+
+    .team-name-editable-wrap:hover .team-name-actions,
+    .team-name-editable-wrap:focus-within .team-name-actions {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    /* Disabled-button tooltip wrapper: outer span intercepts hover for native title tooltip */
+    .btn-reason-wrap {
+        display: inline-block;
+        cursor: not-allowed;
+    }
+    .btn-reason-wrap > button:disabled,
+    .btn-reason-wrap > select:disabled {
+        pointer-events: none;
+    }
+
+    .tournament-tab-footer-nav {
+        position: sticky;
+        bottom: 0;
+        z-index: 1040;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.6rem 0.75rem;
+        margin-top: 0.5rem;
+        border-top: 1px solid rgba(0, 0, 0, 0.1);
+        background: rgba(255, 255, 255, 0.97);
+        backdrop-filter: blur(3px);
+    }
+
+    .tournament-tab-footer-nav > .btn {
+        max-width: 42%;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .dropzone .badge,
+    .ko-draw-slot .badge,
+    .draw-card .badge {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        vertical-align: middle;
+    }
+
     .ko-draw-slot {
         min-height: 44px;
         border: 1px dashed rgba(255, 255, 255, .25);
@@ -3285,5 +3418,33 @@
         border-style: solid !important;
         border-width: 2px !important;
         transition: border-color 286ms ease;
+    }
+
+    .groups-match-horizontal {
+        display: flex;
+        gap: 0.5rem;
+        overflow-x: auto;
+        padding-bottom: 0.25rem;
+        scroll-snap-type: x proximity;
+    }
+
+    .groups-match-horizontal-item {
+        flex: 0 0 min(420px, 88vw);
+        scroll-snap-align: start;
+    }
+
+    @@media (max-width: 991.98px) {
+        .schedule-board-strip {
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            scroll-snap-type: x proximity;
+            padding-bottom: 0.25rem;
+        }
+
+        .schedule-board-item {
+            flex: 0 0 88vw;
+            max-width: 88vw;
+            scroll-snap-align: start;
+        }
     }
 </style>

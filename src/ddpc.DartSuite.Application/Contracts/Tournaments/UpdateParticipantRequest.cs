@@ -9,4 +9,5 @@ public sealed record UpdateParticipantRequest(
     bool IsManager,
     int Seed,
     int SeedPot = 0,
-    int? GroupNumber = null);
+    int? GroupNumber = null,
+    string? Type = null);
