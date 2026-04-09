@@ -878,18 +878,46 @@ function removeInfoBar() {
 function updateInfoBarStatusTag() {
     const tag = document.getElementById("dartsuite-status-tag");
     if (!tag) return;
-    const dstLabel = currentDstStatus === "connected"
-        ? "VERBUNDEN"
-        : currentDstStatus === "ready"
-            ? "BEREIT"
-            : "OFFLINE";
-    const colors = {
+
+    // DST connection status
+    const dstLabel = currentDstStatus === "connected" ? "VERBUNDEN"
+        : currentDstStatus === "ready" ? "BEREIT"
+        : "OFFLINE";
+    const dstColors = {
         connected: "#2e7d32",
         ready: "#ff9800",
         offline: "#c62828"
     };
-    tag.textContent = dstLabel;
-    tag.style.background = colors[currentDstStatus] || "#333";
+
+    // Match status overlay (shown when there is an active match context)
+    const matchLabels = {
+        scheduled:      "GEPLANT",
+        waitForPlayer:  "WARTEN",
+        waitForMatch:   "WARTEN",
+        playing:        "AKTIV",
+        listening:      "LISTENER",
+        ended:          "BEENDET"
+    };
+    const matchColors = {
+        scheduled:      "#1565c0",
+        waitForPlayer:  "#7b1fa2",
+        waitForMatch:   "#7b1fa2",
+        playing:        "#e65100",
+        listening:      "#00695c",
+        ended:          "#37474f"
+    };
+
+    const matchLabel = matchLabels[currentMatchStatus];
+    if (matchLabel) {
+        // Show combined tag: e.g. "VERBUNDEN · WARTEN"
+        tag.textContent = `${dstLabel} · ${matchLabel}`;
+        tag.style.background = matchColors[currentMatchStatus];
+        tag.title = `DST: ${dstLabel} | Match: ${matchLabel}`;
+    } else {
+        tag.textContent = dstLabel;
+        tag.style.background = dstColors[currentDstStatus] || "#333";
+        tag.title = `DST: ${dstLabel}`;
+    }
     tag.style.color = "#fff";
 }
 
