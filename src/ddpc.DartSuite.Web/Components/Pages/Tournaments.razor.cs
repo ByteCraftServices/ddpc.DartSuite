@@ -626,6 +626,14 @@ public partial class Tournaments : IAsyncDisposable
     /// <summary>Ideal group size for even distribution.</summary>
     private int IdealGroupSize => editGroupCount > 0 ? (int)Math.Ceiling((double)EffectiveDrawParticipants.Count / editGroupCount) : EffectiveDrawParticipants.Count;
 
+    /// <summary>Responsive columns for group dropzones: 2 groups stay 2-column on md+, narrow screens collapse to 1.</summary>
+    private string GroupDropzoneColumnCss => editGroupCount switch
+    {
+        <= 1 => "col-12",
+        2 => "col-12 col-md-6",
+        _ => "col-12 col-md-6 col-xl-4"
+    };
+
     private bool IsTeamplayActive => selectedTournament?.TeamplayEnabled == true;
 
     private bool IsTeamMember(ParticipantDto participant)

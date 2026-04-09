@@ -1972,14 +1972,14 @@
                                                                                                                                                 <div class="card-body p-2">
                                                                                                                                                     @foreach (var p in pot.OrderBy(p => p.Seed > 0 ? p.Seed : int.MaxValue).ThenBy(p => p.DisplayName))
                                                                                                                                                     {
-                                                                                                                                                          <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(p.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")"
+                                                                                                                                                                                                                                                                                                                    <div class="badge bg-dark p-2 me-1 mb-1 user-select-none draw-participant-badge @DrawParticipantAnimationCss(p.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")"
                                                                                                                                                              @ondragstart="() => draggedParticipantId = p.Id" style="cursor:grab; font-size:.85em">
                                                                                                                                                             @if (editSeedingEnabled && p.Seed > 0 && p.Seed <= editSeedTopCount)
                                                                                                                                                             {
                                                                                                                                                                 <span class="badge text-bg-warning me-1">#@p.Seed</span>
                                                                                                                                                             }
                                                                                                                                                             <span class="badge @PotBadgeCss(p.SeedPot) me-1">Topf @p.SeedPot</span>
-                                                                                                                                                            @p.DisplayName.ToUpperInvariant()
+                                                                                                                                                                                                                                                                                                                        <span class="draw-participant-name">@p.DisplayName.ToUpperInvariant()</span>
                                                                                                                                                         </div>
                                                                                                                                                     }
                                                                                                                                                 </div>
@@ -2002,13 +2002,13 @@
                                                                                                                                     <div class="card-body p-2" style="max-height:500px; overflow-y:auto">
                                                                                                                                         @foreach (var p in unassigned.OrderBy(p => p.Seed > 0 ? p.Seed : int.MaxValue).ThenBy(p => p.DisplayName))
                                                                                                                                         {
-                                                                                                                                            <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(p.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")"
+                                                                                                                                            <div class="badge bg-dark p-2 me-1 mb-1 user-select-none draw-participant-badge @DrawParticipantAnimationCss(p.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")"
                                                                                                                                                  @ondragstart="() => draggedParticipantId = p.Id" style="cursor:grab; font-size:.85em">
                                                                                                                                                 @if (editSeedingEnabled && p.Seed > 0 && p.Seed <= editSeedTopCount)
                                                                                                                                                 {
                                                                                                                                                     <span class="badge text-bg-warning me-1">#@p.Seed</span>
                                                                                                                                                 }
-                                                                                                                                                @p.DisplayName.ToUpperInvariant()
+                                                                                                                                                <span class="draw-participant-name">@p.DisplayName.ToUpperInvariant()</span>
                                                                                                                                             </div>
                                                                                                                                         }
                                                                                                                                     </div>
@@ -2026,8 +2026,8 @@
                                                                                                                                 var groupParts = GroupParticipants(groupNum);
                                                                                                                                 var isDropTarget = dropTargetGroupNumber == groupNum;
                                                                                                                                 var highlightCss = GroupDropHighlightCss(groupNum);
-                                                                                                                                <div class="col-md-6 col-lg-4">
-                                                                                                                                                                                  <div class="card @(isDropTarget ? highlightCss : "") @DrawGroupAnimationCss(groupNum)"
+                                                                                                                                <div class="@GroupDropzoneColumnCss">
+                                                                                                                                                                                  <div class="card draw-group-dropzone @(isDropTarget ? highlightCss : "") @DrawGroupAnimationCss(groupNum)"
                                                                                                                                          @ondragover:preventDefault
                                                                                                                                                                                       @ondragover="() => { if (CanEditTournamentStructure) dropTargetGroupNumber = groupNum; }"
                                                                                                                                                                                       @ondragleave="() => { if (CanEditTournamentStructure && dropTargetGroupNumber == groupNum) dropTargetGroupNumber = null; }"
@@ -2039,7 +2039,7 @@
                                                                                                                                         <div class="card-body p-2" style="min-height:60px">
                                                                                                                                             @foreach (var p in groupParts)
                                                                                                                                             {
-                                                                                                                                                    <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(p.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")"
+                                                                                                                                                    <div class="badge bg-dark p-2 me-1 mb-1 user-select-none draw-participant-badge @DrawParticipantAnimationCss(p.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")"
                                                                                                                                                      @ondragstart="() => draggedParticipantId = p.Id" style="cursor:grab; font-size:.85em">
                                                                                                                                                     @if (editSeedingEnabled && p.Seed > 0 && p.Seed <= editSeedTopCount)
                                                                                                                                                     {
@@ -2049,8 +2049,8 @@
                                                                                                                                                         {
                                                                                                                                                           <span class="badge @PotBadgeCss(p.SeedPot) me-1">Topf @p.SeedPot</span>
                                                                                                                                                         }
-                                                                                                                                                    @p.DisplayName.ToUpperInvariant()
-                                                                                                                                                        <button class="btn btn-sm p-0 ms-1 text-white-50" style="font-size:.7em; line-height:1"
+                                                                                                                                                    <span class="draw-participant-name">@p.DisplayName.ToUpperInvariant()</span>
+                                                                                                                                                        <button class="btn btn-sm p-0 ms-1 text-white-50 draw-participant-remove-btn" style="font-size:.7em; line-height:1"
                                                                                                                                                             @onclick="() => UnassignParticipantFromGroupAsync(p.Id)" @onclick:stopPropagation
                                                                                                                                                             disabled="@(isWorking || !CanEditTournamentStructure)"
                                                                                                                                                             title="Aus Gruppe entfernen">✕</button>
@@ -2106,13 +2106,13 @@
                                                                                                                             <div class="card-body p-2" style="max-height:500px; overflow-y:auto">
                                                                                                                                 @foreach (var p in KnockoutUnassignedParticipants)
                                                                                                                                 {
-                                                                                                                                      <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(p.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")"
+                                                                                                                                                                                                                                                                            <div class="badge bg-dark p-2 me-1 mb-1 user-select-none draw-participant-badge @DrawParticipantAnimationCss(p.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")"
                                                                                                                                          @ondragstart="() => StartKnockoutDrag(p.Id)" style="cursor:grab; font-size:.85em">
                                                                                                                                         @if (editSeedingEnabled && p.Seed > 0 && p.Seed <= editSeedTopCount)
                                                                                                                                         {
                                                                                                                                             <span class="badge text-bg-warning me-1">#@p.Seed</span>
                                                                                                                                         }
-                                                                                                                                        @p.DisplayName.ToUpperInvariant()
+                                                                                                                                                                                                                                                                                <span class="draw-participant-name">@p.DisplayName.ToUpperInvariant()</span>
                                                                                                                                     </div>
                                                                                                                                 }
                                                                                                                             </div>
@@ -2137,9 +2137,9 @@
                                                                                                                                                  @ondrop="() => AssignDraggedToKnockoutCard(card.MatchNumber, true)">
                                                                                                                                                 @if (home is not null)
                                                                                                                                                 {
-                                                                                                                                                    <span class="badge bg-dark @DrawParticipantAnimationCss(home.Id)">
-                                                                                                                                                        @ParticipantDisplayName(home)
-                                                                                                                                                        <button class="btn btn-sm p-0 ms-1 text-white-50" @onclick="() => ClearKnockoutCardSlot(card.MatchNumber, true)" @onclick:stopPropagation disabled="@(isWorking || !CanEditTournamentStructure)">✕</button>
+                                                                                                                                                    <span class="badge bg-dark draw-participant-badge @DrawParticipantAnimationCss(home.Id)">
+                                                                                                                                                        <span class="draw-participant-name">@ParticipantDisplayName(home)</span>
+                                                                                                                                                        <button class="btn btn-sm p-0 ms-1 text-white-50 draw-participant-remove-btn" @onclick="() => ClearKnockoutCardSlot(card.MatchNumber, true)" @onclick:stopPropagation disabled="@(isWorking || !CanEditTournamentStructure)">✕</button>
                                                                                                                                                     </span>
                                                                                                                                                 }
                                                                                                                                                 else
@@ -2153,9 +2153,9 @@
                                                                                                                                                  @ondrop="() => AssignDraggedToKnockoutCard(card.MatchNumber, false)">
                                                                                                                                                 @if (away is not null)
                                                                                                                                                 {
-                                                                                                                                                    <span class="badge bg-dark @DrawParticipantAnimationCss(away.Id)">
-                                                                                                                                                        @ParticipantDisplayName(away)
-                                                                                                                                                        <button class="btn btn-sm p-0 ms-1 text-white-50" @onclick="() => ClearKnockoutCardSlot(card.MatchNumber, false)" @onclick:stopPropagation disabled="@(isWorking || !CanEditTournamentStructure)">✕</button>
+                                                                                                                                                    <span class="badge bg-dark draw-participant-badge @DrawParticipantAnimationCss(away.Id)">
+                                                                                                                                                        <span class="draw-participant-name">@ParticipantDisplayName(away)</span>
+                                                                                                                                                        <button class="btn btn-sm p-0 ms-1 text-white-50 draw-participant-remove-btn" @onclick="() => ClearKnockoutCardSlot(card.MatchNumber, false)" @onclick:stopPropagation disabled="@(isWorking || !CanEditTournamentStructure)">✕</button>
                                                                                                                                                     </span>
                                                                                                                                                 }
                                                                                                                                                 else
@@ -3272,6 +3272,36 @@
         text-overflow: ellipsis;
         white-space: nowrap;
         vertical-align: middle;
+    }
+
+    .draw-group-dropzone {
+        min-height: 100%;
+    }
+
+    .draw-group-dropzone .card-body {
+        min-height: 72px;
+    }
+
+    .draw-participant-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        max-width: 100%;
+    }
+
+    .draw-participant-name {
+        display: inline-block;
+        max-width: min(24ch, 100%);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        vertical-align: bottom;
+    }
+
+    .draw-participant-remove-btn {
+        position: relative;
+        z-index: 2;
+        flex: 0 0 auto;
     }
 
     .ko-draw-slot {
