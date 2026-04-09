@@ -261,6 +261,26 @@
         </div>
     }
 
+@if (showInactiveActionInfoModal)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="CloseInactiveActionInfo">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation>
+            <div class="modal-content">
+                <div class="modal-header bg-info-subtle">
+                    <h5 class="modal-title">@inactiveActionInfoTitle</h5>
+                    <button type="button" class="btn-close" @onclick="CloseInactiveActionInfo"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-0">@inactiveActionInfoMessage</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" @onclick="CloseInactiveActionInfo">Verstanden</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
     @* ─── Match Detail / Result Edit Modal ─── *@
     @if (detailMatch is not null)
     {
@@ -1928,9 +1948,14 @@
                                                                                                                     </div>
                                                                                                                     @if (editGroupDrawMode is "Random" or "SeededPots")
                                                                                                                     {
-                                                                                                                        <span class="@(CanEditTournamentStructure ? "" : "btn-reason-wrap")" title="@CannotEditStructureReason">
-                                                                                                                            <button class="btn btn-primary btn-sm" @onclick="AutoDrawAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">⚡ Automatisch auslosen</button>
-                                                                                                                        </span>
+                                                                                                                        @if (CanEditTournamentStructure)
+                                                                                                                        {
+                                                                                                                            <button class="btn btn-primary btn-sm" title="Startet eine automatische Verteilung auf Gruppen." @onclick="AutoDrawAsync" disabled="@(isWorking || isDrawAnimating)">⚡ Automatisch auslosen</button>
+                                                                                                                        }
+                                                                                                                        else
+                                                                                                                        {
+                                                                                                                            <button type="button" class="btn btn-primary btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Auslosung gesperrt")'>⚡ Automatisch auslosen</button>
+                                                                                                                        }
                                                                                                                     }
                                                                                                                     @if (editGroupDrawMode == "SeededPots" && editSeedingEnabled)
                                                                                                                     {
@@ -2095,7 +2120,14 @@
                                                                                                                     </span>
                                                                                                                     @if (KnockoutAssignedParticipants.Any())
                                                                                                                     {
-                                                                                                                        <button class="btn btn-outline-warning btn-sm" @onclick="ResetKnockoutDrawCards" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">↩ Auslosung zurücksetzen</button>
+                                                                                                                        @if (CanEditTournamentStructure)
+                                                                                                                        {
+                                                                                                                            <button class="btn btn-outline-warning btn-sm" title="Setzt die K.O.-Auslosung zurück." @onclick="ResetKnockoutDrawCards" disabled="@(isWorking || isDrawAnimating)">↩ Auslosung zurücksetzen</button>
+                                                                                                                        }
+                                                                                                                        else
+                                                                                                                        {
+                                                                                                                            <button type="button" class="btn btn-outline-warning btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Zurücksetzen gesperrt")'>↩ Auslosung zurücksetzen</button>
+                                                                                                                        }
                                                                                                                     }
                                                                                                                 </div>
                                                                                                                 @if (isDrawAnimating)
@@ -2190,26 +2222,59 @@
                                                                                                                 <div class="d-flex flex-wrap align-items-center gap-2">
                                                                                                                     @if (selectedTournament.Mode == "GroupAndKnockout" && editGroupDrawMode is "Random" or "SeededPots")
                                                                                                                     {
-                                                                                                                        <span class="@(CanEditTournamentStructure ? "" : "btn-reason-wrap")" title="@CannotEditStructureReason">
-                                                                                                                            <button class="btn btn-primary btn-sm" @onclick="AutoDrawAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">⚡ Automatisch auslosen</button>
-                                                                                                                        </span>
+                                                                                                                        @if (CanEditTournamentStructure)
+                                                                                                                        {
+                                                                                                                            <button class="btn btn-primary btn-sm" title="Startet eine automatische Verteilung auf Gruppen." @onclick="AutoDrawAsync" disabled="@(isWorking || isDrawAnimating)">⚡ Automatisch auslosen</button>
+                                                                                                                        }
+                                                                                                                        else
+                                                                                                                        {
+                                                                                                                            <button type="button" class="btn btn-primary btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Auslosung gesperrt")'>⚡ Automatisch auslosen</button>
+                                                                                                                        }
                                                                                                                     }
                                                                                                                     @if (selectedTournament.Mode == "GroupAndKnockout" && HasDrawAssignments())
                                                                                                                     {
-                                                                                                                        <button class="btn btn-outline-warning btn-sm" @onclick="ResetDrawAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">↩ Auslosung zurücksetzen</button>
+                                                                                                                        @if (CanEditTournamentStructure)
+                                                                                                                        {
+                                                                                                                            <button class="btn btn-outline-warning btn-sm" title="Setzt alle Gruppenzuordnungen zurück." @onclick="ResetDrawAsync" disabled="@(isWorking || isDrawAnimating)">↩ Auslosung zurücksetzen</button>
+                                                                                                                        }
+                                                                                                                        else
+                                                                                                                        {
+                                                                                                                            <button type="button" class="btn btn-outline-warning btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Zurücksetzen gesperrt")'>↩ Auslosung zurücksetzen</button>
+                                                                                                                        }
                                                                                                                     }
                                                                                                                     @if (selectedTournament.Mode == "Knockout" && KnockoutAssignedParticipants.Any())
                                                                                                                     {
-                                                                                                                        <button class="btn btn-outline-warning btn-sm" @onclick="ResetKnockoutDrawCards" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">↩ Auslosung zurücksetzen</button>
+                                                                                                                        @if (CanEditTournamentStructure)
+                                                                                                                        {
+                                                                                                                            <button class="btn btn-outline-warning btn-sm" title="Setzt die K.O.-Auslosung zurück." @onclick="ResetKnockoutDrawCards" disabled="@(isWorking || isDrawAnimating)">↩ Auslosung zurücksetzen</button>
+                                                                                                                        }
+                                                                                                                        else
+                                                                                                                        {
+                                                                                                                            <button type="button" class="btn btn-outline-warning btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Zurücksetzen gesperrt")'>↩ Auslosung zurücksetzen</button>
+                                                                                                                        }
                                                                                                                     }
 
                                                                                                                     @if (CanShowDrawCreatePlanButton)
                                                                                                                     {
-                                                                                                                        <button class="btn btn-success btn-sm" @onclick="CreateTournamentPlanAsync" disabled="@(isWorking || !CanProceedWithTeamDraw || !CanEditTournamentStructure)">✓ Turnierplan erstellen</button>
+                                                                                                                        @if (CanEditTournamentStructure && CanProceedWithTeamDraw)
+                                                                                                                        {
+                                                                                                                            <button class="btn btn-success btn-sm" title="Erstellt den Turnierplan aus der aktuellen Auslosung." @onclick="CreateTournamentPlanAsync" disabled="@isWorking">✓ Turnierplan erstellen</button>
+                                                                                                                        }
+                                                                                                                        else
+                                                                                                                        {
+                                                                                                                            <button type="button" class="btn btn-success btn-sm btn-inactive-action" title="@DrawCreatePlanDisabledReason" @onclick='() => ShowInactiveActionInfo(DrawCreatePlanDisabledReason, "Turnierplan erstellen nicht möglich")'>✓ Turnierplan erstellen</button>
+                                                                                                                        }
                                                                                                                     }
                                                                                                                     else if (CanShowDrawDeletePlanButton)
                                                                                                                     {
-                                                                                                                        <button class="btn btn-outline-danger btn-sm" @onclick="DeleteTournamentPlanAsync" disabled="@(isWorking || !CanEditTournamentStructure)">🗑 Turnierplan löschen</button>
+                                                                                                                        @if (CanEditTournamentStructure)
+                                                                                                                        {
+                                                                                                                            <button class="btn btn-outline-danger btn-sm" title="Löscht den bestehenden Turnierplan und zugehörige Matches." @onclick="DeleteTournamentPlanAsync" disabled="@isWorking">🗑 Turnierplan löschen</button>
+                                                                                                                        }
+                                                                                                                        else
+                                                                                                                        {
+                                                                                                                            <button type="button" class="btn btn-outline-danger btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Turnierplan löschen nicht möglich")'>🗑 Turnierplan löschen</button>
+                                                                                                                        }
                                                                                                                     }
                                                                                                                 </div>
 
@@ -3247,6 +3312,11 @@
     .btn-reason-wrap > button:disabled,
     .btn-reason-wrap > select:disabled {
         pointer-events: none;
+    }
+
+    .btn-inactive-action {
+        opacity: 0.68;
+        cursor: not-allowed;
     }
 
     .tournament-tab-footer-nav {

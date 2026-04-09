@@ -68,6 +68,9 @@ public partial class Tournaments : IAsyncDisposable
     private bool showPageSettingsDropdown;
     private bool showPageSettingsModal;
     private bool showMatchCardScopeModal;
+    private bool showInactiveActionInfoModal;
+    private string inactiveActionInfoTitle = "Aktion derzeit nicht verfügbar";
+    private string inactiveActionInfoMessage = string.Empty;
     private string matchCardScopeModalKey = string.Empty;
     private DotNetObjectReference<Tournaments>? tournamentTabSwipeRef;
     private bool hasCompletedInitialLoad;
@@ -570,6 +573,25 @@ public partial class Tournaments : IAsyncDisposable
         : selectedTournament?.Status is not ("Erstellt" or "Geplant") ? "Struktur ist nur änderbar wenn das Turnier noch nicht gestartet wurde."
         : HasProgressedMatches ? "Es gibt bereits gespielte Matches – Struktur kann nicht mehr geändert werden."
         : "Aktion derzeit nicht verfügbar.";
+
+    private string DrawCreatePlanDisabledReason =>
+        !CanEditTournamentStructure ? CannotEditStructureReason
+        : !CanProceedWithTeamDraw ? "Turnierplan kann erst erstellt werden, wenn die Teamzuordnung vollständig und gespeichert ist."
+        : "Aktion derzeit nicht verfügbar.";
+
+    private void ShowInactiveActionInfo(string reason, string? title = null)
+    {
+        inactiveActionInfoTitle = string.IsNullOrWhiteSpace(title) ? "Aktion derzeit nicht verfügbar" : title;
+        inactiveActionInfoMessage = string.IsNullOrWhiteSpace(reason)
+            ? "Diese Aktion kann aktuell nicht ausgeführt werden."
+            : reason;
+        showInactiveActionInfoModal = true;
+    }
+
+    private void CloseInactiveActionInfo()
+    {
+        showInactiveActionInfoModal = false;
+    }
 
     /// <summary>Can edit participant-related settings (teamplay, seeding, registration): Status ≤ Geplant AND no plan.</summary>
     private bool CanEditParticipantSettings =>
