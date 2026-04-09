@@ -26,8 +26,12 @@
 			"3068..3072": true,
 			"2483..2495": true,
 			"%{": true,
-			"2498..2512": true
+			"2498..2512": true,
+			"git rev-list": true,
+			"dotnet watch": true,
+			"Get-Process": true
 		},
-		"chat.agent.maxRequests": 100
+		"chat.agent.maxRequests": 100,
+		"workbench.browser.enableChatTools": true
 	}
 }
