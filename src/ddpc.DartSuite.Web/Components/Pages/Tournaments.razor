@@ -775,7 +775,22 @@
 
                             @* ─── Tournament List + Detail ─── *@
                             <div class="row g-3">
-                                <div class="@(selectedTournament is not null ? (tournamentListCollapsed ? "d-none" : "col-lg-3") : "col-12")">
+                                @if (selectedTournament is not null && tournamentListCollapsed)
+                                {
+                                    <div class="d-none d-lg-flex col-lg-1 tournament-list-rail flex-column gap-2">
+                                        @foreach (var t in TournamentStripItems)
+                                        {
+                                            <button type="button"
+                                                    class="btn btn-sm tournament-list-rail-item @(selectedTournament?.Id == t.Id ? "active" : string.Empty)"
+                                                    title="@t.Name"
+                                                    @onclick="() => SelectTournamentAsync(t)">
+                                                <span class="tournament-list-rail-label">@t.Name</span>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+
+                                <div class="@(selectedTournament is not null ? (tournamentListCollapsed ? "d-none d-lg-block col-lg-3" : "col-12 col-lg-3") : "col-12")">
                                     @if (ActiveTournaments.Any())
                                     {
                                         <h6 class="mb-1 fw-semibold text-success">▶ Aktiv</h6>
@@ -854,11 +869,31 @@
                                 @* ─── Detail Panel ─── *@
                                 @if (selectedTournament is not null)
                                 {
-                                    <div class="@(tournamentListCollapsed ? "col-12" : "col-lg-9")">
+                                    <div class="@(tournamentListCollapsed ? "col-12 col-lg-11" : "col-12 col-lg-9")">
+                                        @if (tournamentListCollapsed)
+                                        {
+                                            <div class="d-flex d-lg-none align-items-center gap-1 mb-2 tournament-mobile-strip-wrap">
+                                                <button type="button" class="btn btn-outline-secondary btn-sm" title="Vorheriges Turnier" @onclick="SelectPreviousTournamentAsync" disabled="@(!CanSelectPreviousTournament)">←</button>
+                                                <div id="tournament-list-strip" class="tournament-mobile-strip flex-grow-1">
+                                                    @foreach (var t in TournamentStripItems)
+                                                    {
+                                                        <button type="button"
+                                                                class="btn btn-sm tournament-mobile-strip-item @(selectedTournament?.Id == t.Id ? "active" : string.Empty)"
+                                                                title="@t.Name"
+                                                                @onclick="() => SelectTournamentAsync(t)">
+                                                            @t.Name
+                                                        </button>
+                                                    }
+                                                </div>
+                                                <button type="button" class="btn btn-outline-secondary btn-sm" title="Nächstes Turnier" @onclick="SelectNextTournamentAsync" disabled="@(!CanSelectNextTournament)">→</button>
+                                                <button type="button" class="btn btn-outline-secondary btn-sm" title="Turnierliste ausklappen" @onclick="() => SetTournamentListCollapsedAsync(false)">☰</button>
+                                            </div>
+                                        }
+
                                         <div class="card shadow-sm">
                                             <div class="card-header d-flex justify-content-between align-items-center gap-1">
                                                 <div>
-                                                    <span class="fw-semibold">@selectedTournament.Name</span>
+                                                    <span class="fw-semibold">@selectedTournament!.Name</span>
                                                     @if (!string.IsNullOrEmpty(selectedTournament.JoinCode))
                                                     {
                                                         <span class="badge text-bg-primary ms-2 font-monospace">@selectedTournament.JoinCode</span>
@@ -894,7 +929,12 @@
                                                     }
                                                     <button class="btn btn-sm btn-outline-secondary d-none d-lg-inline-flex align-items-center"
                                                             title="@(tournamentListCollapsed ? "Turnierliste einblenden" : "Turnierliste ausblenden")"
-                                                            @onclick="() => tournamentListCollapsed = !tournamentListCollapsed">
+                                                            @onclick="ToggleTournamentListCollapsedAsync">
+                                                        <i class="bi @(tournamentListCollapsed ? "bi-layout-sidebar" : "bi-layout-sidebar-inset")"></i>
+                                                    </button>
+                                                    <button class="btn btn-sm btn-outline-secondary d-inline-flex d-lg-none align-items-center"
+                                                            title="@(tournamentListCollapsed ? "Turnierliste einblenden" : "Turnierliste ausblenden")"
+                                                            @onclick="ToggleTournamentListCollapsedAsync">
                                                         <i class="bi @(tournamentListCollapsed ? "bi-layout-sidebar" : "bi-layout-sidebar-inset")"></i>
                                                     </button>
                                                 </div>
@@ -3317,6 +3357,80 @@
     .btn-inactive-action {
         opacity: 0.68;
         cursor: not-allowed;
+    }
+
+    .tournament-list-rail {
+        position: sticky;
+        top: 0.75rem;
+        align-self: flex-start;
+        max-height: calc(100vh - 2rem);
+        overflow-y: auto;
+        padding-right: 0.25rem;
+    }
+
+    .tournament-list-rail-item {
+        width: 2.8rem;
+        height: 9.5rem;
+        border: 1px solid rgba(13, 110, 253, 0.25);
+        background: rgba(248, 249, 250, 0.95);
+        color: #0d6efd;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+    }
+
+    .tournament-list-rail-item.active {
+        background: #0d6efd;
+        color: #fff;
+        border-color: #0d6efd;
+    }
+
+    .tournament-list-rail-label {
+        display: inline-block;
+        transform: rotate(-90deg);
+        white-space: nowrap;
+        max-width: 8.5rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 0.76rem;
+        line-height: 1;
+    }
+
+    .tournament-mobile-strip-wrap {
+        background: rgba(248, 249, 250, 0.92);
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 0.5rem;
+        padding: 0.3rem;
+    }
+
+    .tournament-mobile-strip {
+        display: flex;
+        gap: 0.35rem;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scroll-snap-type: x proximity;
+        -webkit-overflow-scrolling: touch;
+        white-space: nowrap;
+        padding-bottom: 0.1rem;
+    }
+
+    .tournament-mobile-strip-item {
+        flex: 0 0 auto;
+        border: 1px solid rgba(13, 110, 253, 0.3);
+        background: #fff;
+        color: #0d6efd;
+        max-width: 12rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        scroll-snap-align: start;
+    }
+
+    .tournament-mobile-strip-item.active {
+        background: #0d6efd;
+        border-color: #0d6efd;
+        color: #fff;
     }
 
     .tournament-tab-footer-nav {

@@ -45,6 +45,7 @@ public partial class Tournaments : IAsyncDisposable
     private bool isCompactViewport;
     private bool? forcedMatchDetailsExpanded;
     private bool tournamentListCollapsed;
+    private const string TournamentListCollapsedStorageKey = "ds-tournaments-list-collapsed";
     private bool _detailsExpandedLoadedFromStorage;
     private bool isSavingMatchCardPreferences;
     private string? matchCardPreferenceError;
@@ -272,6 +273,38 @@ public partial class Tournaments : IAsyncDisposable
 
     private IEnumerable<TournamentDto> PastTournaments =>
         tournaments.Where(t => t.EndDate < DateOnly.FromDateTime(DateTime.Today));
+
+    private IReadOnlyList<TournamentDto> TournamentStripItems =>
+        [.. ActiveTournaments, .. UpcomingTournaments, .. PastTournaments];
+
+    private int CurrentTournamentStripIndex
+    {
+        get
+        {
+            if (selectedTournament is null)
+                return -1;
+
+            var items = TournamentStripItems;
+            for (var i = 0; i < items.Count; i++)
+            {
+                if (items[i].Id == selectedTournament.Id)
+                    return i;
+            }
+
+            return -1;
+        }
+    }
+
+    private bool CanSelectPreviousTournament => CurrentTournamentStripIndex > 0;
+
+    private bool CanSelectNextTournament
+    {
+        get
+        {
+            var index = CurrentTournamentStripIndex;
+            return index >= 0 && index < TournamentStripItems.Count - 1;
+        }
+    }
 
     // ─── Autodarts Session ───
     private bool isAutodartsConnected;
@@ -935,6 +968,17 @@ public partial class Tournaments : IAsyncDisposable
             }
             catch { /* best-effort */ }
 
+            try
+            {
+                var storedTournamentList = await JS.InvokeAsync<string?>("dartSuiteUi.localStorageGet", TournamentListCollapsedStorageKey);
+                if (!string.IsNullOrEmpty(storedTournamentList))
+                {
+                    tournamentListCollapsed = string.Equals(storedTournamentList, "true", StringComparison.OrdinalIgnoreCase);
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+            catch { /* best-effort */ }
+
             if (!hasLoadedGroupMatchesViewMode)
             {
                 hasLoadedGroupMatchesViewMode = true;
@@ -1232,6 +1276,69 @@ public partial class Tournaments : IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    [JSInvokable]
+    public Task HandleTournamentListSwipeAsync(string direction)
+    {
+        if (!isCompactViewport || !tournamentListCollapsed)
+            return Task.CompletedTask;
+
+        if (string.Equals(direction, "left", StringComparison.OrdinalIgnoreCase))
+            return SelectAdjacentTournamentAsync(1);
+
+        if (string.Equals(direction, "right", StringComparison.OrdinalIgnoreCase))
+            return SelectAdjacentTournamentAsync(-1);
+
+        return Task.CompletedTask;
+    }
+
+    private Task SelectPreviousTournamentAsync() => SelectAdjacentTournamentAsync(-1);
+
+    private Task SelectNextTournamentAsync() => SelectAdjacentTournamentAsync(1);
+
+    private async Task SelectAdjacentTournamentAsync(int delta)
+    {
+        if (delta == 0)
+            return;
+
+        var currentIndex = CurrentTournamentStripIndex;
+        if (currentIndex < 0)
+            return;
+
+        var targetIndex = currentIndex + delta;
+        var items = TournamentStripItems;
+        if (targetIndex < 0 || targetIndex >= items.Count)
+            return;
+
+        await SelectTournamentAsync(items[targetIndex]);
+    }
+
+    private async Task ToggleTournamentListCollapsedAsync()
+    {
+        tournamentListCollapsed = !tournamentListCollapsed;
+        await PersistTournamentListCollapsedAsync();
+    }
+
+    private async Task SetTournamentListCollapsedAsync(bool collapsed)
+    {
+        if (tournamentListCollapsed == collapsed)
+            return;
+
+        tournamentListCollapsed = collapsed;
+        await PersistTournamentListCollapsedAsync();
+    }
+
+    private async Task PersistTournamentListCollapsedAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("dartSuiteUi.localStorageSet", TournamentListCollapsedStorageKey, tournamentListCollapsed ? "true" : "false");
+        }
+        catch
+        {
+            // best-effort persistence
+        }
+    }
+
     private async Task EnsureTabSwipeInteropAsync()
     {
         if (!isCompactViewport)
@@ -1242,6 +1349,7 @@ public partial class Tournaments : IAsyncDisposable
         try
         {
             await JS.InvokeVoidAsync("dartSuiteUi.registerHorizontalSwipe", "tournament-tab-content", tournamentTabSwipeRef, nameof(HandleTournamentTabsSwipeAsync));
+            await JS.InvokeVoidAsync("dartSuiteUi.registerHorizontalSwipe", "tournament-list-strip", tournamentTabSwipeRef, nameof(HandleTournamentListSwipeAsync));
         }
         catch
         {
@@ -1266,6 +1374,7 @@ public partial class Tournaments : IAsyncDisposable
         try
         {
             await JS.InvokeVoidAsync("dartSuiteUi.unregisterHorizontalSwipe", "tournament-tab-content");
+            await JS.InvokeVoidAsync("dartSuiteUi.unregisterHorizontalSwipe", "tournament-list-strip");
         }
         catch
         {
