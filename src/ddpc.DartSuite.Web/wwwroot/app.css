@@ -65,12 +65,12 @@ h1:focus {
 }
 
 .ui-help-summary {
-    list-style: none;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 1.15rem;
     height: 1.15rem;
+    padding: 0;
     border-radius: 50%;
     border: 1px solid #6c757d;
     font-size: 0.75rem;
@@ -81,11 +81,7 @@ h1:focus {
     user-select: none;
 }
 
-.ui-help-summary::-webkit-details-marker {
-    display: none;
-}
-
-.ui-help-details[open] .ui-help-summary {
+.ui-help-details.is-open .ui-help-summary {
     border-color: #0d6efd;
     color: #0d6efd;
     background-color: #e7f1ff;

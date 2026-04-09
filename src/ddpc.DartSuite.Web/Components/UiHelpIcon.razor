@@ -1,9 +1,21 @@
 @inject IUiHelpService UiHelp
 
-<details class="ui-help-details @CssClass">
-    <summary class="ui-help-summary" title="@Tooltip" aria-label="@AriaLabel">?</summary>
-    <div class="ui-help-content" role="note">@Content</div>
-</details>
+<div class="ui-help-details @(IsOpen ? "is-open" : string.Empty) @CssClass">
+    <button type="button"
+            class="ui-help-summary"
+            title="@Tooltip"
+            aria-label="@AriaLabel"
+            aria-expanded="@IsOpen"
+            aria-controls="@_contentId"
+            @onclick="Toggle">
+        ?
+    </button>
+
+    @if (IsOpen)
+    {
+        <div id="@_contentId" class="ui-help-content" role="note">@Content</div>
+    }
+</div>
 
 @code {
     [Parameter, EditorRequired] public string HelpKey { get; set; } = string.Empty;
@@ -11,6 +23,11 @@
     [Parameter] public string CssClass { get; set; } = string.Empty;
     [Parameter] public string AriaLabel { get; set; } = "Kontextbezogene Hilfe";
 
+    private readonly string _contentId = $"ui-help-{Guid.NewGuid():N}";
+    private bool IsOpen;
+
     private string Content => UiHelp.GetContent(HelpKey, Fallback);
     private string Tooltip => UiHelp.GetTooltip(HelpKey, Fallback);
+
+    private void Toggle() => IsOpen = !IsOpen;
 }
