@@ -73,7 +73,7 @@
             }
             @if (ResolvedShowHeaderMatchStatus)
             {
-                <span class="badge text-bg-secondary flex-shrink-0">@Match.Status</span>
+                <span class="badge @MatchStatusBadgeClass flex-shrink-0">@Match.Status</span>
             }
             @if (ShowAnyActionButtons)
             {
@@ -150,7 +150,7 @@
                         }
                         @if (ResolvedShowHeaderMatchStatus)
                         {
-                            <span class="badge text-bg-secondary">@Match.Status</span>
+                            <span class="badge @MatchStatusBadgeClass">@Match.Status</span>
                         }
                         @if (ResolvedShowHeaderLiveBadge && IsRunning)
                         {
@@ -744,6 +744,32 @@
     private string SchedulingStatusLabel => Match.SchedulingStatus is "Delayed" && Match.DelayMinutes > 0
         ? $"{Match.SchedulingStatus} (+{Match.DelayMinutes}m)"
         : Match.SchedulingStatus;
+
+    private string MatchStatusBadgeClass => MatchStatusToBadgeCss(Match.Status, Match.SchedulingStatus, Match.DelayMinutes);
+
+    private static string MatchStatusToBadgeCss(string? status, string? schedulingStatus, int delayMinutes)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return "match-status-default";
+
+        if (string.Equals(status, "Geplant", StringComparison.OrdinalIgnoreCase)
+            && (delayMinutes > 0 || string.Equals(schedulingStatus, "Delayed", StringComparison.OrdinalIgnoreCase)))
+        {
+            return "match-status-planned-delayed";
+        }
+
+        return status switch
+        {
+            "Beendet" => "match-status-completed",
+            "Aktiv" => "match-status-active",
+            "Gestartet" => "match-status-active",
+            "Warten" => "match-status-waiting",
+            "Geplant" => "match-status-planned",
+            "Erstellt" => "match-status-created",
+            "WalkOver" => "match-status-walkover",
+            _ => "match-status-default"
+        };
+    }
 
     private string CurrentRuntimeLabel
     {

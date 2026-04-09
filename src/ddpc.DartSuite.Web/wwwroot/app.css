@@ -222,6 +222,46 @@ h1:focus {
     filter: grayscale(.2);
 }
 
+.match-status-completed {
+    background-color: rgba(13, 110, 253, 0.65) !important;
+    color: #fff !important;
+}
+
+.match-status-active {
+    background-color: rgba(25, 135, 84, 0.65) !important;
+    color: #fff !important;
+}
+
+.match-status-waiting {
+    background-color: rgba(253, 126, 20, 0.65) !important;
+    color: #fff !important;
+}
+
+.match-status-planned {
+    background-color: rgba(255, 193, 7, 0.65) !important;
+    color: #212529 !important;
+}
+
+.match-status-created {
+    background-color: rgba(33, 37, 41, 0.65) !important;
+    color: #fff !important;
+}
+
+.match-status-walkover {
+    background-color: rgba(111, 66, 193, 0.65) !important;
+    color: #fff !important;
+}
+
+.match-status-planned-delayed {
+    background-color: rgba(220, 53, 69, 0.65) !important;
+    color: #fff !important;
+}
+
+.match-status-default {
+    background-color: rgba(108, 117, 125, 0.65) !important;
+    color: #fff !important;
+}
+
 @keyframes live-pulse {
     0%, 100% { box-shadow: 0 0 0 0 rgba(13, 202, 240, 0.4); }
     50%      { box-shadow: 0 0 12px 4px rgba(13, 202, 240, 0.2); }
