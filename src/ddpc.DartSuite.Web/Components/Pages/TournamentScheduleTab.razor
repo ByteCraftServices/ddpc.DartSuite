@@ -54,6 +54,48 @@
             }
         </div>
     </div>
+
+    <div class="row g-2 mb-3">
+        @foreach (var board in Boards)
+        {
+            var queue = BoardQueues.TryGetValue(board.Id, out var matchesOnBoard) ? matchesOnBoard : [];
+            <div class="col-12 col-md-6 col-xl-4">
+                <div class="card h-100">
+                    <div class="@BuildScheduleBoardHeaderCss(board.Id)"
+                         @ondragover:preventDefault
+                         @ondragover="() => HandleBoardQueueDragOverAsync(board.Id)"
+                         @ondragleave="() => HandleBoardQueueDragLeaveAsync(board.Id)"
+                         @ondrop="() => HandleBoardQueueDropAsync(board.Id)">
+                        <span class="small fw-semibold">📋 @board.Name</span>
+                        <span class="badge @BoardStatusBadge(board.Status)">@board.Status</span>
+                    </div>
+                    <div class="card-body p-2 @ScheduleBoardDropZoneCss(board.Id)"
+                         @ondragover:preventDefault
+                         @ondragover="() => HandleBoardQueueDragOverAsync(board.Id)"
+                         @ondragleave="() => HandleBoardQueueDragLeaveAsync(board.Id)"
+                         @ondrop="() => HandleBoardQueueDropAsync(board.Id)">
+                        @if (queue.Any())
+                        {
+                            @foreach (var queuedMatch in queue.Take(5))
+                            {
+                                <span class="badge text-bg-light border me-1 mb-1" style="cursor:pointer" @onclick="() => OpenMatchDetail(queuedMatch)">
+                                    @MatchLabel(queuedMatch)
+                                </span>
+                            }
+                            @if (queue.Count > 5)
+                            {
+                                <span class="small text-muted">+@(queue.Count - 5) weitere</span>
+                            }
+                        }
+                        else
+                        {
+                            <span class="small text-muted">Keine anstehenden Matches</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
 }
 
 @if (UnassignedUpcoming.Any())
@@ -192,6 +234,7 @@ else
     [Parameter] public string EditMatchTimeValue { get; set; } = string.Empty;
     [Parameter] public Guid? DropTargetMatchId { get; set; }
     [Parameter] public bool HasDraggedBoard { get; set; }
+    [Parameter] public IReadOnlyDictionary<Guid, List<MatchDto>> BoardQueues { get; set; } = new Dictionary<Guid, List<MatchDto>>();
     [Parameter] public MatchCardViewSettings TimelineCardSettings { get; set; } = new();
 
     [Parameter] public Func<bool, Task> ScheduleHideFinishedChanged { get; set; } = _ => Task.CompletedTask;
@@ -201,6 +244,8 @@ else
     [Parameter] public Func<Task> GenerateSchedule { get; set; } = () => Task.CompletedTask;
     [Parameter] public Func<MatchDto, string> MatchLabel { get; set; } = _ => string.Empty;
     [Parameter] public Func<string, string> BoardStatusBadge { get; set; } = _ => string.Empty;
+    [Parameter] public Func<Guid, string> BuildScheduleBoardHeaderCss { get; set; } = _ => string.Empty;
+    [Parameter] public Func<Guid, string> ScheduleBoardDropZoneCss { get; set; } = _ => string.Empty;
     [Parameter] public Func<MatchCardViewSettings, bool> ShowMatchCardMonitoring { get; set; } = _ => false;
     [Parameter] public Func<MatchDto, string> GetMonitoringBadgeText { get; set; } = _ => string.Empty;
     [Parameter] public Func<MatchDto, string> GetMonitoringBadgeCss { get; set; } = _ => string.Empty;
@@ -218,6 +263,9 @@ else
     [Parameter] public Func<Task> OnBoardDragEnd { get; set; } = () => Task.CompletedTask;
     [Parameter] public Func<Guid, Task> MarkScheduleDropTargetMatch { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<Guid, Task> ClearScheduleDropTargetMatch { get; set; } = _ => Task.CompletedTask;
+    [Parameter] public Func<Guid, Task> MarkScheduleDropTargetBoard { get; set; } = _ => Task.CompletedTask;
+    [Parameter] public Func<Guid, Task> ClearScheduleDropTargetBoard { get; set; } = _ => Task.CompletedTask;
+    [Parameter] public Func<Guid, Task> DropOnBoardHeader { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<Guid, Task> DropOnTimelineMatch { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<MatchDto, Task> OpenMatchDetail { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<MatchDto, bool> ShowScheduleLockedMarker { get; set; } = _ => false;
@@ -261,6 +309,12 @@ else
 
     private Task HandleEditMatchTimeValueChangedAsync(ChangeEventArgs args)
         => EditMatchTimeValueChanged(Convert.ToString(args.Value) ?? string.Empty);
+
+    private Task HandleBoardQueueDragOverAsync(Guid boardId) => MarkScheduleDropTargetBoard(boardId);
+
+    private Task HandleBoardQueueDragLeaveAsync(Guid boardId) => ClearScheduleDropTargetBoard(boardId);
+
+    private Task HandleBoardQueueDropAsync(Guid boardId) => DropOnBoardHeader(boardId);
 
     private Task HandleBoardDragStartAsync(Guid boardId) => OnBoardDragStart(boardId);
 

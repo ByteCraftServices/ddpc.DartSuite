@@ -1812,6 +1812,18 @@ public partial class Tournaments : IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    private Task MarkScheduleDropTargetBoardAsync(Guid boardId)
+    {
+        MarkScheduleDropTargetBoard(boardId);
+        return Task.CompletedTask;
+    }
+
+    private Task ClearScheduleDropTargetBoardAsync(Guid boardId)
+    {
+        ClearScheduleDropTargetBoard(boardId);
+        return Task.CompletedTask;
+    }
+
     private Task OnEditMatchTimeValueChangedAsync(string value)
     {
         editMatchTimeValue = value;
