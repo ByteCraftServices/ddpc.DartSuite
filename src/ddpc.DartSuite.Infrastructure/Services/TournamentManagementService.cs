@@ -732,16 +732,8 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
             if (participants.Count % playersPerTeam != 0)
                 throw new InvalidOperationException("Die Teilnehmeranzahl ist nicht durch die Teamgröße teilbar.");
 
-            var expectedTeamCount = participants.Count / playersPerTeam;
-            if (requestedTeams.Count != expectedTeamCount)
-                throw new InvalidOperationException("Die Anzahl der Teams ist unvollständig.");
-
-            if (requestedTeams.Any(x => x.MemberParticipantIds.Count != playersPerTeam))
-                throw new InvalidOperationException("Jedes Team muss die konfigurierte Spieleranzahl enthalten.");
-
-            var assignedCount = requestedTeams.SelectMany(x => x.MemberParticipantIds).Distinct().Count();
-            if (assignedCount != participants.Count)
-                throw new InvalidOperationException("Alle Teilnehmer müssen genau einem Team zugewiesen sein.");
+            if (requestedTeams.Any(x => x.MemberParticipantIds.Count > playersPerTeam))
+                throw new InvalidOperationException("Ein Team überschreitet die konfigurierte Spieleranzahl.");
         }
 
         var existingTeams = await dbContext.Teams.Where(x => x.TournamentId == request.TournamentId).ToListAsync(cancellationToken);

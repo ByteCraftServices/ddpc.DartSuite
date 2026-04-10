@@ -5019,10 +5019,12 @@ public partial class Tournaments : IAsyncDisposable
 
     private async Task AutoSaveTeamDraftIfCompleteAsync()
     {
-        if (TeamDraftUnassignedParticipants.Count > 0)
+        if (selectedTournament is null || !IsTeamplayActive)
             return;
-        if (teamDrafts.Any(t => t.MemberParticipantIds.Count != editPlayersPerTeam))
+
+        if (!CanEditTournamentStructure)
             return;
+
         await SaveTeamDraftAsync();
     }
 
@@ -5122,18 +5124,6 @@ public partial class Tournaments : IAsyncDisposable
         if (!TeamSizeDividesParticipants)
         {
             teamDraftError = "Die Teamgröße passt nicht zur Teilnehmeranzahl.";
-            return;
-        }
-
-        if (TeamDraftUnassignedParticipants.Count > 0)
-        {
-            teamDraftError = "Nicht alle Teilnehmer sind einem Team zugewiesen.";
-            return;
-        }
-
-        if (teamDrafts.Any(t => t.MemberParticipantIds.Count != editPlayersPerTeam))
-        {
-            teamDraftError = "Alle Teams müssen vollständig besetzt sein.";
             return;
         }
 

@@ -296,4 +296,79 @@ public sealed class TournamentManagementServiceTests
         updatedTournament.Should().NotBeNull();
         updatedTournament!.SeedTopCount.Should().Be(1);
     }
+
+    [Fact]
+    public async Task SaveTeams_TeamplayEnabled_ShouldAllowPartialAssignmentsForAutosave()
+    {
+        var options = new DbContextOptionsBuilder<DartSuiteDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var dbContext = new DartSuiteDbContext(options);
+        var service = new TournamentManagementService(dbContext);
+
+        var tournament = await service.CreateTournamentAsync(new CreateTournamentRequest(
+            "Demo",
+            "manager",
+            DateOnly.FromDateTime(DateTime.Today),
+            null,
+            true,
+            "Knockout",
+            "OnSite"));
+
+        await service.UpdateTournamentAsync(new UpdateTournamentRequest(
+            tournament.Id,
+            tournament.Name,
+            tournament.OrganizerAccount,
+            tournament.StartDate,
+            tournament.EndDate,
+            true,
+            tournament.Mode,
+            tournament.Variant,
+            null,
+            tournament.GroupCount,
+            tournament.PlayoffAdvancers,
+            tournament.KnockoutsPerRound,
+            tournament.MatchesPerOpponent,
+            tournament.GroupMode,
+            tournament.GroupDrawMode,
+            tournament.PlanningVariant,
+            tournament.GroupOrderMode,
+            tournament.ThirdPlaceMatch,
+            2,
+            tournament.WinPoints,
+            tournament.LegFactor,
+            tournament.AreGameModesLocked,
+            tournament.IsRegistrationOpen,
+            tournament.RegistrationStartUtc,
+            tournament.RegistrationEndUtc,
+            tournament.DiscordWebhookUrl,
+            tournament.DiscordWebhookDisplayText,
+            tournament.SeedingEnabled,
+            tournament.SeedTopCount));
+
+        var p1 = await service.AddParticipantAsync(new AddParticipantRequest(
+            tournament.Id,
+            "Player 1",
+            "player1",
+            true,
+            false,
+            1));
+
+        await service.AddParticipantAsync(new AddParticipantRequest(
+            tournament.Id,
+            "Player 2",
+            "player2",
+            true,
+            false,
+            2));
+
+        var result = await service.SaveTeamsAsync(new SaveTeamsRequest(
+            tournament.Id,
+            [new SaveTeamRequest(null, "Team Alpha", [p1.Id])]
+        ));
+
+        result.Should().HaveCount(1);
+        result[0].Members.Should().ContainSingle(m => m.Id == p1.Id);
+    }
 }
