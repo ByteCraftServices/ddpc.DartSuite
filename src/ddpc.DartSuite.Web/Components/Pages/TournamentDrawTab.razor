@@ -3,6 +3,40 @@
 @using ddpc.DartSuite.Application.Contracts.Tournaments
 @using Microsoft.AspNetCore.Components
 
+<style>
+    .draw-action-bar {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: stretch;
+        gap: 0.5rem;
+    }
+
+    .draw-action-bar > * {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    .draw-action-bar > .draw-action-select-wrap {
+        flex: 0 1 11rem;
+        min-width: 9.5rem;
+    }
+
+    .draw-action-bar .btn {
+        width: 100%;
+        min-height: 2.5rem;
+        white-space: normal;
+        line-height: 1.15;
+        text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .draw-action-select-wrap .form-select {
+        min-width: 0;
+    }
+</style>
+
 @if (!CanEditTournamentStructure && HasProgressedMatches)
 {
     <div class="alert alert-warning py-2 small mb-3">
@@ -10,72 +44,93 @@
     </div>
 }
 
-<div class="card mb-3">
-    <div class="card-header d-flex justify-content-between align-items-center">
+<details class="card mb-3" open="@GroupSettingsPanelExpanded">
+    <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" title="@GroupSettingsPanelReason">
         <span>
             Gruppenphase-Einstellungen
             @if (HasGroupSettingsRequiredMissing())
             {
                 <span class="text-danger ms-2" title="Pflichteinstellungen fehlen">⚠</span>
             }
+            @if (!string.IsNullOrWhiteSpace(GroupSettingsPanelReason))
+            {
+                <span class="badge text-bg-light border ms-2" title="@GroupSettingsPanelReason">Info</span>
+            }
         </span>
         <span class="d-none d-md-inline small text-muted">@GroupSettingsSummary()</span>
-    </div>
-    <div class="card-body">
-        @if (CanEditGroupConfig)
+    </summary>
+    <div class="card-body" title="@GroupSettingsPanelReason">
+        @if (ShowGroupSettingsReadOnlyBadges)
+        {
+            <div class="small text-muted d-flex flex-wrap gap-2">
+                <span class="badge text-bg-light border">Gruppen: @EditGroupCount</span>
+                <span class="badge text-bg-light border">Aufsteiger: @EditPlayoffAdvancers</span>
+                <span class="badge text-bg-light border">Matches/Gegner: @EditMatchesPerOpponent</span>
+                <span class="badge text-bg-light border">Knockouts/Runde: @EditKnockoutsPerRound</span>
+                <span class="badge text-bg-light border">Modus: @EditGroupMode</span>
+                <span class="badge text-bg-light border">Auslosung: @EditGroupDrawMode</span>
+                <span class="badge text-bg-light border">Planung: @EditPlanningVariant</span>
+                <span class="badge text-bg-light border">Reihenfolge: @EditGroupOrderMode</span>
+            </div>
+        }
+        else
         {
             <div class="row g-2 mb-3">
-                <div class="col-md-3">
-                    <label class="form-label small" title="Anzahl Gruppen für die Gruppenphase.">Anzahl Gruppen</label>
+                <div class="col-md-3" title="@GroupCountFieldTitle">
+                    <label class="form-label small" title="@GroupCountFieldTitle">Anzahl Gruppen</label>
                     <select class="form-select form-select-sm @(EditGroupCount < 1 ? "border-danger" : "")"
                             value="@EditGroupCount"
-                            @onchange="HandleEditGroupCountChangedAsync">
+                            @onchange="HandleEditGroupCountChangedAsync"
+                            disabled="@(!string.IsNullOrWhiteSpace(GroupCountEditReason))">
                         @for (var i = 1; i <= 16; i++)
                         {
                             <option value="@i">@i</option>
                         }
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label small" title="@(IsTeamplayActive ? "Anzahl qualifizierter Teams je Gruppe für die K.O.-Phase." : "Anzahl qualifizierter Spieler je Gruppe für die K.O.-Phase.")">Playoff-Aufsteiger</label>
+                <div class="col-md-3" title="@PlayoffAdvancersFieldTitle">
+                    <label class="form-label small" title="@PlayoffAdvancersFieldTitle">Playoff-Aufsteiger</label>
                     <input type="number"
                            class="form-control form-control-sm @(EditPlayoffAdvancers < 1 ? "border-danger" : "")"
                            value="@EditPlayoffAdvancers"
                            @onchange="HandleEditPlayoffAdvancersChangedAsync"
-                           min="1" />
+                           min="1"
+                           disabled="@(!string.IsNullOrWhiteSpace(PlayoffAdvancersEditReason))" />
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label small" title="@(IsTeamplayActive ? "Wie oft jedes Team gegen denselben Gegner spielt." : "Wie oft jeder Teilnehmer gegen denselben Gegner spielt.")">Matches/Gegner</label>
+                <div class="col-md-3" title="@MatchesPerOpponentFieldTitle">
+                    <label class="form-label small" title="@MatchesPerOpponentFieldTitle">Matches/Gegner</label>
                     <select class="form-select form-select-sm @(EditMatchesPerOpponent < 1 ? "border-danger" : "")"
                             value="@EditMatchesPerOpponent"
-                            @onchange="HandleEditMatchesPerOpponentChangedAsync">
+                            @onchange="HandleEditMatchesPerOpponentChangedAsync"
+                            disabled="@(!string.IsNullOrWhiteSpace(MatchesPerOpponentEditReason))">
                         @for (var i = 1; i <= 12; i++)
                         {
                             <option value="@i">@i Runde@(i > 1 ? "n" : "")</option>
                         }
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label small" title="Anzahl parallel gespielter K.O.-Matches je Runde nach der Gruppenphase.">Knockouts/Runde</label>
+                <div class="col-md-3" title="@KnockoutsPerRoundFieldTitle">
+                    <label class="form-label small" title="@KnockoutsPerRoundFieldTitle">Knockouts/Runde</label>
                     <input type="number"
                            class="form-control form-control-sm @(EditKnockoutsPerRound < 0 ? "border-danger" : "")"
                            value="@EditKnockoutsPerRound"
                            @onchange="HandleEditKnockoutsPerRoundChangedAsync"
-                           min="0" />
+                           min="0"
+                           disabled="@(!string.IsNullOrWhiteSpace(KnockoutsPerRoundEditReason))" />
                 </div>
             </div>
             <div class="row g-2 mb-0">
-                <div class="col-md-3">
-                    <label class="form-label small" title="Jeder gegen jeden oder alternative Gruppenlogik.">Gruppenmodus</label>
-                    <select class="form-select form-select-sm" value="@EditGroupMode" @onchange="HandleEditGroupModeChangedAsync">
+                <div class="col-md-3" title="@GroupModeFieldTitle">
+                    <label class="form-label small" title="@GroupModeFieldTitle">Gruppenmodus</label>
+                    <select class="form-select form-select-sm" value="@EditGroupMode" @onchange="HandleEditGroupModeChangedAsync" disabled="@(!string.IsNullOrWhiteSpace(GroupModeEditReason))">
                         <option value="RoundRobin">Jeder gegen Jeden</option>
                         <option value="Knockout">Knockout</option>
                         <option value="GroupTournament">Gruppenturnier</option>
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label small" title="Zufällig, manuell oder per Lostopf (SeededPots) auslosen.">Auslosungsmodus</label>
-                    <select class="form-select form-select-sm" value="@EditGroupDrawMode" @onchange="HandleEditGroupDrawModeChangedAsync">
+                <div class="col-md-3" title="@GroupDrawModeFieldTitle">
+                    <label class="form-label small" title="@GroupDrawModeFieldTitle">Auslosungsmodus</label>
+                    <select class="form-select form-select-sm" value="@EditGroupDrawMode" @onchange="HandleEditGroupDrawModeChangedAsync" disabled="@(!string.IsNullOrWhiteSpace(GroupDrawModeEditReason))">
                         <option value="Manual">Manuell</option>
                         <option value="Random">Zufällig</option>
                         @if (EditSeedingEnabled)
@@ -84,16 +139,16 @@
                         }
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label small" title="Erzeugt Gruppenrunden blockweise oder rundenweise über alle Gruppen.">Planungsvariante</label>
-                    <select class="form-select form-select-sm" value="@EditPlanningVariant" @onchange="HandleEditPlanningVariantChangedAsync">
+                <div class="col-md-3" title="@PlanningVariantFieldTitle">
+                    <label class="form-label small" title="@PlanningVariantFieldTitle">Planungsvariante</label>
+                    <select class="form-select form-select-sm" value="@EditPlanningVariant" @onchange="HandleEditPlanningVariantChangedAsync" disabled="@(!string.IsNullOrWhiteSpace(PlanningVariantEditReason))">
                         <option value="GroupByGroup">Gruppe für Gruppe</option>
                         <option value="RoundByRound">Runde für Runde</option>
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label small" title="Reihenfolge der Matches pro Runde innerhalb einer Gruppe.">Reihenfolge</label>
-                    <select class="form-select form-select-sm" value="@EditGroupOrderMode" @onchange="HandleEditGroupOrderModeChangedAsync">
+                <div class="col-md-3" title="@GroupOrderModeFieldTitle">
+                    <label class="form-label small" title="@GroupOrderModeFieldTitle">Reihenfolge</label>
+                    <select class="form-select form-select-sm" value="@EditGroupOrderMode" @onchange="HandleEditGroupOrderModeChangedAsync" disabled="@(!string.IsNullOrWhiteSpace(GroupOrderModeEditReason))">
                         <option value="ReverseEachRound">Folgerunde absteigend</option>
                         <option value="SameOrder">Immer gleich</option>
                         <option value="RandomPerRound">Runde zufällig</option>
@@ -102,35 +157,29 @@
                 </div>
             </div>
         }
-        else
-        {
-            <div class="small text-muted d-flex flex-wrap gap-2">
-                <span class="badge text-bg-light border">Gruppen: @EditGroupCount</span>
-                <span class="badge text-bg-light border">Aufsteiger: @EditPlayoffAdvancers</span>
-                <span class="badge text-bg-light border">Matches/Gegner: @EditMatchesPerOpponent</span>
-                <span class="badge text-bg-light border">Modus: @EditGroupMode</span>
-                <span class="badge text-bg-light border">Auslosung: @EditGroupDrawMode</span>
-            </div>
-        }
     </div>
-</div>
+</details>
 
-<div class="card mb-3">
-    <div class="card-header d-flex justify-content-between align-items-center">
+<details class="card mb-3" open="@ScoringPanelExpanded">
+    <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" title="@ScoringPanelReason">
         <span>
             Punktemodus
             @if (HasScoringRequiredMissing())
             {
                 <span class="text-danger ms-2" title="Pflichteinstellungen fehlen">⚠</span>
             }
+            @if (!string.IsNullOrWhiteSpace(ScoringPanelReason))
+            {
+                <span class="badge text-bg-light border ms-2" title="@ScoringPanelReason">Info</span>
+            }
         </span>
-        <span class="d-none d-md-inline small text-muted">@ScoringSummary()</span>
-    </div>
-    <div class="card-body">
+        <span class="d-none d-md-inline small text-muted">@ScoringHeaderSummary</span>
+    </summary>
+    <div class="card-body" title="@ScoringPanelReason">
         @if (CanEditScoring)
         {
             <div class="row g-2 mb-0">
-                <div class="col-md-6">
+                <div class="col-md-6" title="Punkte je Sieg in der Gruppentabelle.">
                     <label class="form-label small" title="Punkte je Sieg in der Gruppentabelle.">Punkte für Sieg</label>
                     <input type="number"
                            class="form-control form-control-sm @(EditWinPoints < 1 ? "border-danger" : "")"
@@ -138,7 +187,7 @@
                            @onchange="HandleEditWinPointsChangedAsync"
                            min="1" />
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-6" title="Gewichtung gewonnener Legs für Ranking/Tiebreak.">
                     <label class="form-label small" title="Gewichtung gewonnener Legs für Ranking/Tiebreak.">Faktor gewonnene Legs</label>
                     <input type="number"
                            class="form-control form-control-sm @(EditLegFactor < 0 ? "border-danger" : "")"
@@ -172,10 +221,6 @@
         }
         else
         {
-            @if (HasStartedGroupMatch)
-            {
-                <div class="alert alert-info py-1 small">Punkte- und Tiebreaker-Logik ist gesperrt, weil die Gruppenphase bereits gestartet wurde.</div>
-            }
             <div class="small text-muted d-flex flex-wrap gap-2">
                 <span class="badge text-bg-light border">Siegpunkte: @EditWinPoints</span>
                 <span class="badge text-bg-light border">Leg-Faktor: @EditLegFactor</span>
@@ -191,19 +236,22 @@
             }
         }
     </div>
-</div>
+</details>
 
-@if (ShowGroupSettings && IsCurrentUserManager && !SelectedTournamentIsLocked && SelectedTournamentStatus is "Erstellt" or "Geplant")
+@if (ShowEditableGroupDraw)
 {
-    <div class="d-flex flex-wrap gap-2 mb-3">
-        <div class="d-flex align-items-center gap-2 me-2">
-            <label class="small text-muted mb-0">Animation</label>
-            <select class="form-select form-select-sm" style="width: 140px;" value="@DrawAnimationMode" @onchange="HandleDrawAnimationModeChangedAsync" disabled="@(IsWorking || IsDrawAnimating || !CanEditTournamentStructure)">
-                <option value="Off">Aus</option>
-                <option value="Exciting">Spannend</option>
-                <option value="Moderate">Moderat</option>
-            </select>
-        </div>
+    <div class="draw-action-bar mb-3">
+        @if (!Matches.Any())
+        {
+            <div class="@GroupAnimationControlCssClass">
+                <label class="small text-muted mb-0">Animation</label>
+                <select class="form-select form-select-sm" style="width: 140px;" value="@DrawAnimationMode" @onchange="HandleDrawAnimationModeChangedAsync" disabled="@(IsWorking || IsDrawAnimating || !CanEditTournamentStructure)">
+                    <option value="Off">Aus</option>
+                    <option value="Exciting">Spannend</option>
+                    <option value="Moderate">Moderat</option>
+                </select>
+            </div>
+        }
         @if (EditGroupDrawMode is "Random" or "SeededPots")
         {
             @if (CanEditTournamentStructure)
@@ -212,16 +260,52 @@
             }
             else
             {
-                <button type="button" class="btn btn-primary btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Auslosung gesperrt")'>⚡ Automatisch auslosen</button>
+                <button type="button" class="btn btn-primary btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => HandleShowInactiveActionInfoAsync(CannotEditStructureReason, "Auslosung gesperrt")'>⚡ Automatisch auslosen</button>
             }
         }
         @if (EditGroupDrawMode == "SeededPots" && EditSeedingEnabled)
         {
-            <button class="btn btn-outline-secondary btn-sm" @onclick="HandleAssignSeedPotsAndDistributeAsync" disabled="@(IsWorking || !CanEditTournamentStructure)">🎲 Lostöpfe zuteilen</button>
+            @if (CanEditTournamentStructure)
+            {
+                <button class="btn btn-outline-secondary btn-sm" @onclick="HandleAssignSeedPotsAndDistributeAsync" disabled="@IsWorking">🎲 Lostöpfe zuteilen</button>
+            }
+            else
+            {
+                <button type="button" class="btn btn-outline-secondary btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => HandleShowInactiveActionInfoAsync(CannotEditStructureReason, "Lostöpfe gesperrt")'>🎲 Lostöpfe zuteilen</button>
+            }
         }
         @if (HasDrawAssignments())
         {
-            <button class="btn btn-outline-warning btn-sm" @onclick="HandleResetDrawAsync" disabled="@(IsWorking || IsDrawAnimating || !CanEditTournamentStructure)">↩ Auslosung zurücksetzen</button>
+            @if (CanEditTournamentStructure)
+            {
+                <button class="btn btn-outline-warning btn-sm" title="Setzt alle Gruppenzuordnungen zurück." @onclick="HandleResetDrawAsync" disabled="@(IsWorking || IsDrawAnimating)">↩ Auslosung zurücksetzen</button>
+            }
+            else
+            {
+                <button type="button" class="btn btn-outline-warning btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => HandleShowInactiveActionInfoAsync(CannotEditStructureReason, "Zurücksetzen gesperrt")'>↩ Auslosung zurücksetzen</button>
+            }
+        }
+        @if (CanShowDrawCreatePlanButton)
+        {
+            @if (string.IsNullOrWhiteSpace(DrawCreatePlanDisabledReason))
+            {
+                <button class="btn btn-success btn-sm" title="Erstellt den Turnierplan aus der aktuellen Auslosung." @onclick="HandleCreateTournamentPlanAsync" disabled="@IsWorking">✓ Turnierplan erstellen</button>
+            }
+            else
+            {
+                <button type="button" class="btn btn-success btn-sm btn-inactive-action" title="@DrawCreatePlanDisabledReason" @onclick='() => HandleShowInactiveActionInfoAsync(DrawCreatePlanDisabledReason, "Turnierplan erstellen nicht möglich")'>✓ Turnierplan erstellen</button>
+            }
+        }
+        else if (CanShowDrawDeletePlanButton)
+        {
+            @if (CanEditTournamentStructure)
+            {
+                <button class="btn btn-outline-danger btn-sm" title="Löscht den bestehenden Turnierplan und zugehörige Matches." @onclick="HandleDeleteTournamentPlanAsync" disabled="@IsWorking">🗑 Turnierplan löschen</button>
+            }
+            else
+            {
+                <button type="button" class="btn btn-outline-danger btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => HandleShowInactiveActionInfoAsync(CannotEditStructureReason, "Turnierplan löschen nicht möglich")'>🗑 Turnierplan löschen</button>
+            }
         }
     </div>
     @if (IsDrawAnimating)
@@ -363,8 +447,22 @@
         </div>
     </div>
 }
-@else if (ShowGroupSettings)
+
+@if (ShowReadOnlyGroupFallback)
 {
+    @if (CanShowDrawDeletePlanButton)
+    {
+        <div class="draw-action-bar mb-3">
+            @if (CanEditTournamentStructure)
+            {
+                <button class="btn btn-outline-danger btn-sm" title="Löscht den bestehenden Turnierplan und zugehörige Matches." @onclick="HandleDeleteTournamentPlanAsync" disabled="@IsWorking">🗑 Turnierplan löschen</button>
+            }
+            else
+            {
+                <button type="button" class="btn btn-outline-danger btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => HandleShowInactiveActionInfoAsync(CannotEditStructureReason, "Turnierplan löschen nicht möglich")'>🗑 Turnierplan löschen</button>
+            }
+        </div>
+    }
     @* Read-only fallback: draw assignments visible but non-interactive *@
     @if (HasDrawAssignments())
     {
@@ -406,20 +504,28 @@
     }
 }
 
-@if (SelectedTournamentMode == "Knockout" && IsCurrentUserManager && !SelectedTournamentIsLocked && SelectedTournamentStatus is "Erstellt" or "Geplant")
+@if (ShowEditableKnockoutDraw)
 {
-    <div class="d-flex flex-wrap gap-2 mb-3">
-        <div class="d-flex align-items-center gap-2 me-2">
-            <label class="small text-muted mb-0">Animation</label>
-            <select class="form-select form-select-sm" style="width: 140px;" value="@DrawAnimationMode" @onchange="HandleDrawAnimationModeChangedAsync" disabled="@(IsWorking || IsDrawAnimating || !CanEditTournamentStructure)">
-                <option value="Off">Aus</option>
-                <option value="Exciting">Spannend</option>
-                <option value="Moderate">Moderat</option>
-            </select>
-        </div>
-        <span class="@(CanEditTournamentStructure ? "" : "btn-reason-wrap")" title="@CannotEditStructureReason">
-            <button class="btn btn-primary btn-sm" @onclick="HandleAutoDrawAsync" disabled="@(IsWorking || IsDrawAnimating || !CanEditTournamentStructure)">⚡ Auslosung starten</button>
-        </span>
+    <div class="draw-action-bar mb-3">
+        @if (!Matches.Any())
+        {
+            <div class="@KnockoutAnimationControlCssClass">
+                <label class="small text-muted mb-0">Animation</label>
+                <select class="form-select form-select-sm" style="width: 140px;" value="@DrawAnimationMode" @onchange="HandleDrawAnimationModeChangedAsync" disabled="@(IsWorking || IsDrawAnimating || !CanEditTournamentStructure)">
+                    <option value="Off">Aus</option>
+                    <option value="Exciting">Spannend</option>
+                    <option value="Moderate">Moderat</option>
+                </select>
+            </div>
+        }
+        @if (CanEditTournamentStructure)
+        {
+            <button class="btn btn-primary btn-sm" @onclick="HandleAutoDrawAsync" disabled="@(IsWorking || IsDrawAnimating)">⚡ Auslosung starten</button>
+        }
+        else
+        {
+            <button type="button" class="btn btn-primary btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => HandleShowInactiveActionInfoAsync(CannotEditStructureReason, "Auslosung gesperrt")'>⚡ Auslosung starten</button>
+        }
         @if (KnockoutAssignedParticipants.Any())
         {
             @if (CanEditTournamentStructure)
@@ -428,7 +534,29 @@
             }
             else
             {
-                <button type="button" class="btn btn-outline-warning btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Zurücksetzen gesperrt")'>↩ Auslosung zurücksetzen</button>
+                <button type="button" class="btn btn-outline-warning btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => HandleShowInactiveActionInfoAsync(CannotEditStructureReason, "Zurücksetzen gesperrt")'>↩ Auslosung zurücksetzen</button>
+            }
+        }
+        @if (CanShowDrawCreatePlanButton)
+        {
+            @if (string.IsNullOrWhiteSpace(DrawCreatePlanDisabledReason))
+            {
+                <button class="btn btn-success btn-sm" title="Erstellt den Turnierplan aus der aktuellen Auslosung." @onclick="HandleCreateTournamentPlanAsync" disabled="@IsWorking">✓ Turnierplan erstellen</button>
+            }
+            else
+            {
+                <button type="button" class="btn btn-success btn-sm btn-inactive-action" title="@DrawCreatePlanDisabledReason" @onclick='() => HandleShowInactiveActionInfoAsync(DrawCreatePlanDisabledReason, "Turnierplan erstellen nicht möglich")'>✓ Turnierplan erstellen</button>
+            }
+        }
+        else if (CanShowDrawDeletePlanButton)
+        {
+            @if (CanEditTournamentStructure)
+            {
+                <button class="btn btn-outline-danger btn-sm" title="Löscht den bestehenden Turnierplan und zugehörige Matches." @onclick="HandleDeleteTournamentPlanAsync" disabled="@IsWorking">🗑 Turnierplan löschen</button>
+            }
+            else
+            {
+                <button type="button" class="btn btn-outline-danger btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => HandleShowInactiveActionInfoAsync(CannotEditStructureReason, "Turnierplan löschen nicht möglich")'>🗑 Turnierplan löschen</button>
             }
         }
     </div>
@@ -516,8 +644,22 @@
         </div>
     </div>
 }
-@else if (SelectedTournamentMode == "Knockout")
+
+@if (ShowReadOnlyKnockoutFallback)
 {
+    @if (CanShowDrawDeletePlanButton)
+    {
+        <div class="draw-action-bar mb-3">
+            @if (CanEditTournamentStructure)
+            {
+                <button class="btn btn-outline-danger btn-sm" title="Löscht den bestehenden Turnierplan und zugehörige Matches." @onclick="HandleDeleteTournamentPlanAsync" disabled="@IsWorking">🗑 Turnierplan löschen</button>
+            }
+            else
+            {
+                <button type="button" class="btn btn-outline-danger btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => HandleShowInactiveActionInfoAsync(CannotEditStructureReason, "Turnierplan löschen nicht möglich")'>🗑 Turnierplan löschen</button>
+            }
+        </div>
+    }
     @* Read-only fallback: KO draw slots visible but non-interactive *@
     @if (KnockoutAssignedParticipants.Any())
     {
@@ -545,7 +687,7 @@
                                 }
                                 else
                                 {
-                                    <span class="text-muted small">Slot 1 nicht besetzt</span>
+                                    <span class="badge text-bg-dark">WalkOver</span>
                                 }
                             </div>
                             <div>
@@ -561,7 +703,7 @@
                                 }
                                 else
                                 {
-                                    <span class="text-muted small">Slot 2 nicht besetzt</span>
+                                    <span class="badge text-bg-dark">WalkOver</span>
                                 }
                             </div>
                         </div>
@@ -580,73 +722,6 @@
     @if (ShouldShowDrawTeamFormationWarning)
     {
         <div class="alert alert-warning py-2 small mb-2">Turnierplan kann erst erstellt werden, wenn die Teamzuordnung vollständig und gespeichert ist.</div>
-    }
-    <div class="d-flex flex-wrap align-items-center gap-2">
-        @if (SelectedTournamentMode == "GroupAndKnockout" && EditGroupDrawMode is "Random" or "SeededPots")
-        {
-            @if (CanEditTournamentStructure)
-            {
-                <button class="btn btn-primary btn-sm" title="Startet eine automatische Verteilung auf Gruppen." @onclick="HandleAutoDrawAsync" disabled="@(IsWorking || IsDrawAnimating)">⚡ Automatisch auslosen</button>
-            }
-            else
-            {
-                <button type="button" class="btn btn-primary btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Auslosung gesperrt")'>⚡ Automatisch auslosen</button>
-            }
-        }
-        @if (SelectedTournamentMode == "GroupAndKnockout" && HasDrawAssignments())
-        {
-            @if (CanEditTournamentStructure)
-            {
-                <button class="btn btn-outline-warning btn-sm" title="Setzt alle Gruppenzuordnungen zurück." @onclick="HandleResetDrawAsync" disabled="@(IsWorking || IsDrawAnimating)">↩ Auslosung zurücksetzen</button>
-            }
-            else
-            {
-                <button type="button" class="btn btn-outline-warning btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Zurücksetzen gesperrt")'>↩ Auslosung zurücksetzen</button>
-            }
-        }
-        @if (SelectedTournamentMode == "Knockout" && KnockoutAssignedParticipants.Any())
-        {
-            @if (CanEditTournamentStructure)
-            {
-                <button class="btn btn-outline-warning btn-sm" title="Setzt die K.O.-Auslosung zurück." @onclick="ResetKnockoutDrawCards" disabled="@(IsWorking || IsDrawAnimating)">↩ Auslosung zurücksetzen</button>
-            }
-            else
-            {
-                <button type="button" class="btn btn-outline-warning btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Zurücksetzen gesperrt")'>↩ Auslosung zurücksetzen</button>
-            }
-        }
-
-        @if (CanShowDrawCreatePlanButton)
-        {
-            @if (CanEditTournamentStructure && CanProceedWithTeamDraw)
-            {
-                <button class="btn btn-success btn-sm" title="Erstellt den Turnierplan aus der aktuellen Auslosung." @onclick="HandleCreateTournamentPlanAsync" disabled="@IsWorking">✓ Turnierplan erstellen</button>
-            }
-            else
-            {
-                <button type="button" class="btn btn-success btn-sm btn-inactive-action" title="@DrawCreatePlanDisabledReason" @onclick='() => ShowInactiveActionInfo(DrawCreatePlanDisabledReason, "Turnierplan erstellen nicht möglich")'>✓ Turnierplan erstellen</button>
-            }
-        }
-        else if (CanShowDrawDeletePlanButton)
-        {
-            @if (CanEditTournamentStructure)
-            {
-                <button class="btn btn-outline-danger btn-sm" title="Löscht den bestehenden Turnierplan und zugehörige Matches." @onclick="HandleDeleteTournamentPlanAsync" disabled="@IsWorking">🗑 Turnierplan löschen</button>
-            }
-            else
-            {
-                <button type="button" class="btn btn-outline-danger btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Turnierplan löschen nicht möglich")'>🗑 Turnierplan löschen</button>
-            }
-        }
-    </div>
-
-    @if (!Matches.Any() && SelectedTournamentMode == "GroupAndKnockout" && UnassignedParticipants.Count > 0)
-    {
-        <div class="alert alert-info py-2 small mt-2">Alle @DrawEntityPlural müssen einer Gruppe zugewiesen sein, bevor der Turnierplan erstellt werden kann. Noch @UnassignedParticipants.Count nicht zugewiesen.</div>
-    }
-    @if (!Matches.Any() && SelectedTournamentMode == "Knockout" && EditGroupDrawMode == "Manual" && !IsKnockoutDrawComplete)
-    {
-        <div class="alert alert-info py-2 small mt-2">Bei manueller K.O.-Auslosung müssen alle @DrawEntityPlural einem Match-Slot zugewiesen werden.</div>
     }
     @if (Matches.Any() && HasPlayedMatches())
     {
@@ -738,7 +813,7 @@
     [Parameter] public Func<string, Task> EditPlanningVariantChanged { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<string, Task> EditGroupOrderModeChanged { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<string, Task> DrawAnimationModeChanged { get; set; } = _ => Task.CompletedTask;
-    [Parameter] public Action<string, string?> ShowInactiveActionInfo { get; set; } = (_, _) => { };
+    [Parameter] public Func<string, string?, Task> ShowInactiveActionInfo { get; set; } = (_, _) => Task.CompletedTask;
     [Parameter] public Action<int> MoveScoringCriterionUp { get; set; } = _ => { };
     [Parameter] public Action<int> MoveScoringCriterionDown { get; set; } = _ => { };
     [Parameter] public Func<Task> SaveScoringCriteria { get; set; } = () => Task.CompletedTask;
@@ -759,6 +834,67 @@
     private string DrawEntityPlural => IsTeamplayActive ? "Teams" : "Teilnehmer";
     private string DrawDropHint => IsTeamplayActive ? "Team hierher ziehen" : "Teilnehmer hierher ziehen";
     private string KnockoutSlotHint(int slot) => IsTeamplayActive ? $"Team {slot} hier ablegen" : $"Spieler {slot} hier ablegen";
+    private string GroupAnimationControlCssClass => BuildAnimationControlCssClass(GroupDrawExists);
+    private string KnockoutAnimationControlCssClass => BuildAnimationControlCssClass(KnockoutAssignedParticipants.Any());
+    private bool GroupSettingsPanelExpanded => !PlanExists;
+    private bool ScoringPanelExpanded => !PlanExists;
+    private bool ShowGroupSettingsReadOnlyBadges => !CanEditGroupConfig;
+    private string GroupSettingsPanelReason
+        => ShowGroupSettingsReadOnlyBadges
+            ? CannotEditStructureReason
+            : PlanExists
+                ? "Einige Einstellungen sind nach Erstellung des Turnierplans schreibgeschützt."
+                : GroupDrawExists
+                    ? "Einige Einstellungen sind nach der Auslosung schreibgeschützt."
+                    : string.Empty;
+    private string ScoringPanelReason
+        => CanEditScoring ? string.Empty : "Punktemodus und Tiebreaker sind ab dem ersten aktiven Match schreibgeschützt.";
+    private string ScoringHeaderSummary
+        => string.Join(", ", ScoringCriteria.Where(c => c.IsEnabled).OrderBy(c => c.Priority).Select(c => ScoringCriterionLabel(c.Type)));
+    private bool GroupDrawExists => HasDrawAssignments();
+    private bool PlanExists => Matches.Any();
+    private string GroupCountEditReason => !CanEditGroupConfig ? CannotEditStructureReason : GroupDrawExists ? "Nicht mehr änderbar, nachdem die Auslosung durchgeführt wurde." : string.Empty;
+    private string GroupModeEditReason => !CanEditGroupConfig ? CannotEditStructureReason : GroupDrawExists ? "Nicht mehr änderbar, nachdem die Auslosung durchgeführt wurde." : string.Empty;
+    private string GroupDrawModeEditReason => !CanEditGroupConfig ? CannotEditStructureReason : GroupDrawExists ? "Nicht mehr änderbar, nachdem die Auslosung durchgeführt wurde." : string.Empty;
+    private string PlayoffAdvancersEditReason => !CanEditGroupConfig ? CannotEditStructureReason : string.Empty;
+    private string MatchesPerOpponentEditReason => !CanEditGroupConfig ? CannotEditStructureReason : PlanExists ? "Nicht mehr änderbar, nachdem der Turnierplan erstellt wurde." : string.Empty;
+    private string KnockoutsPerRoundEditReason => !CanEditGroupConfig ? CannotEditStructureReason : PlanExists ? "Nicht mehr änderbar, nachdem der Turnierplan erstellt wurde." : string.Empty;
+    private string PlanningVariantEditReason => !CanEditGroupConfig ? CannotEditStructureReason : PlanExists ? "Nicht mehr änderbar, nachdem der Turnierplan erstellt wurde." : string.Empty;
+    private string GroupOrderModeEditReason => !CanEditGroupConfig ? CannotEditStructureReason : PlanExists ? "Nicht mehr änderbar, nachdem der Turnierplan erstellt wurde." : string.Empty;
+    private static string FieldHelpOrReason(string help, string? reason)
+        => string.IsNullOrWhiteSpace(reason) ? help : reason;
+    private string GroupCountFieldTitle => FieldHelpOrReason("Anzahl Gruppen für die Gruppenphase.", GroupCountEditReason);
+    private string PlayoffAdvancersFieldTitle => FieldHelpOrReason(IsTeamplayActive ? "Anzahl qualifizierter Teams je Gruppe für die K.O.-Phase." : "Anzahl qualifizierter Spieler je Gruppe für die K.O.-Phase.", PlayoffAdvancersEditReason);
+    private string MatchesPerOpponentFieldTitle => FieldHelpOrReason(IsTeamplayActive ? "Wie oft jedes Team gegen denselben Gegner spielt." : "Wie oft jeder Teilnehmer gegen denselben Gegner spielt.", MatchesPerOpponentEditReason);
+    private string KnockoutsPerRoundFieldTitle => FieldHelpOrReason("Anzahl parallel gespielter K.O.-Matches je Runde nach der Gruppenphase.", KnockoutsPerRoundEditReason);
+    private string GroupModeFieldTitle => FieldHelpOrReason("Jeder gegen jeden oder alternative Gruppenlogik.", GroupModeEditReason);
+    private string GroupDrawModeFieldTitle => FieldHelpOrReason("Zufällig, manuell oder per Lostopf (SeededPots) auslosen.", GroupDrawModeEditReason);
+    private string PlanningVariantFieldTitle => FieldHelpOrReason("Erzeugt Gruppenrunden blockweise oder rundenweise über alle Gruppen.", PlanningVariantEditReason);
+    private string GroupOrderModeFieldTitle => FieldHelpOrReason("Reihenfolge der Matches pro Runde innerhalb einer Gruppe.", GroupOrderModeEditReason);
+    private bool ShowEditableGroupDraw
+        => ShowGroupSettings
+           && IsCurrentUserManager
+           && !SelectedTournamentIsLocked
+           && SelectedTournamentStatus is "Erstellt" or "Geplant"
+           && !Matches.Any();
+    private bool ShowReadOnlyGroupFallback
+        => ShowGroupSettings
+           && !ShowEditableGroupDraw;
+    private bool ShowEditableKnockoutDraw
+        => SelectedTournamentMode == "Knockout"
+           && IsCurrentUserManager
+           && !SelectedTournamentIsLocked
+           && SelectedTournamentStatus is "Erstellt" or "Geplant"
+           && !Matches.Any();
+    private bool ShowReadOnlyKnockoutFallback
+        => SelectedTournamentMode == "Knockout"
+           && !ShowEditableKnockoutDraw;
+    private static string BuildAnimationControlCssClass(bool drawStarted)
+        => drawStarted
+            ? "draw-action-select-wrap d-none d-md-flex align-items-center gap-2 me-2"
+            : "draw-action-select-wrap d-flex align-items-center gap-2 me-2";
+    private Task HandleShowInactiveActionInfoAsync(string reason, string? title = null)
+        => ShowInactiveActionInfo(reason, title);
 
     private Task HandleEditGroupCountChangedAsync(ChangeEventArgs args) => EditGroupCountChanged(ParseInt(args, EditGroupCount));
     private Task HandleEditPlayoffAdvancersChangedAsync(ChangeEventArgs args) => EditPlayoffAdvancersChanged(ParseInt(args, EditPlayoffAdvancers));

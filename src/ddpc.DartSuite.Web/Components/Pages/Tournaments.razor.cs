@@ -590,8 +590,11 @@ public partial class Tournaments : IAsyncDisposable
     /// <summary>Managers can edit basic settings while tournament is unlocked.</summary>
     private bool CanEditBasicSettings => CanEditTournamentSettings;
 
-    /// <summary>True when at least one match has started or finished.</summary>
-    private bool HasProgressedMatches => matches.Any(m => m.StartedUtc is not null || m.FinishedUtc is not null);
+    private static bool IsWalkOverMatch(MatchDto match)
+        => string.Equals(match.Status, "WalkOver", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>True when at least one non-walkover match has started or finished.</summary>
+    private bool HasProgressedMatches => matches.Any(m => !IsWalkOverMatch(m) && (m.StartedUtc is not null || m.FinishedUtc is not null));
 
     /// <summary>Structure edits are allowed only before first active/finished match and while status is planned/created.</summary>
     private bool CanEditTournamentStructure =>
@@ -610,8 +613,12 @@ public partial class Tournaments : IAsyncDisposable
 
     private string DrawCreatePlanDisabledReason =>
         !CanEditTournamentStructure ? CannotEditStructureReason
+        : selectedTournament?.Mode == "GroupAndKnockout" && UnassignedParticipants.Count > 0
+            ? $"Alle {(IsTeamplayActive ? "Teams" : "Teilnehmer")} müssen einer Gruppe zugewiesen sein, bevor der Turnierplan erstellt werden kann. Noch {UnassignedParticipants.Count} nicht zugewiesen."
+        : selectedTournament?.Mode == "Knockout" && editGroupDrawMode == "Manual" && !IsKnockoutDrawComplete
+            ? $"Bei manueller K.O.-Auslosung müssen alle {(IsTeamplayActive ? "Teams" : "Teilnehmer")} einem Match-Slot zugewiesen werden."
         : !CanProceedWithTeamDraw ? "Turnierplan kann erst erstellt werden, wenn die Teamzuordnung vollständig und gespeichert ist."
-        : "Aktion derzeit nicht verfügbar.";
+        : string.Empty;
 
     private void ShowInactiveActionInfo(string reason, string? title = null)
     {
@@ -620,6 +627,13 @@ public partial class Tournaments : IAsyncDisposable
             ? "Diese Aktion kann aktuell nicht ausgeführt werden."
             : reason;
         showInactiveActionInfoModal = true;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private Task ShowInactiveActionInfoAsync(string reason, string? title = null)
+    {
+        ShowInactiveActionInfo(reason, title);
+        return Task.CompletedTask;
     }
 
     private void CloseInactiveActionInfo()
@@ -647,6 +661,7 @@ public partial class Tournaments : IAsyncDisposable
 
     private bool HasStartedGroupMatch => matches.Any(m =>
         string.Equals(m.Phase, "Group", StringComparison.OrdinalIgnoreCase)
+        && !IsWalkOverMatch(m)
         && (m.StartedUtc is not null || m.FinishedUtc is not null));
 
     private string EffectiveGroupMatchesViewMode
@@ -831,6 +846,9 @@ public partial class Tournaments : IAsyncDisposable
         => selectedTournament is not null
            && !matches.Any()
            && participants.Count >= 2
+           && (selectedTournament.Mode != "Knockout"
+               ? HasDrawAssignments()
+               : KnockoutAssignedParticipants.Any())
            && !selectedTournament.IsLocked
            && IsCurrentUserManager;
 
@@ -839,6 +857,10 @@ public partial class Tournaments : IAsyncDisposable
            && matches.Any()
            && !selectedTournament.IsLocked
            && IsCurrentUserManager;
+
+    private bool CanExecuteDrawCreatePlan
+        => CanShowDrawCreatePlanButton
+           && string.IsNullOrWhiteSpace(DrawCreatePlanDisabledReason);
 
     private bool ShouldShowDrawTeamFormationWarning
         => IsTeamplayActive
@@ -4198,6 +4220,8 @@ public partial class Tournaments : IAsyncDisposable
     }
 
     private bool HasPlayedMatches() => matches.Any(m =>
+        !IsWalkOverMatch(m)
+        &&
         m.FinishedUtc is not null
         && m.HomeParticipantId != Guid.Empty
         && m.AwayParticipantId != Guid.Empty);
@@ -5707,6 +5731,7 @@ public partial class Tournaments : IAsyncDisposable
                         p.IsAutodartsAccount, p.IsManager, p.Seed, 0, null));
                 }
                 await LoadParticipantsAsync(selectedTournament.Id);
+                await InvokeAsync(StateHasChanged);
             }
             catch (Exception ex) { editError = ex.Message; }
             finally { isWorking = false; }
@@ -6367,7 +6392,11 @@ public partial class Tournaments : IAsyncDisposable
     private async Task DeleteTournamentPlanAsync()
     {
         if (selectedTournament is null) return;
-        if (!EnsureTournamentStructureEditable(message => editError = message)) return;
+        if (!CanEditTournamentStructure)
+        {
+            ShowInactiveActionInfo(CannotEditStructureReason, "Turnierplan löschen nicht möglich");
+            return;
+        }
 
         confirmationMessage = "Alle Matches werden gelöscht. Die Gruppeneinteilung bleibt bestehen. Wirklich fortfahren?";
         confirmationAction = async () =>
@@ -6386,6 +6415,7 @@ public partial class Tournaments : IAsyncDisposable
                 matches = (await Api.GetMatchesAsync(selectedTournament.Id)).ToList();
                 groupStandings = [];
                 await LoadRoundsAsync();
+                await InvokeAsync(StateHasChanged);
             }
             catch (Exception ex) { editError = ex.Message; }
             finally { isWorking = false; }
@@ -6398,6 +6428,12 @@ public partial class Tournaments : IAsyncDisposable
     {
         if (selectedTournament is null) return;
         if (!EnsureTournamentStructureEditable(message => editError = message)) return;
+
+        if (!CanExecuteDrawCreatePlan)
+        {
+            ShowInactiveActionInfo(DrawCreatePlanDisabledReason, "Turnierplan erstellen nicht möglich");
+            return;
+        }
 
         if (IsTeamplayActive && !CanProceedWithTeamDraw)
         {
