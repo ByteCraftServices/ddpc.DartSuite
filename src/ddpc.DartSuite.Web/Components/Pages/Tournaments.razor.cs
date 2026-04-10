@@ -1389,7 +1389,7 @@ public partial class Tournaments : IAsyncDisposable
         get
         {
             if (selectedTournament?.Mode == "GroupAndKnockout")
-                return ["general", "boards-participants", "draw", "rounds", "groups", "schedule", "knockout"];
+                return ["general", "boards-participants", "draw", "rounds", "groups", "knockout", "schedule"];
             return ["general", "boards-participants", "draw", "rounds", "knockout", "schedule"];
         }
     }
