@@ -163,4 +163,137 @@ public sealed class TournamentManagementServiceTests
         updated!.Type.Should().Be("TeamMember");
         updated.Seed.Should().Be(3);
     }
+
+    [Fact]
+    public async Task UpdateTournament_TeamplayEnabled_ShouldResetNonTeamMemberSeeds()
+    {
+        var options = new DbContextOptionsBuilder<DartSuiteDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var dbContext = new DartSuiteDbContext(options);
+        var service = new TournamentManagementService(dbContext);
+
+        var tournament = await service.CreateTournamentAsync(new CreateTournamentRequest(
+            "Demo",
+            "manager",
+            DateOnly.FromDateTime(DateTime.Today),
+            null,
+            false,
+            "Knockout",
+            "OnSite"));
+
+        var player = await service.AddParticipantAsync(new AddParticipantRequest(
+            tournament.Id,
+            "Player 1",
+            "player1",
+            true,
+            false,
+            7));
+
+        var updatedTournament = await service.UpdateTournamentAsync(new UpdateTournamentRequest(
+            tournament.Id,
+            tournament.Name,
+            tournament.OrganizerAccount,
+            tournament.StartDate,
+            tournament.EndDate,
+            true,
+            tournament.Mode,
+            tournament.Variant,
+            null,
+            tournament.GroupCount,
+            tournament.PlayoffAdvancers,
+            tournament.KnockoutsPerRound,
+            tournament.MatchesPerOpponent,
+            tournament.GroupMode,
+            tournament.GroupDrawMode,
+            tournament.PlanningVariant,
+            tournament.GroupOrderMode,
+            tournament.ThirdPlaceMatch,
+            2,
+            tournament.WinPoints,
+            tournament.LegFactor,
+            tournament.AreGameModesLocked,
+            tournament.IsRegistrationOpen,
+            tournament.RegistrationStartUtc,
+            tournament.RegistrationEndUtc,
+            tournament.DiscordWebhookUrl,
+            tournament.DiscordWebhookDisplayText,
+            true,
+            10));
+
+        updatedTournament.Should().NotBeNull();
+
+        var participants = await service.GetParticipantsAsync(tournament.Id);
+        var updatedPlayer = participants.Single(p => p.Id == player.Id);
+        updatedPlayer.Seed.Should().Be(0);
+        updatedPlayer.SeedPot.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task UpdateTournament_TeamplayEnabled_ShouldClampSeedTopCountToTeamMemberCount()
+    {
+        var options = new DbContextOptionsBuilder<DartSuiteDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var dbContext = new DartSuiteDbContext(options);
+        var service = new TournamentManagementService(dbContext);
+
+        var tournament = await service.CreateTournamentAsync(new CreateTournamentRequest(
+            "Demo",
+            "manager",
+            DateOnly.FromDateTime(DateTime.Today),
+            null,
+            true,
+            "Knockout",
+            "OnSite"));
+
+        var player = await service.AddParticipantAsync(new AddParticipantRequest(
+            tournament.Id,
+            "Player 1",
+            "player1",
+            true,
+            false,
+            1));
+
+        await service.CreateTeamAsync(new CreateTeamRequest(
+            tournament.Id,
+            "Team One",
+            [player.Id]));
+
+        var updatedTournament = await service.UpdateTournamentAsync(new UpdateTournamentRequest(
+            tournament.Id,
+            tournament.Name,
+            tournament.OrganizerAccount,
+            tournament.StartDate,
+            tournament.EndDate,
+            true,
+            tournament.Mode,
+            tournament.Variant,
+            null,
+            tournament.GroupCount,
+            tournament.PlayoffAdvancers,
+            tournament.KnockoutsPerRound,
+            tournament.MatchesPerOpponent,
+            tournament.GroupMode,
+            tournament.GroupDrawMode,
+            tournament.PlanningVariant,
+            tournament.GroupOrderMode,
+            tournament.ThirdPlaceMatch,
+            1,
+            tournament.WinPoints,
+            tournament.LegFactor,
+            tournament.AreGameModesLocked,
+            tournament.IsRegistrationOpen,
+            tournament.RegistrationStartUtc,
+            tournament.RegistrationEndUtc,
+            tournament.DiscordWebhookUrl,
+            tournament.DiscordWebhookDisplayText,
+            true,
+            99));
+
+        updatedTournament.Should().NotBeNull();
+        updatedTournament!.SeedTopCount.Should().Be(1);
+    }
 }

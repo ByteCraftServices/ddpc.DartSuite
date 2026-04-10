@@ -221,7 +221,29 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         tournament.DiscordWebhookUrl = request.DiscordWebhookUrl;
         tournament.DiscordWebhookDisplayText = request.DiscordWebhookDisplayText;
         tournament.SeedingEnabled = request.SeedingEnabled;
-        tournament.SeedTopCount = request.SeedTopCount;
+
+        var seedingCandidateQuery = dbContext.Participants
+            .Where(x => x.TournamentId == tournament.Id)
+            .AsQueryable();
+
+        if (request.TeamplayEnabled)
+            seedingCandidateQuery = seedingCandidateQuery.Where(x => x.Type == ParticipantType.TeamMember);
+
+        var seedingCandidateCount = await seedingCandidateQuery.CountAsync(cancellationToken);
+        tournament.SeedTopCount = Math.Clamp(request.SeedTopCount, 0, Math.Max(0, seedingCandidateCount));
+
+        if (request.TeamplayEnabled)
+        {
+            var nonTeamParticipants = await dbContext.Participants
+                .Where(x => x.TournamentId == tournament.Id && x.Type != ParticipantType.TeamMember)
+                .ToListAsync(cancellationToken);
+
+            foreach (var participant in nonTeamParticipants)
+            {
+                participant.Seed = 0;
+                participant.SeedPot = 0;
+            }
+        }
 
         await dbContext.SaveChangesAsync(cancellationToken);
         var count = await dbContext.Participants.CountAsync(x => x.TournamentId == tournament.Id, cancellationToken);

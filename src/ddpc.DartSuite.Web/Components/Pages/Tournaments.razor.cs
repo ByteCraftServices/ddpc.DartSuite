@@ -852,7 +852,7 @@ public partial class Tournaments : IAsyncDisposable
         => editTeamplay && editPlayersPerTeam < 2;
 
     private bool HasSeedingRequiredMissing()
-        => editSeedingEnabled && (editSeedTopCount <= 0 || editSeedTopCount > participants.Count);
+        => editSeedingEnabled && (editSeedTopCount <= 0 || editSeedTopCount > EffectiveDrawParticipants.Count);
 
     private bool HasGroupSettingsRequiredMissing()
         => editMode == "GroupAndKnockout"
