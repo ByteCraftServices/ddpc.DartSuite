@@ -1180,7 +1180,8 @@
                                                                                             <h6 class="fw-semibold mb-2">Teilnehmer <span class="badge text-bg-secondary">@EffectivePlayerCount</span></h6>
                                                                                             @if (participants.Any(p => !IsTeamMember(p)))
                                                                                             {
-                                                                                                var sortedParticipants = editSeedingEnabled
+                                                                                                var showPlayerSeedInPlayersSubTab = editSeedingEnabled && !IsTeamplayActive;
+                                                                                                var sortedParticipants = showPlayerSeedInPlayersSubTab
                                                                                                     ? participants.Where(p => !IsTeamMember(p)).OrderBy(p => p.Seed > 0 ? p.Seed : int.MaxValue).ThenBy(p => p.DisplayName).ToList()
                                                                                                     : participants.Where(p => !IsTeamMember(p)).ToList();
                                                                                                 <div class="table-responsive mb-3">
@@ -1200,15 +1201,15 @@
                                                                                                         <tbody>
                                                                                                             @foreach (var p in sortedParticipants)
                                                                                                             {
-                                                                                                                var isSeedTarget = editSeedingEnabled && p.Seed > 0 && p.Seed <= editSeedTopCount;
+                                                                                                                var isSeedTarget = showPlayerSeedInPlayersSubTab && p.Seed > 0 && p.Seed <= editSeedTopCount;
                                                                                                                 var teamName = GetTeamNameForParticipant(p.TeamId);
-                                                                                                                <tr draggable="@(editSeedingEnabled && !IsTeamplayActive && CanEditParticipantSettings ? "true" : "false")"
+                                                                                                                <tr draggable="@(showPlayerSeedInPlayersSubTab && CanEditParticipantSettings ? "true" : "false")"
                                                                                                                     @ondragstart="() => draggedSeedIndex = p.Seed"
                                                                                                                     @ondragover:preventDefault
                                                                                                                     @ondrop="async () => { if (draggedSeedIndex.HasValue && draggedSeedIndex != p.Seed) { var dragP = participants.FirstOrDefault(x => x.Seed == draggedSeedIndex.Value); if (dragP is not null) { await UpdateParticipantSeedAsync(dragP.Id, p.Seed); await UpdateParticipantSeedAsync(p.Id, draggedSeedIndex.Value); } draggedSeedIndex = null; } }">
                                                                                                                     <td>
                                                                                                                         <span class="d-flex align-items-center gap-2 flex-wrap">
-                                                                                                                            @if (editSeedingEnabled && !IsTeamplayActive)
+                                                                                                                            @if (showPlayerSeedInPlayersSubTab)
                                                                                                                             {
                                                                                                                                 @if (isSeedTarget)
                                                                                                                                 {
@@ -1411,7 +1412,7 @@
                                                                                                     </div>
                                                                                                 </div>
                                                                                                 <div class="col-md-8">
-                                                                                                    <div class="row g-2">
+                                                                                                    <div class="row g-2" id="@TeamSeedGridId">
                                                                                                         @for (var teamIdx = 0; teamIdx < teamDrafts.Count; teamIdx++)
                                                                                                         {
                                                                                                             var idx = teamIdx;
@@ -1421,7 +1422,7 @@
                                                                                                                 .Where(p => p is not null)
                                                                                                                 .Cast<ParticipantDto>()
                                                                                                                 .ToList();
-                                                                                                            <div class="col-md-6">
+                                                                                                            <div class="col-md-6 team-seed-card" data-flip-key="@team.UiKey" @key="team.UiKey">
                                                                                                                 <div class="card @DrawTeamAnimationCss(idx) @(dropTargetTeamIndex == idx ? "draw-target-group" : "") @(draggedTeamParticipantId != null && IsTeamFull(idx) ? "team-slot-full" : "") @(draggedTeamParticipantId != null && !IsTeamFull(idx) && dropTargetTeamIndex != idx ? "team-slot-available" : "")"
                                                                                                                      @ondragover:preventDefault
                                                                                                                      @ondragover="() => { if (draggedTeamSeedIndex.HasValue) return; if (CanEditTournamentStructure && !IsTeamFull(idx)) dropTargetTeamIndex = idx; }"

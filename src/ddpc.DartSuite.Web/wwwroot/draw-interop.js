@@ -1,4 +1,6 @@
 window.dartSuiteDraw = {
+    _flipSnapshots: {},
+
     getRelativeCenter: function (containerId, elementId) {
         const container = document.getElementById(containerId);
         const element = document.getElementById(elementId);
@@ -13,6 +15,68 @@ window.dartSuiteDraw = {
             Left: e.left - c.left + (e.width / 2),
             Top: e.top - c.top + (e.height / 2)
         };
+    },
+
+    captureListPositions: function (containerId, itemSelector) {
+        const container = document.getElementById(containerId);
+        if (!container || !itemSelector) {
+            return;
+        }
+
+        const snapshot = {};
+        container.querySelectorAll(itemSelector).forEach((element) => {
+            const key = element.dataset.flipKey || element.id;
+            if (!key) {
+                return;
+            }
+
+            const rect = element.getBoundingClientRect();
+            snapshot[key] = {
+                left: rect.left,
+                top: rect.top
+            };
+        });
+
+        this._flipSnapshots[containerId] = snapshot;
+    },
+
+    playCapturedListAnimation: function (containerId, itemSelector, durationMs) {
+        const container = document.getElementById(containerId);
+        const before = this._flipSnapshots[containerId];
+        if (!container || !itemSelector || !before) {
+            return;
+        }
+
+        const duration = Number.isFinite(durationMs) ? durationMs : 320;
+        const easing = "cubic-bezier(.22,.61,.36,1)";
+
+        container.querySelectorAll(itemSelector).forEach((element) => {
+            const key = element.dataset.flipKey || element.id;
+            if (!key || !before[key]) {
+                return;
+            }
+
+            const currentRect = element.getBoundingClientRect();
+            const dx = before[key].left - currentRect.left;
+            const dy = before[key].top - currentRect.top;
+
+            if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
+                return;
+            }
+
+            element.style.transition = "none";
+            element.style.transform = "translate(" + dx + "px, " + dy + "px)";
+            void element.offsetWidth;
+            element.style.transition = "transform " + duration + "ms " + easing;
+            element.style.transform = "translate(0, 0)";
+
+            window.setTimeout(() => {
+                element.style.transition = "";
+                element.style.transform = "";
+            }, duration + 40);
+        });
+
+        delete this._flipSnapshots[containerId];
     }
 };
 

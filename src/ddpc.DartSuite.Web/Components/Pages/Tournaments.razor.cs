@@ -818,6 +818,7 @@ public partial class Tournaments : IAsyncDisposable
     // ─── Teamplay Draft (Issue #11) ───
     private sealed class TeamDraftItem
     {
+        public string UiKey { get; set; } = Guid.NewGuid().ToString("N");
         public Guid? TeamId { get; set; }
         public string Name { get; set; } = string.Empty;
         public bool IsAutoName { get; set; } = true;
@@ -833,6 +834,7 @@ public partial class Tournaments : IAsyncDisposable
     private int? drawHighlightedTeamIndex;
     private bool hasUnsavedTeamDraftChanges;
     private string? teamDraftError;
+    private const string TeamSeedGridId = "team-seed-grid";
 
     private List<KnockoutDrawCard> knockoutDrawCards = [];
     private Guid? draggedKnockoutParticipantId;
@@ -3085,6 +3087,7 @@ public partial class Tournaments : IAsyncDisposable
                     : "Team";
                 return new TeamDraftItem
                 {
+                    UiKey = t.Id.ToString("N"),
                     TeamId = t.Id,
                     Name = t.Name,
                     IsAutoName = string.Equals(t.Name, autoName, StringComparison.OrdinalIgnoreCase),
@@ -3111,6 +3114,7 @@ public partial class Tournaments : IAsyncDisposable
         {
             teamDrafts.Add(new TeamDraftItem
             {
+                UiKey = Guid.NewGuid().ToString("N"),
                 Name = $"Team {teamDrafts.Count + 1}",
                 IsAutoName = true
             });
@@ -4977,6 +4981,7 @@ public partial class Tournaments : IAsyncDisposable
 
             await LoadParticipantsAsync(selectedTournament.Id);
             await LoadTeamsAsync(selectedTournament.Id);
+            await SortTeamDraftsBySeedAnimatedAsync();
         }
         catch (Exception ex)
         {
@@ -4986,6 +4991,30 @@ public partial class Tournaments : IAsyncDisposable
         {
             isWorking = false;
         }
+    }
+
+    private async Task SortTeamDraftsBySeedAnimatedAsync()
+    {
+        if (!editSeedingEnabled || teamDrafts.Count < 2)
+            return;
+
+        await JS.InvokeVoidAsync("dartSuiteDraw.captureListPositions", TeamSeedGridId, ".team-seed-card");
+
+        teamDrafts = teamDrafts
+            .Select((draft, index) => new
+            {
+                Draft = draft,
+                Index = index,
+                Seed = TeamSeedForDraft(draft, index + 1)
+            })
+            .OrderBy(x => x.Seed)
+            .ThenBy(x => x.Draft.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.Index)
+            .Select(x => x.Draft)
+            .ToList();
+
+        await InvokeAsync(StateHasChanged);
+        await JS.InvokeVoidAsync("dartSuiteDraw.playCapturedListAnimation", TeamSeedGridId, ".team-seed-card", 320);
     }
 
     private async Task AutoSaveTeamDraftIfCompleteAsync()
