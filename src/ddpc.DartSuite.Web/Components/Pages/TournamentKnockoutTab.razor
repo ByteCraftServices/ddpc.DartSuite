@@ -132,11 +132,25 @@ else
 <div class="mt-3 d-flex flex-wrap align-items-center gap-2">
     @if (CanShowDrawCreatePlanButton)
     {
-        <button class="btn btn-success btn-sm" @onclick="OnCreateTournamentPlan" disabled="@(IsWorking || !CanProceedWithTeamDraw || !CanEditTournamentStructure)">✓ Turnierplan erstellen</button>
+        @if (string.IsNullOrWhiteSpace(DrawCreatePlanDisabledReason))
+        {
+            <button class="btn btn-success btn-sm" @onclick="OnCreateTournamentPlan" disabled="@IsWorking">✓ Turnierplan erstellen</button>
+        }
+        else
+        {
+            <button type="button" class="btn btn-success btn-sm btn-inactive-action" title="@DrawCreatePlanDisabledReason" @onclick='() => ShowInactiveActionInfo(DrawCreatePlanDisabledReason, "Turnierplan erstellen nicht möglich")'>✓ Turnierplan erstellen</button>
+        }
     }
     else if (CanShowDrawDeletePlanButton)
     {
-        <button class="btn btn-outline-danger btn-sm" @onclick="OnDeleteTournamentPlan" disabled="@(IsWorking || !CanEditTournamentStructure)">🗑 Turnierplan löschen</button>
+        @if (CanEditTournamentStructure)
+        {
+            <button class="btn btn-outline-danger btn-sm" @onclick="OnDeleteTournamentPlan" disabled="@IsWorking">🗑 Turnierplan löschen</button>
+        }
+        else
+        {
+            <button type="button" class="btn btn-outline-danger btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Turnierplan löschen nicht möglich")'>🗑 Turnierplan löschen</button>
+        }
     }
 </div>
 
@@ -162,6 +176,9 @@ else
     [Parameter] public bool CanProceedWithTeamDraw { get; set; }
     [Parameter] public bool CanShowDrawCreatePlanButton { get; set; }
     [Parameter] public bool CanShowDrawDeletePlanButton { get; set; }
+    [Parameter] public string DrawCreatePlanDisabledReason { get; set; } = string.Empty;
+    [Parameter] public string CannotEditStructureReason { get; set; } = string.Empty;
+    [Parameter] public Func<string, string?, Task> ShowInactiveActionInfo { get; set; } = (_, _) => Task.CompletedTask;
 
     [Parameter] public Func<string, string> BoardStatusBadge { get; set; } = _ => string.Empty;
     [Parameter] public Func<string, MatchCardViewSettings> GetMatchCardSettings { get; set; } = _ => new MatchCardViewSettings();
