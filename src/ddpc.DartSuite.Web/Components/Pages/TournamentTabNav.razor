@@ -6,7 +6,12 @@
         <button class="nav-link text-nowrap @(ActiveTab == "boards-participants" ? "active" : "")" @onclick='() => SelectAsync("boards-participants")'>Boards &amp; Teilnehmer</button>
     </li>
     <li class="nav-item">
-        <button class="nav-link text-nowrap @(ActiveTab == "draw" ? "active" : "")" @onclick='() => SelectAsync("draw")'>Auslosung</button>
+        <button class="nav-link text-nowrap @(ActiveTab == "draw" ? "active" : "")" @onclick='() => SelectAsync("draw")'>
+            Auslosung
+            <span class="badge @DrawStatusBadgeCss ms-1" title="@DrawStatusTitle" aria-label="@DrawStatusTitle">
+                <i class="bi @DrawStatusIconCss"></i>
+            </span>
+        </button>
     </li>
     <li class="nav-item">
         <button class="nav-link text-nowrap @(ActiveTab == "rounds" ? "active" : "")" @onclick='() => SelectAsync("rounds")'>
@@ -51,6 +56,9 @@
     [Parameter] public string KnockoutPhaseBadgeText { get; set; } = "0";
     [Parameter] public string ScheduleBadgeCss { get; set; } = "text-bg-secondary";
     [Parameter] public string ScheduleBadgeText { get; set; } = "0";
+    [Parameter] public string DrawStatusBadgeCss { get; set; } = "text-bg-danger";
+    [Parameter] public string DrawStatusIconCss { get; set; } = "bi-hand-index-thumb-fill";
+    [Parameter] public string DrawStatusTitle { get; set; } = "Auslosung wurde noch nicht ausgeführt!";
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
 
     private Task SelectAsync(string tab)

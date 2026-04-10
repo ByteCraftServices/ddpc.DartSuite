@@ -35,6 +35,68 @@
     .draw-action-select-wrap .form-select {
         min-width: 0;
     }
+
+    .draw-action-control-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        width: 100%;
+    }
+
+    .draw-action-inline-field {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        min-width: 0;
+    }
+
+    .draw-action-inline-field .form-select {
+        width: 140px;
+        min-width: 0;
+    }
+
+    .draw-participant-badge {
+        display: inline-flex;
+        align-items: center;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .draw-participant-name {
+        display: inline-block;
+        max-width: clamp(7rem, 42vw, 16rem);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        vertical-align: bottom;
+    }
+
+    .draw-group-dropzone .draw-participant-name {
+        max-width: clamp(6rem, 36vw, 13rem);
+    }
+
+    .draw-group-dropzone {
+        border: 1px solid rgba(13, 110, 253, 0.18);
+        border-radius: 0.7rem;
+        transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background-color 120ms ease;
+    }
+
+    .draw-group-dropzone.draw-dropzone-candidate {
+        border-color: rgba(13, 110, 253, 0.45);
+        box-shadow: inset 0 0 0 1px rgba(13, 110, 253, 0.15);
+        background: linear-gradient(180deg, rgba(13, 110, 253, 0.04), rgba(13, 110, 253, 0.01));
+    }
+
+    .draw-group-dropzone.is-drop-target {
+        border-color: #0d6efd;
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25), 0 0.6rem 1.2rem rgba(13, 110, 253, 0.18);
+        background: linear-gradient(180deg, rgba(13, 110, 253, 0.08), rgba(13, 110, 253, 0.02));
+        transform: translateY(-1px);
+    }
+
+    .draw-participant-remove-btn {
+        flex: 0 0 auto;
+    }
 </style>
 
 @if (!CanEditTournamentStructure && HasProgressedMatches)
@@ -44,6 +106,8 @@
     </div>
 }
 
+@if (IsGroupPhaseMode)
+{
 <details class="card mb-3" open="@GroupSettingsPanelExpanded">
     <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" title="@GroupSettingsPanelReason">
         <span>
@@ -68,7 +132,6 @@
                 <span class="badge text-bg-light border">Matches/Gegner: @EditMatchesPerOpponent</span>
                 <span class="badge text-bg-light border">Knockouts/Runde: @EditKnockoutsPerRound</span>
                 <span class="badge text-bg-light border">Modus: @EditGroupMode</span>
-                <span class="badge text-bg-light border">Auslosung: @EditGroupDrawMode</span>
                 <span class="badge text-bg-light border">Planung: @EditPlanningVariant</span>
                 <span class="badge text-bg-light border">Reihenfolge: @EditGroupOrderMode</span>
             </div>
@@ -120,7 +183,7 @@
                 </div>
             </div>
             <div class="row g-2 mb-0">
-                <div class="col-md-3" title="@GroupModeFieldTitle">
+                <div class="col-md-4" title="@GroupModeFieldTitle">
                     <label class="form-label small" title="@GroupModeFieldTitle">Gruppenmodus</label>
                     <select class="form-select form-select-sm" value="@EditGroupMode" @onchange="HandleEditGroupModeChangedAsync" disabled="@(!string.IsNullOrWhiteSpace(GroupModeEditReason))">
                         <option value="RoundRobin">Jeder gegen Jeden</option>
@@ -128,25 +191,14 @@
                         <option value="GroupTournament">Gruppenturnier</option>
                     </select>
                 </div>
-                <div class="col-md-3" title="@GroupDrawModeFieldTitle">
-                    <label class="form-label small" title="@GroupDrawModeFieldTitle">Auslosungsmodus</label>
-                    <select class="form-select form-select-sm" value="@EditGroupDrawMode" @onchange="HandleEditGroupDrawModeChangedAsync" disabled="@(!string.IsNullOrWhiteSpace(GroupDrawModeEditReason))">
-                        <option value="Manual">Manuell</option>
-                        <option value="Random">Zufällig</option>
-                        @if (EditSeedingEnabled)
-                        {
-                            <option value="SeededPots">Lostopf</option>
-                        }
-                    </select>
-                </div>
-                <div class="col-md-3" title="@PlanningVariantFieldTitle">
+                <div class="col-md-4" title="@PlanningVariantFieldTitle">
                     <label class="form-label small" title="@PlanningVariantFieldTitle">Planungsvariante</label>
                     <select class="form-select form-select-sm" value="@EditPlanningVariant" @onchange="HandleEditPlanningVariantChangedAsync" disabled="@(!string.IsNullOrWhiteSpace(PlanningVariantEditReason))">
                         <option value="GroupByGroup">Gruppe für Gruppe</option>
                         <option value="RoundByRound">Runde für Runde</option>
                     </select>
                 </div>
-                <div class="col-md-3" title="@GroupOrderModeFieldTitle">
+                <div class="col-md-4" title="@GroupOrderModeFieldTitle">
                     <label class="form-label small" title="@GroupOrderModeFieldTitle">Reihenfolge</label>
                     <select class="form-select form-select-sm" value="@EditGroupOrderMode" @onchange="HandleEditGroupOrderModeChangedAsync" disabled="@(!string.IsNullOrWhiteSpace(GroupOrderModeEditReason))">
                         <option value="ReverseEachRound">Folgerunde absteigend</option>
@@ -237,6 +289,7 @@
         }
     </div>
 </details>
+}
 
 @if (ShowEditableGroupDraw)
 {
@@ -244,19 +297,34 @@
         @if (!Matches.Any())
         {
             <div class="@GroupAnimationControlCssClass">
-                <label class="small text-muted mb-0">Animation</label>
-                <select class="form-select form-select-sm" style="width: 140px;" value="@DrawAnimationMode" @onchange="HandleDrawAnimationModeChangedAsync" disabled="@(IsWorking || IsDrawAnimating || !CanEditTournamentStructure)">
-                    <option value="Off">Aus</option>
-                    <option value="Exciting">Spannend</option>
-                    <option value="Moderate">Moderat</option>
-                </select>
+                <div class="draw-action-control-stack">
+                    <div class="draw-action-inline-field" title="@GroupDrawModeFieldTitle">
+                        <label class="small text-muted mb-0">Modus</label>
+                        <select class="form-select form-select-sm" value="@EditGroupDrawMode" @onchange="HandleEditGroupDrawModeChangedAsync" disabled="@(IsDrawAnimating || !CanEditTournamentStructure)">
+                            <option value="Manual">Manuell</option>
+                            <option value="Random">Zufällig</option>
+                            @if (EditSeedingEnabled)
+                            {
+                                <option value="SeededPots">Lostopf</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="draw-action-inline-field">
+                        <label class="small text-muted mb-0">Animation</label>
+                        <select class="form-select form-select-sm" value="@DrawAnimationMode" @onchange="HandleDrawAnimationModeChangedAsync" disabled="@(IsDrawAnimating || !CanEditTournamentStructure)">
+                            <option value="Off">Aus</option>
+                            <option value="Exciting">Spannend</option>
+                            <option value="Moderate">Moderat</option>
+                        </select>
+                    </div>
+                </div>
             </div>
         }
         @if (EditGroupDrawMode is "Random" or "SeededPots")
         {
             @if (CanEditTournamentStructure)
             {
-                <button class="btn btn-primary btn-sm" title="Startet eine automatische Verteilung auf Gruppen." @onclick="HandleAutoDrawAsync" disabled="@(IsWorking || IsDrawAnimating)">⚡ Automatisch auslosen</button>
+                <button class="btn btn-primary btn-sm" title="Startet eine automatische Verteilung auf Gruppen." @onclick="HandleAutoDrawAsync" disabled="@IsDrawAnimating">⚡ Automatisch auslosen</button>
             }
             else
             {
@@ -278,7 +346,7 @@
         {
             @if (CanEditTournamentStructure)
             {
-                <button class="btn btn-outline-warning btn-sm" title="Setzt alle Gruppenzuordnungen zurück." @onclick="HandleResetDrawAsync" disabled="@(IsWorking || IsDrawAnimating)">↩ Auslosung zurücksetzen</button>
+                <button class="btn btn-outline-warning btn-sm" title="Setzt alle Gruppenzuordnungen zurück." @onclick="HandleResetDrawAsync" disabled="@IsDrawAnimating">↩ Auslosung zurücksetzen</button>
             }
             else
             {
@@ -344,9 +412,10 @@
                                     <div class="card-body p-2">
                                         @foreach (var participant in pot.OrderBy(p => p.Seed > 0 ? p.Seed : int.MaxValue).ThenBy(p => p.DisplayName))
                                         {
-                                            <div class="badge bg-dark p-2 me-1 mb-1 user-select-none draw-participant-badge @DrawParticipantAnimationCss(participant.Id)"
+                                                <div class="badge bg-dark p-2 me-1 mb-1 user-select-none draw-participant-badge @DrawParticipantAnimationCss(participant.Id)"
                                                  draggable="@(CanEditTournamentStructure ? "true" : "false")"
                                                  @ondragstart="() => StartParticipantDrag(participant.Id)"
+                                                    @ondragend="HandleParticipantDragEnded"
                                                  style="cursor:grab; font-size:.85em">
                                                 @if (EditSeedingEnabled && participant.Seed > 0 && participant.Seed <= EditSeedTopCount)
                                                 {
@@ -379,6 +448,7 @@
                                 <div class="badge bg-dark p-2 me-1 mb-1 user-select-none draw-participant-badge @DrawParticipantAnimationCss(participant.Id)"
                                      draggable="@(CanEditTournamentStructure ? "true" : "false")"
                                      @ondragstart="() => StartParticipantDrag(participant.Id)"
+                                      @ondragend="HandleParticipantDragEnded"
                                      style="cursor:grab; font-size:.85em">
                                     @if (EditSeedingEnabled && participant.Seed > 0 && participant.Seed <= EditSeedTopCount)
                                     {
@@ -402,7 +472,7 @@
                     var isDropTarget = DropTargetGroupNumber == groupNum;
                     var highlightCss = GroupDropHighlightCss(groupNum);
                     <div class="@GroupDropzoneColumnCss">
-                        <div class="card draw-group-dropzone @(isDropTarget ? highlightCss : "") @DrawGroupAnimationCss(groupNum)"
+                                <div class="card draw-group-dropzone @(IsGroupDragActive ? "draw-dropzone-candidate" : string.Empty) @(isDropTarget ? $"is-drop-target {highlightCss}" : string.Empty) @DrawGroupAnimationCss(groupNum)"
                              @ondragover:preventDefault
                              @ondragover="() => HandleGroupDragOverAsync(groupNum)"
                              @ondragleave="() => HandleGroupDragLeaveAsync(groupNum)"
@@ -417,6 +487,7 @@
                                     <div class="badge bg-dark p-2 me-1 mb-1 user-select-none draw-participant-badge @DrawParticipantAnimationCss(participant.Id)"
                                          draggable="@(CanEditTournamentStructure ? "true" : "false")"
                                          @ondragstart="() => StartParticipantDrag(participant.Id)"
+                                         @ondragend="HandleParticipantDragEnded"
                                          style="cursor:grab; font-size:.85em">
                                         @if (EditSeedingEnabled && participant.Seed > 0 && participant.Seed <= EditSeedTopCount)
                                         {
@@ -431,7 +502,9 @@
                                                 style="font-size:.7em; line-height:1"
                                                 @onclick="() => HandleUnassignParticipantFromGroupAsync(participant.Id)"
                                                 @onclick:stopPropagation
-                                                disabled="@(IsWorking || !CanEditTournamentStructure)"
+                                                @onmousedown:stopPropagation
+                                                draggable="false"
+                                                disabled="@(IsDrawAnimating || !CanEditTournamentStructure)"
                                                 title="Aus Gruppe entfernen">✕</button>
                                     </div>
                                 }
@@ -510,17 +583,32 @@
         @if (!Matches.Any())
         {
             <div class="@KnockoutAnimationControlCssClass">
-                <label class="small text-muted mb-0">Animation</label>
-                <select class="form-select form-select-sm" style="width: 140px;" value="@DrawAnimationMode" @onchange="HandleDrawAnimationModeChangedAsync" disabled="@(IsWorking || IsDrawAnimating || !CanEditTournamentStructure)">
-                    <option value="Off">Aus</option>
-                    <option value="Exciting">Spannend</option>
-                    <option value="Moderate">Moderat</option>
-                </select>
+                <div class="draw-action-control-stack">
+                    <div class="draw-action-inline-field" title="@GroupDrawModeFieldTitle">
+                        <label class="small text-muted mb-0">Modus</label>
+                        <select class="form-select form-select-sm" value="@EditGroupDrawMode" @onchange="HandleEditGroupDrawModeChangedAsync" disabled="@(IsDrawAnimating || !CanEditTournamentStructure)">
+                            <option value="Manual">Manuell</option>
+                            <option value="Random">Zufällig</option>
+                            @if (EditSeedingEnabled)
+                            {
+                                <option value="SeededPots">Lostopf</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="draw-action-inline-field">
+                        <label class="small text-muted mb-0">Animation</label>
+                        <select class="form-select form-select-sm" value="@DrawAnimationMode" @onchange="HandleDrawAnimationModeChangedAsync" disabled="@(IsDrawAnimating || !CanEditTournamentStructure)">
+                            <option value="Off">Aus</option>
+                            <option value="Exciting">Spannend</option>
+                            <option value="Moderate">Moderat</option>
+                        </select>
+                    </div>
+                </div>
             </div>
         }
         @if (CanEditTournamentStructure)
         {
-            <button class="btn btn-primary btn-sm" @onclick="HandleAutoDrawAsync" disabled="@(IsWorking || IsDrawAnimating)">⚡ Auslosung starten</button>
+            <button class="btn btn-primary btn-sm" @onclick="HandleAutoDrawAsync" disabled="@IsDrawAnimating">⚡ Auslosung starten</button>
         }
         else
         {
@@ -530,7 +618,7 @@
         {
             @if (CanEditTournamentStructure)
             {
-                <button class="btn btn-outline-warning btn-sm" title="Setzt die K.O.-Auslosung zurück." @onclick="ResetKnockoutDrawCards" disabled="@(IsWorking || IsDrawAnimating)">↩ Auslosung zurücksetzen</button>
+                <button class="btn btn-outline-warning btn-sm" title="Setzt die K.O.-Auslosung zurück." @onclick="ResetKnockoutDrawCards" disabled="@IsDrawAnimating">↩ Auslosung zurücksetzen</button>
             }
             else
             {
@@ -825,6 +913,8 @@
     [Parameter] public Func<Task> DeleteTournamentPlan { get; set; } = () => Task.CompletedTask;
     [Parameter] public Func<int?, Task> SetDropTargetGroupNumber { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Action<Guid> StartParticipantDrag { get; set; } = _ => { };
+    [Parameter] public Action EndParticipantDrag { get; set; } = () => { };
+    [Parameter] public bool IsGroupDragActive { get; set; }
     [Parameter] public Func<int, Task> AssignParticipantToGroup { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<Guid, Task> UnassignParticipantFromGroup { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Action<Guid> StartKnockoutDrag { get; set; } = _ => { };
@@ -834,8 +924,9 @@
     private string DrawEntityPlural => IsTeamplayActive ? "Teams" : "Teilnehmer";
     private string DrawDropHint => IsTeamplayActive ? "Team hierher ziehen" : "Teilnehmer hierher ziehen";
     private string KnockoutSlotHint(int slot) => IsTeamplayActive ? $"Team {slot} hier ablegen" : $"Spieler {slot} hier ablegen";
-    private string GroupAnimationControlCssClass => BuildAnimationControlCssClass(GroupDrawExists);
-    private string KnockoutAnimationControlCssClass => BuildAnimationControlCssClass(KnockoutAssignedParticipants.Any());
+    private bool IsGroupPhaseMode => SelectedTournamentMode == "GroupAndKnockout";
+    private string GroupAnimationControlCssClass => BuildAnimationControlCssClass(GroupDrawCompleted);
+    private string KnockoutAnimationControlCssClass => BuildAnimationControlCssClass(IsKnockoutDrawComplete);
     private bool GroupSettingsPanelExpanded => !PlanExists;
     private bool ScoringPanelExpanded => !PlanExists;
     private bool ShowGroupSettingsReadOnlyBadges => !CanEditGroupConfig;
@@ -844,7 +935,7 @@
             ? CannotEditStructureReason
             : PlanExists
                 ? "Einige Einstellungen sind nach Erstellung des Turnierplans schreibgeschützt."
-                : GroupDrawExists
+                : GroupDrawCompleted
                     ? "Einige Einstellungen sind nach der Auslosung schreibgeschützt."
                     : string.Empty;
     private string ScoringPanelReason
@@ -852,10 +943,11 @@
     private string ScoringHeaderSummary
         => string.Join(", ", ScoringCriteria.Where(c => c.IsEnabled).OrderBy(c => c.Priority).Select(c => ScoringCriterionLabel(c.Type)));
     private bool GroupDrawExists => HasDrawAssignments();
+    private bool GroupDrawCompleted => EffectiveDrawParticipants.Count > 0 && !UnassignedParticipants.Any();
     private bool PlanExists => Matches.Any();
-    private string GroupCountEditReason => !CanEditGroupConfig ? CannotEditStructureReason : GroupDrawExists ? "Nicht mehr änderbar, nachdem die Auslosung durchgeführt wurde." : string.Empty;
-    private string GroupModeEditReason => !CanEditGroupConfig ? CannotEditStructureReason : GroupDrawExists ? "Nicht mehr änderbar, nachdem die Auslosung durchgeführt wurde." : string.Empty;
-    private string GroupDrawModeEditReason => !CanEditGroupConfig ? CannotEditStructureReason : GroupDrawExists ? "Nicht mehr änderbar, nachdem die Auslosung durchgeführt wurde." : string.Empty;
+    private string GroupCountEditReason => !CanEditGroupConfig ? CannotEditStructureReason : GroupDrawCompleted ? "Nicht mehr änderbar, nachdem die Auslosung vollständig durchgeführt wurde." : string.Empty;
+    private string GroupModeEditReason => !CanEditGroupConfig ? CannotEditStructureReason : GroupDrawCompleted ? "Nicht mehr änderbar, nachdem die Auslosung vollständig durchgeführt wurde." : string.Empty;
+    private string GroupDrawModeEditReason => !CanEditGroupConfig ? CannotEditStructureReason : GroupDrawCompleted ? "Nicht mehr änderbar, nachdem die Auslosung vollständig durchgeführt wurde." : string.Empty;
     private string PlayoffAdvancersEditReason => !CanEditGroupConfig ? CannotEditStructureReason : string.Empty;
     private string MatchesPerOpponentEditReason => !CanEditGroupConfig ? CannotEditStructureReason : PlanExists ? "Nicht mehr änderbar, nachdem der Turnierplan erstellt wurde." : string.Empty;
     private string KnockoutsPerRoundEditReason => !CanEditGroupConfig ? CannotEditStructureReason : PlanExists ? "Nicht mehr änderbar, nachdem der Turnierplan erstellt wurde." : string.Empty;
@@ -925,6 +1017,7 @@
 
     private Task HandleAssignParticipantToGroupAsync(int groupNumber) => AssignParticipantToGroup(groupNumber);
     private Task HandleUnassignParticipantFromGroupAsync(Guid participantId) => UnassignParticipantFromGroup(participantId);
+    private void HandleParticipantDragEnded() => EndParticipantDrag();
 
     private static int ParseInt(ChangeEventArgs args, int fallback)
         => int.TryParse(Convert.ToString(args.Value), out var value) ? value : fallback;

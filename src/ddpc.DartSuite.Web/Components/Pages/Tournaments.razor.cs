@@ -615,8 +615,8 @@ public partial class Tournaments : IAsyncDisposable
         !CanEditTournamentStructure ? CannotEditStructureReason
         : selectedTournament?.Mode == "GroupAndKnockout" && UnassignedParticipants.Count > 0
             ? $"Alle {(IsTeamplayActive ? "Teams" : "Teilnehmer")} müssen einer Gruppe zugewiesen sein, bevor der Turnierplan erstellt werden kann. Noch {UnassignedParticipants.Count} nicht zugewiesen."
-        : selectedTournament?.Mode == "Knockout" && editGroupDrawMode == "Manual" && !IsKnockoutDrawComplete
-            ? $"Bei manueller K.O.-Auslosung müssen alle {(IsTeamplayActive ? "Teams" : "Teilnehmer")} einem Match-Slot zugewiesen werden."
+        : selectedTournament?.Mode == "Knockout" && !IsKnockoutDrawComplete
+            ? $"Für die K.O.-Auslosung müssen alle {(IsTeamplayActive ? "Teams" : "Teilnehmer")} einem Match-Slot zugewiesen werden."
         : !CanProceedWithTeamDraw ? "Turnierplan kann erst erstellt werden, wenn die Teamzuordnung vollständig und gespeichert ist."
         : string.Empty;
 
@@ -679,20 +679,93 @@ public partial class Tournaments : IAsyncDisposable
     private bool IsEffectiveDrawParticipant(ParticipantDto participant)
         => !IsTeamplayActive || string.Equals(participant.Type, "TeamMember", StringComparison.OrdinalIgnoreCase);
 
-    private List<ParticipantDto> EffectiveDrawParticipants => participants
-        .Where(IsEffectiveDrawParticipant)
-        .ToList();
+    private static string TeamDrawKey(ParticipantDto participant)
+    {
+        return participant.TeamId.HasValue
+            ? $"TEAM:{participant.TeamId.Value:D}"
+            : NormalizeDisplayName(participant.DisplayName);
+    }
+
+    private static string NormalizeDisplayName(string? value)
+    {
+        var source = (value ?? string.Empty).Trim().ToUpperInvariant();
+        if (source.Length == 0)
+            return string.Empty;
+
+        var filtered = source.Where(char.IsLetterOrDigit).ToArray();
+        return filtered.Length > 0 ? new string(filtered) : source;
+    }
+
+    private List<ParticipantDto> EffectiveDrawParticipants
+    {
+        get
+        {
+            if (!IsTeamplayActive)
+            {
+                return participants
+                    .Where(IsEffectiveDrawParticipant)
+                    .ToList();
+            }
+
+            // In teamplay, draw logic must treat one team as one assignable entity.
+            return participants
+                .Where(p => string.Equals(p.Type, "TeamMember", StringComparison.OrdinalIgnoreCase))
+                .GroupBy(TeamDrawKey)
+                .Select(group =>
+                {
+                    var representative = group
+                        .OrderBy(p => p.Seed > 0 ? p.Seed : int.MaxValue)
+                        .ThenBy(p => p.DisplayName, StringComparer.OrdinalIgnoreCase)
+                        .First();
+
+                    var assignedGroup = group
+                        .Select(p => p.GroupNumber)
+                        .FirstOrDefault(g => g.HasValue && g.Value > 0);
+
+                    return representative with { GroupNumber = assignedGroup };
+                })
+                .ToList();
+        }
+    }
 
     /// <summary>Returns true if any participant has been assigned to a group.</summary>
     private bool HasDrawAssignments() => EffectiveDrawParticipants.Any(p => p.GroupNumber.HasValue && p.GroupNumber > 0);
 
     /// <summary>Returns unassigned participants (no group number set).</summary>
-    private List<ParticipantDto> UnassignedParticipants =>
-        EffectiveDrawParticipants.Where(p => !p.GroupNumber.HasValue || p.GroupNumber == 0).ToList();
+    private List<ParticipantDto> UnassignedParticipants
+    {
+        get
+        {
+            var assignedKeys = EffectiveDrawParticipants
+                .Where(p => p.GroupNumber.HasValue && p.GroupNumber > 0)
+                .Select(TeamDrawKey)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var assignedDisplayNames = Enumerable.Range(1, editGroupCount)
+                .SelectMany(GroupParticipants)
+                .Select(p => NormalizeDisplayName(p.DisplayName))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            return EffectiveDrawParticipants
+                .Where(p => !p.GroupNumber.HasValue || p.GroupNumber == 0)
+                .Where(p => !assignedKeys.Contains(TeamDrawKey(p)))
+                .Where(p => !assignedDisplayNames.Contains(NormalizeDisplayName(p.DisplayName)))
+                .ToList();
+        }
+    }
 
     /// <summary>Returns participants assigned to a specific group number.</summary>
     private List<ParticipantDto> GroupParticipants(int groupNumber) =>
-        EffectiveDrawParticipants.Where(p => p.GroupNumber == groupNumber).OrderBy(p => p.Seed).ToList();
+        EffectiveDrawParticipants
+            .Where(p => p.GroupNumber == groupNumber)
+            .GroupBy(TeamDrawKey, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderBy(p => p.Seed > 0 ? p.Seed : int.MaxValue)
+                .ThenBy(p => p.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .First())
+            .OrderBy(p => p.Seed > 0 ? p.Seed : int.MaxValue)
+            .ThenBy(p => p.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     /// <summary>Ideal group size for even distribution.</summary>
     private int IdealGroupSize => editGroupCount > 0 ? (int)Math.Ceiling((double)EffectiveDrawParticipants.Count / editGroupCount) : EffectiveDrawParticipants.Count;
@@ -847,8 +920,8 @@ public partial class Tournaments : IAsyncDisposable
            && !matches.Any()
            && participants.Count >= 2
            && (selectedTournament.Mode != "Knockout"
-               ? HasDrawAssignments()
-               : KnockoutAssignedParticipants.Any())
+               ? IsGroupDrawComplete
+               : IsKnockoutDrawComplete)
            && !selectedTournament.IsLocked
            && IsCurrentUserManager;
 
@@ -861,6 +934,40 @@ public partial class Tournaments : IAsyncDisposable
     private bool CanExecuteDrawCreatePlan
         => CanShowDrawCreatePlanButton
            && string.IsNullOrWhiteSpace(DrawCreatePlanDisabledReason);
+
+    private bool IsGroupDrawComplete
+        => EffectiveDrawParticipants.Count > 0 && UnassignedParticipants.Count == 0;
+
+    private bool IsDrawCompleted
+        => selectedTournament?.Mode == "GroupAndKnockout"
+            ? IsGroupDrawComplete
+            : IsKnockoutDrawComplete;
+
+    private string DrawStatusBadgeCss
+        => matches.Any()
+            ? "text-bg-success"
+            : IsDrawCompleted
+                ? "text-bg-warning"
+                : "text-bg-danger";
+
+    private string DrawStatusIconCss
+        => matches.Any()
+            ? "bi-check2-square"
+            : IsDrawCompleted
+                ? "bi-diagram-3-fill"
+                : "bi-hand-index-thumb-fill";
+
+    private string DrawStatusTitle
+        => matches.Any()
+            ? "Auslosung und Turnierplan abgeschlossen"
+            : IsDrawCompleted
+                ? "Auslosung abgeschlossen, Turnierplan wurde noch nicht erstellt."
+                : $"Auslosung noch nicht abgeschlossen: Noch {UnassignedDrawCount} {(IsTeamplayActive ? "Teams" : "Teilnehmer")} ohne Zuordnung.";
+
+    private int UnassignedDrawCount
+        => selectedTournament?.Mode == "GroupAndKnockout"
+            ? UnassignedParticipants.Count
+            : KnockoutUnassignedParticipants.Count;
 
     private bool ShouldShowDrawTeamFormationWarning
         => IsTeamplayActive
@@ -1601,9 +1708,19 @@ public partial class Tournaments : IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    private bool IsGroupDragActive => draggedParticipantId.HasValue;
+
     private void StartParticipantDrag(Guid participantId)
     {
         draggedParticipantId = participantId;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void EndParticipantDrag()
+    {
+        draggedParticipantId = null;
+        dropTargetGroupNumber = null;
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private Task SetDropTargetMatchIdAsync(Guid? matchId)
@@ -5638,6 +5755,24 @@ public partial class Tournaments : IAsyncDisposable
     private string DrawTeamAnimationCss(int teamIndex)
         => drawHighlightedTeamIndex == teamIndex ? "draw-target-group" : string.Empty;
 
+    private List<ParticipantDto> ResolveDrawAssignmentTargets(ParticipantDto participant)
+    {
+        if (!IsTeamplayActive)
+            return [participant];
+
+        var normalizedDisplay = NormalizeDisplayName(participant.DisplayName);
+        var teamMembers = participants
+            .Where(IsTeamMember)
+            .Where(p =>
+                (participant.TeamId.HasValue && p.TeamId == participant.TeamId) ||
+                NormalizeDisplayName(p.DisplayName) == normalizedDisplay)
+            .GroupBy(p => p.Id)
+            .Select(g => g.First())
+            .ToList();
+
+        return teamMembers.Count > 0 ? teamMembers : [participant];
+    }
+
     // ─── Draw: Assign Participant to Group ───
     private async Task AssignParticipantToGroupAsync(int groupNumber)
     {
@@ -5656,13 +5791,28 @@ public partial class Tournaments : IAsyncDisposable
         var participant = participants.FirstOrDefault(p => p.Id == participantId);
         if (participant is null) return;
 
+        var assignmentTargets = ResolveDrawAssignmentTargets(participant);
+        var targetIds = assignmentTargets.Select(p => p.Id).ToHashSet();
+
         try
         {
             isWorking = true;
-            await Api.UpdateParticipantAsync(selectedTournament.Id, new UpdateParticipantRequest(
-                selectedTournament.Id, participantId, participant.DisplayName, participant.AccountName,
-                participant.IsAutodartsAccount, participant.IsManager, participant.Seed, participant.SeedPot,
-                groupNumber));
+
+            // Optimistic local update so assigned entries disappear from the unassigned pool immediately.
+            participants = participants
+                .Select(p => targetIds.Contains(p.Id)
+                    ? p with { GroupNumber = groupNumber }
+                    : p)
+                .ToList();
+            await InvokeAsync(StateHasChanged);
+
+            foreach (var target in assignmentTargets)
+            {
+                await Api.UpdateParticipantAsync(selectedTournament.Id, new UpdateParticipantRequest(
+                    selectedTournament.Id, target.Id, target.DisplayName, target.AccountName,
+                    target.IsAutodartsAccount, target.IsManager, target.Seed, target.SeedPot,
+                    groupNumber));
+            }
             await LoadParticipantsAsync(selectedTournament.Id);
         }
         catch (Exception ex) { editError = ex.Message; }
@@ -5677,13 +5827,27 @@ public partial class Tournaments : IAsyncDisposable
         var participant = participants.FirstOrDefault(p => p.Id == participantId);
         if (participant is null) return;
 
+        var assignmentTargets = ResolveDrawAssignmentTargets(participant);
+        var targetIds = assignmentTargets.Select(p => p.Id).ToHashSet();
+
         try
         {
             isWorking = true;
-            await Api.UpdateParticipantAsync(selectedTournament.Id, new UpdateParticipantRequest(
-                selectedTournament.Id, participantId, participant.DisplayName, participant.AccountName,
-                participant.IsAutodartsAccount, participant.IsManager, participant.Seed, participant.SeedPot,
-                groupNumber));
+
+            participants = participants
+                .Select(p => targetIds.Contains(p.Id)
+                    ? p with { GroupNumber = groupNumber }
+                    : p)
+                .ToList();
+            await InvokeAsync(StateHasChanged);
+
+            foreach (var target in assignmentTargets)
+            {
+                await Api.UpdateParticipantAsync(selectedTournament.Id, new UpdateParticipantRequest(
+                    selectedTournament.Id, target.Id, target.DisplayName, target.AccountName,
+                    target.IsAutodartsAccount, target.IsManager, target.Seed, target.SeedPot,
+                    groupNumber));
+            }
             await LoadParticipantsAsync(selectedTournament.Id);
         }
         catch (Exception ex) { editError = ex.Message; }
@@ -5699,13 +5863,27 @@ public partial class Tournaments : IAsyncDisposable
         var participant = participants.FirstOrDefault(p => p.Id == participantId);
         if (participant is null) return;
 
+        var assignmentTargets = ResolveDrawAssignmentTargets(participant);
+        var targetIds = assignmentTargets.Select(p => p.Id).ToHashSet();
+
         try
         {
             isWorking = true;
-            await Api.UpdateParticipantAsync(selectedTournament.Id, new UpdateParticipantRequest(
-                selectedTournament.Id, participantId, participant.DisplayName, participant.AccountName,
-                participant.IsAutodartsAccount, participant.IsManager, participant.Seed, participant.SeedPot,
-                null));
+
+            participants = participants
+                .Select(p => targetIds.Contains(p.Id)
+                    ? p with { GroupNumber = null }
+                    : p)
+                .ToList();
+            await InvokeAsync(StateHasChanged);
+
+            foreach (var target in assignmentTargets)
+            {
+                await Api.UpdateParticipantAsync(selectedTournament.Id, new UpdateParticipantRequest(
+                    selectedTournament.Id, target.Id, target.DisplayName, target.AccountName,
+                    target.IsAutodartsAccount, target.IsManager, target.Seed, target.SeedPot,
+                    null));
+            }
             await LoadParticipantsAsync(selectedTournament.Id);
         }
         catch (Exception ex) { editError = ex.Message; }
@@ -5718,25 +5896,33 @@ public partial class Tournaments : IAsyncDisposable
         if (selectedTournament is null) return;
         if (!EnsureTournamentStructureEditable(message => editError = message)) return;
 
-        confirmationMessage = "Alle Gruppenzuteilungen werden zurückgesetzt. Wirklich fortfahren?";
-        confirmationAction = async () =>
+        try
         {
-            try
+            isWorking = true;
+            var assignedParticipantIds = EffectiveDrawParticipants
+                .Where(p => p.GroupNumber.HasValue && p.GroupNumber > 0)
+                .Select(p => p.Id)
+                .ToHashSet();
+
+            // Update the UI immediately so the reset is visible on click, not after the roundtrip completes.
+            participants = participants
+                .Select(p => assignedParticipantIds.Contains(p.Id)
+                    ? p with { GroupNumber = null, SeedPot = 0 }
+                    : p)
+                .ToList();
+            await InvokeAsync(StateHasChanged);
+
+            foreach (var p in EffectiveDrawParticipants.Where(p => assignedParticipantIds.Contains(p.Id)))
             {
-                isWorking = true;
-                foreach (var p in EffectiveDrawParticipants.Where(p => p.GroupNumber.HasValue && p.GroupNumber > 0))
-                {
-                    await Api.UpdateParticipantAsync(selectedTournament.Id, new UpdateParticipantRequest(
-                        selectedTournament.Id, p.Id, p.DisplayName, p.AccountName,
-                        p.IsAutodartsAccount, p.IsManager, p.Seed, 0, null));
-                }
-                await LoadParticipantsAsync(selectedTournament.Id);
-                await InvokeAsync(StateHasChanged);
+                await Api.UpdateParticipantAsync(selectedTournament.Id, new UpdateParticipantRequest(
+                    selectedTournament.Id, p.Id, p.DisplayName, p.AccountName,
+                    p.IsAutodartsAccount, p.IsManager, p.Seed, 0, null));
             }
-            catch (Exception ex) { editError = ex.Message; }
-            finally { isWorking = false; }
-        };
-        showConfirmation = true;
+            await LoadParticipantsAsync(selectedTournament.Id);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex) { editError = ex.Message; }
+        finally { isWorking = false; }
     }
 
     /// <summary>Assign seed pots based on seeding list, then auto-distribute to groups.</summary>
@@ -5786,7 +5972,12 @@ public partial class Tournaments : IAsyncDisposable
         if (!EnsureTournamentStructureEditable(message => editError = message)) return;
 
         var assigned = EffectiveDrawParticipants.Where(p => p.GroupNumber.HasValue && p.GroupNumber > 0).ToList();
-        foreach (var p in assigned)
+        var targetIds = assigned
+            .SelectMany(ResolveDrawAssignmentTargets)
+            .Select(p => p.Id)
+            .ToHashSet();
+
+        foreach (var p in participants.Where(p => targetIds.Contains(p.Id)).ToList())
         {
             var updated = await Api.UpdateParticipantAsync(selectedTournament.Id, new UpdateParticipantRequest(
                 selectedTournament.Id, p.Id, p.DisplayName, p.AccountName,
@@ -6264,10 +6455,14 @@ public partial class Tournaments : IAsyncDisposable
         var participant = participants.FirstOrDefault(p => p.Id == step.ParticipantId);
         if (participant is null) return;
 
-        var updated = await Api.UpdateParticipantAsync(selectedTournament.Id, new UpdateParticipantRequest(
-            selectedTournament.Id, participant.Id, participant.DisplayName, participant.AccountName,
-            participant.IsAutodartsAccount, participant.IsManager, participant.Seed, participant.SeedPot, step.TargetGroup));
-        ReplaceParticipant(updated);
+        var assignmentTargets = ResolveDrawAssignmentTargets(participant);
+        foreach (var target in assignmentTargets)
+        {
+            var updated = await Api.UpdateParticipantAsync(selectedTournament.Id, new UpdateParticipantRequest(
+                selectedTournament.Id, target.Id, target.DisplayName, target.AccountName,
+                target.IsAutodartsAccount, target.IsManager, target.Seed, target.SeedPot, step.TargetGroup));
+            ReplaceParticipant(updated);
+        }
     }
 
     private async Task AnimateDrawStepsAsync(List<DrawStep> steps)
@@ -6339,6 +6534,40 @@ public partial class Tournaments : IAsyncDisposable
         }
     }
 
+    private async Task HarmonizeTeamGroupAssignmentsAsync()
+    {
+        if (selectedTournament is null || !IsTeamplayActive || editGroupCount < 1)
+            return;
+
+        var desiredGroupByParticipantId = new Dictionary<Guid, int>();
+
+        for (var group = 1; group <= editGroupCount; group++)
+        {
+            foreach (var representative in GroupParticipants(group))
+            {
+                foreach (var target in ResolveDrawAssignmentTargets(representative))
+                {
+                    desiredGroupByParticipantId[target.Id] = group;
+                }
+            }
+        }
+
+        if (desiredGroupByParticipantId.Count == 0)
+            return;
+
+        foreach (var participant in participants.Where(p => desiredGroupByParticipantId.ContainsKey(p.Id)).ToList())
+        {
+            var targetGroup = desiredGroupByParticipantId[participant.Id];
+            if (participant.GroupNumber == targetGroup)
+                continue;
+
+            var updated = await Api.UpdateParticipantAsync(selectedTournament.Id, new UpdateParticipantRequest(
+                selectedTournament.Id, participant.Id, participant.DisplayName, participant.AccountName,
+                participant.IsAutodartsAccount, participant.IsManager, participant.Seed, participant.SeedPot, targetGroup));
+            ReplaceParticipant(updated);
+        }
+    }
+
     /// <summary>Auto-draw participants into groups using selected mode and optional animation.</summary>
     private async Task AutoDrawAsync()
     {
@@ -6353,7 +6582,11 @@ public partial class Tournaments : IAsyncDisposable
                 await AutoDrawKnockoutAsync();
             }
             catch (Exception ex) { editError = ex.Message; }
-            finally { isWorking = false; }
+            finally
+            {
+                isWorking = false;
+                await InvokeAsync(StateHasChanged);
+            }
             return;
         }
 
@@ -6382,10 +6615,17 @@ public partial class Tournaments : IAsyncDisposable
                 await AnimateDrawStepsAsync(drawPlan);
             }
 
+            await HarmonizeTeamGroupAssignmentsAsync();
+
             await LoadParticipantsAsync(selectedTournament.Id);
+            await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex) { editError = ex.Message; }
-        finally { isWorking = false; }
+        finally
+        {
+            isWorking = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     /// <summary>Delete tournament plan (matches only, keep group assignments).</summary>
@@ -6399,6 +6639,7 @@ public partial class Tournaments : IAsyncDisposable
         }
 
         confirmationMessage = "Alle Matches werden gelöscht. Die Gruppeneinteilung bleibt bestehen. Wirklich fortfahren?";
+        showConfirmationPlanImpact = false;
         confirmationAction = async () =>
         {
             try
@@ -6421,6 +6662,7 @@ public partial class Tournaments : IAsyncDisposable
             finally { isWorking = false; }
         };
         showConfirmation = true;
+        await InvokeAsync(StateHasChanged);
     }
 
     /// <summary>Create the tournament plan (finalize draw).</summary>
@@ -6450,7 +6692,8 @@ public partial class Tournaments : IAsyncDisposable
                 await Api.GenerateGroupMatchesAsync(selectedTournament.Id);
                 matches = (await Api.GetMatchesAsync(selectedTournament.Id)).ToList();
                 groupStandings = (await Api.GetGroupStandingsAsync(selectedTournament.Id)).ToList();
-                activeTab = "groups";
+                await LoadRoundsAsync();
+                activeTab = HasMissingRoundConfig() ? "rounds" : "groups";
             }
             else
             {
@@ -6463,7 +6706,8 @@ public partial class Tournaments : IAsyncDisposable
                 }
                 await ApplyKnockoutDrawCardsToSeedsAsync();
                 matches = (await Api.GenerateMatchesAsync(selectedTournament.Id)).ToList();
-                activeTab = "knockout";
+                await LoadRoundsAsync();
+                activeTab = HasMissingRoundConfig() ? "rounds" : "knockout";
             }
         }
         catch (Exception ex) { editError = ex.Message; }
