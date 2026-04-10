@@ -301,3 +301,12 @@ h1:focus {
         font-size: 0.9rem;
     }
 }
+
+/* Hide native scrollbar on tab strip while keeping scroll functionality */
+.tournament-tabs-nowrap {
+    scrollbar-width: none;
+}
+
+.tournament-tabs-nowrap::-webkit-scrollbar {
+    display: none;
+}

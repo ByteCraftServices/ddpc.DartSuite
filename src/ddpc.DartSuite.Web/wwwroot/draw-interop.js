@@ -494,6 +494,13 @@ window.dartSuiteUi = window.dartSuiteUi || {
 
         delete this._outsideClickHandlers[key];
     },
+    scrollActiveTabIntoView: function (containerSelector) {
+        const container = document.querySelector(containerSelector || ".tournament-tabs-nowrap");
+        if (!container) return;
+        const active = container.querySelector(".nav-link.active");
+        if (!active) return;
+        active.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    },
     focusAndSelect: function (selector) {
         if (!selector || typeof selector !== "string") return;
 
