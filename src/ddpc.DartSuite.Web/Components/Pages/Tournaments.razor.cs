@@ -1747,6 +1747,13 @@ public partial class Tournaments : IAsyncDisposable
 
     private Task SetDropTargetMatchIdAsync(Guid? matchId)
     {
+        if (draggedBoardId.HasValue && matchId.HasValue)
+        {
+            var target = matches.FirstOrDefault(m => m.Id == matchId.Value);
+            if (target is null || !CanAssignBoardToMatch(target))
+                return Task.CompletedTask;
+        }
+
         dropTargetMatchId = matchId;
         return Task.CompletedTask;
     }
@@ -1759,6 +1766,12 @@ public partial class Tournaments : IAsyncDisposable
 
     private Task SetDraggedBoardIdAsync(Guid boardId)
     {
+        if (!CanManageScheduleInteractions || isWorking)
+            return Task.CompletedTask;
+
+        if (!boards.Any(b => b.Id == boardId))
+            return Task.CompletedTask;
+
         draggedBoardId = boardId;
         return Task.CompletedTask;
     }
@@ -3690,6 +3703,12 @@ public partial class Tournaments : IAsyncDisposable
     private bool CanDragScheduleMatch(MatchDto match)
         => CanManageScheduleInteractions && !isWorking && !IsScheduleDragLocked(match);
 
+    private bool CanAssignBoardToMatch(MatchDto match)
+        => CanManageScheduleInteractions
+           && !isWorking
+           && !match.IsBoardLocked
+           && !IsScheduleDragLocked(match);
+
     private void StartScheduleMatchDrag(Guid matchId)
     {
         var match = matches.FirstOrDefault(m => m.Id == matchId);
@@ -3903,6 +3922,15 @@ public partial class Tournaments : IAsyncDisposable
     private async Task AssignBoardToMatchAsync(Guid matchId)
     {
         if (draggedBoardId is null) return;
+
+        var target = matches.FirstOrDefault(m => m.Id == matchId);
+        if (target is null || !CanAssignBoardToMatch(target))
+        {
+            draggedBoardId = null;
+            dropTargetMatchId = null;
+            return;
+        }
+
         var boardId = draggedBoardId.Value;
         draggedBoardId = null;
         dropTargetMatchId = null;

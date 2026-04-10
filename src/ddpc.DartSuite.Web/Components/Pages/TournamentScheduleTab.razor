@@ -44,10 +44,10 @@
             @foreach (var board in Boards)
             {
                 <div class="badge bg-dark p-2 user-select-none"
-                     draggable="true"
+                     draggable="@(CanManageScheduleInteractions ? "true" : "false")"
                      @ondragstart="() => HandleBoardDragStartAsync(board.Id)"
                      @ondragend="HandleBoardDragEndAsync"
-                     style="cursor:grab; font-size:.85em">
+                     style="cursor:@(CanManageScheduleInteractions ? "grab" : "default"); font-size:.85em">
                     📋 @board.Name
                     <span class="badge @BoardStatusBadge(board.Status) ms-1" style="font-size:.75em">@board.Status</span>
                 </div>
@@ -226,6 +226,7 @@ else
     [Parameter] public bool SelectedTournamentIsLocked { get; set; }
     [Parameter] public bool HasTournamentStartTime { get; set; }
     [Parameter] public bool IsCurrentUserManager { get; set; }
+    [Parameter] public bool CanManageScheduleInteractions { get; set; }
     [Parameter] public bool IsWorking { get; set; }
     [Parameter] public bool ScheduleHideFinished { get; set; }
     [Parameter] public bool ScheduleShowNoBoard { get; set; }
