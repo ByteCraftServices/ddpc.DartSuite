@@ -37,7 +37,7 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small" title="Anzahl qualifizierter Spieler je Gruppe für die K.O.-Phase.">Playoff-Aufsteiger</label>
+                    <label class="form-label small" title="@(IsTeamplayActive ? "Anzahl qualifizierter Teams je Gruppe für die K.O.-Phase." : "Anzahl qualifizierter Spieler je Gruppe für die K.O.-Phase.")">Playoff-Aufsteiger</label>
                     <input type="number"
                            class="form-control form-control-sm @(EditPlayoffAdvancers < 1 ? "border-danger" : "")"
                            value="@EditPlayoffAdvancers"
@@ -45,7 +45,7 @@
                            min="1" />
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small" title="Wie oft jeder Teilnehmer gegen denselben Gegner spielt.">Matches/Gegner</label>
+                    <label class="form-label small" title="@(IsTeamplayActive ? "Wie oft jedes Team gegen denselben Gegner spielt." : "Wie oft jeder Teilnehmer gegen denselben Gegner spielt.")">Matches/Gegner</label>
                     <select class="form-select form-select-sm @(EditMatchesPerOpponent < 1 ? "border-danger" : "")"
                             value="@EditMatchesPerOpponent"
                             @onchange="HandleEditMatchesPerOpponentChangedAsync">
@@ -353,7 +353,7 @@
                                 }
                                 @if (!groupParts.Any())
                                 {
-                                    <div class="text-muted small text-center py-2">Teilnehmer hierher ziehen</div>
+                                    <div class="text-muted small text-center py-2">@DrawDropHint</div>
                                 }
                             </div>
                         </div>
@@ -445,7 +445,7 @@
                                         }
                                         else
                                         {
-                                            <span class="text-muted small">Spieler 1 hier ablegen</span>
+                                            <span class="text-muted small">@KnockoutSlotHint(1)</span>
                                         }
                                     </div>
 
@@ -461,7 +461,7 @@
                                         }
                                         else
                                         {
-                                            <span class="text-muted small">Spieler 2 hier ablegen</span>
+                                            <span class="text-muted small">@KnockoutSlotHint(2)</span>
                                         }
                                     </div>
                                 </div>
@@ -541,11 +541,11 @@
 
     @if (!Matches.Any() && SelectedTournamentMode == "GroupAndKnockout" && UnassignedParticipants.Count > 0)
     {
-        <div class="alert alert-info py-2 small mt-2">Alle Teilnehmer müssen einer Gruppe zugewiesen sein, bevor der Turnierplan erstellt werden kann. Noch @UnassignedParticipants.Count nicht zugewiesen.</div>
+        <div class="alert alert-info py-2 small mt-2">Alle @DrawEntityPlural müssen einer Gruppe zugewiesen sein, bevor der Turnierplan erstellt werden kann. Noch @UnassignedParticipants.Count nicht zugewiesen.</div>
     }
     @if (!Matches.Any() && SelectedTournamentMode == "Knockout" && EditGroupDrawMode == "Manual" && !IsKnockoutDrawComplete)
     {
-        <div class="alert alert-info py-2 small mt-2">Bei manueller K.O.-Auslosung müssen alle Teilnehmer einem Match-Slot zugewiesen werden.</div>
+        <div class="alert alert-info py-2 small mt-2">Bei manueller K.O.-Auslosung müssen alle @DrawEntityPlural einem Match-Slot zugewiesen werden.</div>
     }
     @if (Matches.Any() && HasPlayedMatches())
     {
@@ -554,7 +554,7 @@
 
     @if (!Matches.Any() && Participants.Count < 2)
     {
-        <p class="text-muted">Mindestens 2 Teilnehmer erforderlich.</p>
+        <p class="text-muted">Mindestens 2 @(IsTeamplayActive ? "Teams" : "Teilnehmer") erforderlich.</p>
     }
 </div>
 
@@ -654,6 +654,10 @@
     [Parameter] public Action<Guid> StartKnockoutDrag { get; set; } = _ => { };
     [Parameter] public Action<int, bool> AssignDraggedToKnockoutCard { get; set; } = (_, _) => { };
     [Parameter] public Action<int, bool> ClearKnockoutCardSlot { get; set; } = (_, _) => { };
+
+    private string DrawEntityPlural => IsTeamplayActive ? "Teams" : "Teilnehmer";
+    private string DrawDropHint => IsTeamplayActive ? "Team hierher ziehen" : "Teilnehmer hierher ziehen";
+    private string KnockoutSlotHint(int slot) => IsTeamplayActive ? $"Team {slot} hier ablegen" : $"Spieler {slot} hier ablegen";
 
     private Task HandleEditGroupCountChangedAsync(ChangeEventArgs args) => EditGroupCountChanged(ParseInt(args, EditGroupCount));
     private Task HandleEditPlayoffAdvancersChangedAsync(ChangeEventArgs args) => EditPlayoffAdvancersChanged(ParseInt(args, EditPlayoffAdvancers));
