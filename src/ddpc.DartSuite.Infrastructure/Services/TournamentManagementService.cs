@@ -281,6 +281,9 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         if (exists) throw new InvalidOperationException("Participant already exists.");
 
         var participantType = ParseParticipantTypeOrDefault(request.Type, ParticipantType.Spieler);
+        if (participantType == ParticipantType.TeamMember)
+            throw new InvalidOperationException("Team-Teilnehmer werden automatisch ueber die Teamverwaltung erstellt.");
+
         var participantSeed = tournament.TeamplayEnabled && participantType != ParticipantType.TeamMember
             ? 0
             : request.Seed;
@@ -313,6 +316,13 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
         if (participant is null) return null;
 
         var participantType = ParseParticipantTypeOrDefault(request.Type, participant.Type);
+
+        if (participant.Type == ParticipantType.TeamMember && participantType != ParticipantType.TeamMember)
+            throw new InvalidOperationException("Team-Teilnehmer koennen nicht in Spieler umgewandelt werden.");
+
+        if (participant.Type != ParticipantType.TeamMember && participantType == ParticipantType.TeamMember)
+            throw new InvalidOperationException("Spieler koennen nicht direkt zu Team-Teilnehmern werden. Bitte Teamverwaltung verwenden.");
+
         var participantSeed = tournament.TeamplayEnabled && participantType != ParticipantType.TeamMember
             ? 0
             : request.Seed;
