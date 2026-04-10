@@ -1,4 +1,4 @@
-﻿@page "/tournaments"
+@page "/tournaments"
 @using ddpc.DartSuite.Application.Contracts.Matches
 
 <PageTitle>Turniere</PageTitle>
@@ -1536,539 +1536,106 @@
                                                                                                         @* ═══════ Tab: Auslosung ═══════ *@
                                                                                                         @if (activeTab == "draw")
                                                                                                         {
-                                                                                                                <div class="card mb-3">
-                                                                                                                    <div class="card-header d-flex justify-content-between align-items-center">
-                                                                                                                        <span>
-                                                                                                                            Gruppenphase-Einstellungen
-                                                                                                                            @if (HasGroupSettingsRequiredMissing())
-                                                                                                                            {
-                                                                                                                                <span class="text-danger ms-2" title="Pflichteinstellungen fehlen">⚠</span>
-                                                                                                                            }
-                                                                                                                        </span>
-                                                                                                                        <span class="d-none d-md-inline small text-muted">@GroupSettingsSummary()</span>
-                                                                                                                    </div>
-                                                                                                                    <div class="card-body">
-                                                                                                                        @if (CanEditGroupConfig)
-                                                                                                                        {
-                                                                                                                            <div class="row g-2 mb-3">
-                                                                                                                                <div class="col-md-3">
-                                                                                                                                    <label class="form-label small" title="Anzahl Gruppen für die Gruppenphase.">Anzahl Gruppen</label>
-                                                                                                                                    <select class="form-select form-select-sm @(editGroupCount < 1 ? "border-danger" : "")" @bind="editGroupCount" @bind:after="AutoSaveSettingAsync">
-                                                                                                                                        @for (var i = 1; i <= 16; i++)
-                                                                                                                                        {
-                                                                                                                                            <option value="@i">@i</option>
-                                                                                                                                        }
-                                                                                                                                    </select>
-                                                                                                                                </div>
-                                                                                                                                <div class="col-md-3">
-                                                                                                                                    <label class="form-label small" title="Anzahl qualifizierter Spieler je Gruppe für die K.O.-Phase.">Playoff-Aufsteiger</label>
-                                                                                                                                    <input type="number" class="form-control form-control-sm @(editPlayoffAdvancers < 1 ? "border-danger" : "")" @bind="editPlayoffAdvancers" @bind:after="AutoSaveSettingAsync" min="1" />
-                                                                                                                                </div>
-                                                                                                                                <div class="col-md-3">
-                                                                                                                                    <label class="form-label small" title="Wie oft jeder Teilnehmer gegen denselben Gegner spielt.">Matches/Gegner</label>
-                                                                                                                                    <select class="form-select form-select-sm @(editMatchesPerOpponent < 1 ? "border-danger" : "")" @bind="editMatchesPerOpponent" @bind:after="AutoSaveSettingAsync">
-                                                                                                                                        @for (var i = 1; i <= 12; i++)
-                                                                                                                                        {
-                                                                                                                                            <option value="@i">@i Runde@(i > 1 ? "n" : "")</option>
-                                                                                                                                        }
-                                                                                                                                    </select>
-                                                                                                                                </div>
-                                                                                                                                <div class="col-md-3">
-                                                                                                                                    <label class="form-label small" title="Anzahl parallel gespielter K.O.-Matches je Runde nach der Gruppenphase.">Knockouts/Runde</label>
-                                                                                                                                    <input type="number" class="form-control form-control-sm @(editKnockoutsPerRound < 0 ? "border-danger" : "")" @bind="editKnockoutsPerRound" @bind:after="AutoSaveSettingAsync" min="0" />
-                                                                                                                                </div>
-                                                                                                                            </div>
-                                                                                                                            <div class="row g-2 mb-0">
-                                                                                                                                <div class="col-md-3">
-                                                                                                                                    <label class="form-label small" title="Jeder gegen jeden oder alternative Gruppenlogik.">Gruppenmodus</label>
-                                                                                                                                    <select class="form-select form-select-sm" @bind="editGroupMode" @bind:after="AutoSaveSettingAsync">
-                                                                                                                                        <option value="RoundRobin">Jeder gegen Jeden</option>
-                                                                                                                                        <option value="Knockout">Knockout</option>
-                                                                                                                                        <option value="GroupTournament">Gruppenturnier</option>
-                                                                                                                                    </select>
-                                                                                                                                </div>
-                                                                                                                                <div class="col-md-3">
-                                                                                                                                    <label class="form-label small" title="Zufällig, manuell oder per Lostopf (SeededPots) auslosen.">Auslosungsmodus</label>
-                                                                                                                                    <select class="form-select form-select-sm" @bind="editGroupDrawMode" @bind:after="AutoSaveSettingAsync">
-                                                                                                                                        <option value="Manual">Manuell</option>
-                                                                                                                                        <option value="Random">Zufällig</option>
-                                                                                                                                        @if (editSeedingEnabled)
-                                                                                                                                        {
-                                                                                                                                            <option value="SeededPots">Lostopf</option>
-                                                                                                                                        }
-                                                                                                                                    </select>
-                                                                                                                                </div>
-                                                                                                                                <div class="col-md-3">
-                                                                                                                                    <label class="form-label small" title="Erzeugt Gruppenrunden blockweise oder rundenweise über alle Gruppen.">Planungsvariante</label>
-                                                                                                                                    <select class="form-select form-select-sm" @bind="editPlanningVariant" @bind:after="AutoSaveSettingAsync">
-                                                                                                                                        <option value="GroupByGroup">Gruppe für Gruppe</option>
-                                                                                                                                        <option value="RoundByRound">Runde für Runde</option>
-                                                                                                                                    </select>
-                                                                                                                                </div>
-                                                                                                                                <div class="col-md-3">
-                                                                                                                                    <label class="form-label small" title="Reihenfolge der Matches pro Runde innerhalb einer Gruppe.">Reihenfolge</label>
-                                                                                                                                    <select class="form-select form-select-sm" @bind="editGroupOrderMode" @bind:after="AutoSaveSettingAsync">
-                                                                                                                                        <option value="ReverseEachRound">Folgerunde absteigend</option>
-                                                                                                                                        <option value="SameOrder">Immer gleich</option>
-                                                                                                                                        <option value="RandomPerRound">Runde zufällig</option>
-                                                                                                                                        <option value="AllRandom">Alle zufällig</option>
-                                                                                                                                    </select>
-                                                                                                                                </div>
-                                                                                                                            </div>
-                                                                                                                        }
-                                                                                                                        else
-                                                                                                                        {
-                                                                                                                            <div class="small text-muted d-flex flex-wrap gap-2">
-                                                                                                                                <span class="badge text-bg-light border">Gruppen: @editGroupCount</span>
-                                                                                                                                <span class="badge text-bg-light border">Aufsteiger: @editPlayoffAdvancers</span>
-                                                                                                                                <span class="badge text-bg-light border">Matches/Gegner: @editMatchesPerOpponent</span>
-                                                                                                                                <span class="badge text-bg-light border">Modus: @editGroupMode</span>
-                                                                                                                                <span class="badge text-bg-light border">Auslosung: @editGroupDrawMode</span>
-                                                                                                                            </div>
-                                                                                                                        }
-                                                                                                                    </div>
-                                                                                                                </div>
-
-                                                                                                                <div class="card mb-3">
-                                                                                                                    <div class="card-header d-flex justify-content-between align-items-center">
-                                                                                                                        <span>
-                                                                                                                            Punktemodus
-                                                                                                                            @if (HasScoringRequiredMissing())
-                                                                                                                            {
-                                                                                                                                <span class="text-danger ms-2" title="Pflichteinstellungen fehlen">⚠</span>
-                                                                                                                            }
-                                                                                                                        </span>
-                                                                                                                        <span class="d-none d-md-inline small text-muted">@ScoringSummary()</span>
-                                                                                                                    </div>
-                                                                                                                    <div class="card-body">
-                                                                                                                        @if (CanEditScoring)
-                                                                                                                        {
-                                                                                                                            <div class="row g-2 mb-0">
-                                                                                                                                <div class="col-md-6">
-                                                                                                                                    <label class="form-label small" title="Punkte je Sieg in der Gruppentabelle.">Punkte für Sieg</label>
-                                                                                                                                    <input type="number" class="form-control form-control-sm @(editWinPoints < 1 ? "border-danger" : "")" @bind="editWinPoints" @bind:after="AutoSaveSettingAsync" min="1" />
-                                                                                                                                </div>
-                                                                                                                                <div class="col-md-6">
-                                                                                                                                    <label class="form-label small" title="Gewichtung gewonnener Legs für Ranking/Tiebreak.">Faktor gewonnene Legs</label>
-                                                                                                                                    <input type="number" class="form-control form-control-sm @(editLegFactor < 0 ? "border-danger" : "")" @bind="editLegFactor" @bind:after="AutoSaveSettingAsync" min="0" />
-                                                                                                                                </div>
-                                                                                                                            </div>
-
-                                                                                                                            <hr class="my-3" />
-                                                                                                                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                                                                                                                <label class="form-label small fw-semibold mb-0">Tiebreaker-Reihenfolge</label>
-                                                                                                                                <button class="btn btn-outline-primary btn-sm" @onclick="SaveScoringCriteriaAsync" disabled="@(isSavingScoringCriteria || isWorking)">Speichern</button>
-                                                                                                                            </div>
-                                                                                                                            <div class="small text-muted mb-2">Aktivieren und per Pfeilen sortieren. Die Reihenfolge wird serverseitig fuer die Gruppenwertung genutzt.</div>
-                                                                                                                            @for (var idx = 0; idx < scoringCriteria.Count; idx++)
-                                                                                                                            {
-                                                                                                                                var criterion = scoringCriteria[idx];
-                                                                                                                                <div class="d-flex align-items-center gap-2 mb-1">
-                                                                                                                                    <span class="badge text-bg-light border" style="min-width:2rem">@(idx + 1)</span>
-                                                                                                                                    <input class="form-check-input" type="checkbox" @bind="criterion.IsEnabled" />
-                                                                                                                                    <span class="small flex-grow-1">@ScoringCriterionLabel(criterion.Type)</span>
-                                                                                                                                    <button class="btn btn-outline-secondary btn-sm py-0 px-2" title="Nach oben" @onclick="() => MoveScoringCriterionUp(idx)" disabled="@(idx == 0)">↑</button>
-                                                                                                                                    <button class="btn btn-outline-secondary btn-sm py-0 px-2" title="Nach unten" @onclick="() => MoveScoringCriterionDown(idx)" disabled="@(idx == scoringCriteria.Count - 1)">↓</button>
-                                                                                                                                </div>
-                                                                                                                            }
-                                                                                                                            @if (scoringCriteriaError is not null)
-                                                                                                                            {
-                                                                                                                                <div class="alert alert-danger py-1 mt-2 mb-0 small">@scoringCriteriaError</div>
-                                                                                                                            }
-                                                                                                                        }
-                                                                                                                        else
-                                                                                                                        {
-                                                                                                                            @if (HasStartedGroupMatch)
-                                                                                                                            {
-                                                                                                                                <div class="alert alert-info py-1 small">Punkte- und Tiebreaker-Logik ist gesperrt, weil die Gruppenphase bereits gestartet wurde.</div>
-                                                                                                                            }
-                                                                                                                            <div class="small text-muted d-flex flex-wrap gap-2">
-                                                                                                                                <span class="badge text-bg-light border">Siegpunkte: @editWinPoints</span>
-                                                                                                                                <span class="badge text-bg-light border">Leg-Faktor: @editLegFactor</span>
-                                                                                                                            </div>
-                                                                                                                            @if (scoringCriteria.Any(c => c.IsEnabled))
-                                                                                                                            {
-                                                                                                                                <div class="small text-muted d-flex flex-wrap gap-2 mt-2">
-                                                                                                                                    @foreach (var criterion in scoringCriteria.Where(c => c.IsEnabled).OrderBy(c => c.Priority))
-                                                                                                                                    {
-                                                                                                                                        <span class="badge text-bg-light border">@criterion.Priority. @ScoringCriterionLabel(criterion.Type)</span>
-                                                                                                                                    }
-                                                                                                                                </div>
-                                                                                                                            }
-                                                                                                                        }
-                                                                                                                    </div>
-                                                                                                                </div>
-
-                                                                                                            @* ─── Auto-Draw Actions (GroupAndKnockout) ─── *@
-                                                                                                            @if (ShowGroupSettingsSection() && IsCurrentUserManager && !selectedTournament.IsLocked
-                                                                                                                 && selectedTournament.Status is "Erstellt" or "Geplant")
-                                                                                                            {
-                                                                                                                <div class="d-flex flex-wrap gap-2 mb-3">
-                                                                                                                    <div class="d-flex align-items-center gap-2 me-2">
-                                                                                                                        <label class="small text-muted mb-0">Animation</label>
-                                                                                                                        <select class="form-select form-select-sm" style="width: 140px;" @bind="drawAnimationMode" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">
-                                                                                                                            <option value="Off">Aus</option>
-                                                                                                                            <option value="Exciting">Spannend</option>
-                                                                                                                            <option value="Moderate">Moderat</option>
-                                                                                                                        </select>
-                                                                                                                    </div>
-                                                                                                                    @if (editGroupDrawMode is "Random" or "SeededPots")
-                                                                                                                    {
-                                                                                                                        @if (CanEditTournamentStructure)
-                                                                                                                        {
-                                                                                                                            <button class="btn btn-primary btn-sm" title="Startet eine automatische Verteilung auf Gruppen." @onclick="AutoDrawAsync" disabled="@(isWorking || isDrawAnimating)">⚡ Automatisch auslosen</button>
-                                                                                                                        }
-                                                                                                                        else
-                                                                                                                        {
-                                                                                                                            <button type="button" class="btn btn-primary btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Auslosung gesperrt")'>⚡ Automatisch auslosen</button>
-                                                                                                                        }
-                                                                                                                    }
-                                                                                                                    @if (editGroupDrawMode == "SeededPots" && editSeedingEnabled)
-                                                                                                                    {
-                                                                                                                        <button class="btn btn-outline-secondary btn-sm" @onclick="AssignSeedPotsAndDistributeAsync" disabled="@(isWorking || !CanEditTournamentStructure)">🎲 Lostöpfe zuteilen</button>
-                                                                                                                    }
-                                                                                                                    @if (HasDrawAssignments())
-                                                                                                                    {
-                                                                                                                        <button class="btn btn-outline-warning btn-sm" @onclick="ResetDrawAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">↩ Auslosung zurücksetzen</button>
-                                                                                                                    }
-                                                                                                                </div>
-                                                                                                                @if (isDrawAnimating)
-                                                                                                                {
-                                                                                                                    <div class="alert alert-secondary py-1 small">Auslosung läuft…</div>
-                                                                                                                }
-
-                                                                                                                @if (editGroupDrawMode == "SeededPots" && editSeedingEnabled && participants.Any(p => p.SeedPot > 0))
-                                                                                                                {
-                                                                                                                    <div class="small text-muted mb-2">
-                                                                                                                        @foreach (var pot in participants.Where(p => p.SeedPot > 0).GroupBy(p => p.SeedPot).OrderBy(g => g.Key))
-                                                                                                                        {
-                                                                                                                            <span class="badge @PotBadgeCss(pot.Key) me-1">Topf @pot.Key: @pot.Count()</span>
-                                                                                                                        }
-                                                                                                                    </div>
-                                                                                                                }
-
-                                                                                                                <div class="row g-3">
-                                                                                                                    @* ─── Left: Unassigned Participants ─── *@
-                                                                                                                    @{ var unassigned = UnassignedParticipants; }
-                                                                                                                    @if (unassigned.Any())
-                                                                                                                    {
-                                                                                                                        <div class="col-md-4">
-                                                                                                                            @if (editGroupDrawMode == "SeededPots" && editSeedingEnabled)
-                                                                                                                            {
-                                                                                                                                var unassignedByPot = unassigned.Where(p => p.SeedPot > 0).GroupBy(p => p.SeedPot).OrderBy(g => g.Key).ToList();
-                                                                                                                                <div class="d-flex flex-column gap-2" style="max-height:500px; overflow-y:auto">
-                                                                                                                                    @if (unassignedByPot.Any())
-                                                                                                                                    {
-                                                                                                                                        @foreach (var pot in unassignedByPot)
-                                                                                                                                        {
-                                                                                                                                            <div class="card border-2 @DrawPotAnimationCss(pot.Key)">
-                                                                                                                                                <div class="card-header py-2 d-flex justify-content-between align-items-center">
-                                                                                                                                                    <strong class="small">Topf @pot.Key</strong>
-                                                                                                                                                    <span class="badge @PotBadgeCss(pot.Key)">@pot.Count()</span>
-                                                                                                                                                </div>
-                                                                                                                                                <div class="card-body p-2">
-                                                                                                                                                    @foreach (var p in pot.OrderBy(p => p.Seed > 0 ? p.Seed : int.MaxValue).ThenBy(p => p.DisplayName))
-                                                                                                                                                    {
-                                                                                                                                                                                                                                                                                                                    <div class="badge bg-dark p-2 me-1 mb-1 user-select-none draw-participant-badge @DrawParticipantAnimationCss(p.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")"
-                                                                                                                                                             @ondragstart="() => draggedParticipantId = p.Id" style="cursor:grab; font-size:.85em">
-                                                                                                                                                            @if (editSeedingEnabled && p.Seed > 0 && p.Seed <= editSeedTopCount)
-                                                                                                                                                            {
-                                                                                                                                                                <span class="badge text-bg-warning me-1">#@p.Seed</span>
-                                                                                                                                                            }
-                                                                                                                                                            <span class="badge @PotBadgeCss(p.SeedPot) me-1">Topf @p.SeedPot</span>
-                                                                                                                                                                                                                                                                                                                        <span class="draw-participant-name">@p.DisplayName.ToUpperInvariant()</span>
-                                                                                                                                                        </div>
-                                                                                                                                                    }
-                                                                                                                                                </div>
-                                                                                                                                            </div>
-                                                                                                                                        }
-                                                                                                                                    }
-                                                                                                                                    else
-                                                                                                                                    {
-                                                                                                                                        <div class="alert alert-info py-2 small mb-0">Keine Lostöpfe vorhanden. Bitte zuerst "Lostöpfe zuteilen" ausführen.</div>
-                                                                                                                                    }
-                                                                                                                                </div>
-                                                                                                                            }
-                                                                                                                            else
-                                                                                                                            {
-                                                                                                                                <div class="card">
-                                                                                                                                    <div class="card-header py-2">
-                                                                                                                                            <strong class="small">@(IsTeamplayActive ? "Teams" : "Teilnehmer")</strong>
-                                                                                                                                        <span class="badge text-bg-secondary ms-1">@unassigned.Count</span>
-                                                                                                                                    </div>
-                                                                                                                                    <div class="card-body p-2" style="max-height:500px; overflow-y:auto">
-                                                                                                                                        @foreach (var p in unassigned.OrderBy(p => p.Seed > 0 ? p.Seed : int.MaxValue).ThenBy(p => p.DisplayName))
-                                                                                                                                        {
-                                                                                                                                            <div class="badge bg-dark p-2 me-1 mb-1 user-select-none draw-participant-badge @DrawParticipantAnimationCss(p.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")"
-                                                                                                                                                 @ondragstart="() => draggedParticipantId = p.Id" style="cursor:grab; font-size:.85em">
-                                                                                                                                                @if (editSeedingEnabled && p.Seed > 0 && p.Seed <= editSeedTopCount)
-                                                                                                                                                {
-                                                                                                                                                    <span class="badge text-bg-warning me-1">#@p.Seed</span>
-                                                                                                                                                }
-                                                                                                                                                <span class="draw-participant-name">@p.DisplayName.ToUpperInvariant()</span>
-                                                                                                                                            </div>
-                                                                                                                                        }
-                                                                                                                                    </div>
-                                                                                                                                </div>
-                                                                                                                            }
-                                                                                                                        </div>
-                                                                                                                    }
-
-                                                                                                                    @* ─── Right: Group Containers ─── *@
-                                                                                                                    <div class="@(unassigned.Any() ? "col-md-8" : "col-12")">
-                                                                                                                        <div class="row g-2">
-                                                                                                                            @for (var g = 1; g <= editGroupCount; g++)
-                                                                                                                            {
-                                                                                                                                var groupNum = g;
-                                                                                                                                var groupParts = GroupParticipants(groupNum);
-                                                                                                                                var isDropTarget = dropTargetGroupNumber == groupNum;
-                                                                                                                                var highlightCss = GroupDropHighlightCss(groupNum);
-                                                                                                                                <div class="@GroupDropzoneColumnCss">
-                                                                                                                                                                                  <div class="card draw-group-dropzone @(isDropTarget ? highlightCss : "") @DrawGroupAnimationCss(groupNum)"
-                                                                                                                                         @ondragover:preventDefault
-                                                                                                                                                                                      @ondragover="() => { if (CanEditTournamentStructure) dropTargetGroupNumber = groupNum; }"
-                                                                                                                                                                                      @ondragleave="() => { if (CanEditTournamentStructure && dropTargetGroupNumber == groupNum) dropTargetGroupNumber = null; }"
-                                                                                                                                         @ondrop="() => AssignParticipantToGroupAsync(groupNum)">
-                                                                                                                                        <div class="card-header py-2 d-flex justify-content-between align-items-center">
-                                                                                                                                            <strong class="small">Gruppe @GroupLabel(groupNum)</strong>
-                                                                                                                                            <span class="badge text-bg-secondary">@groupParts.Count / @IdealGroupSize</span>
-                                                                                                                                        </div>
-                                                                                                                                        <div class="card-body p-2" style="min-height:60px">
-                                                                                                                                            @foreach (var p in groupParts)
-                                                                                                                                            {
-                                                                                                                                                    <div class="badge bg-dark p-2 me-1 mb-1 user-select-none draw-participant-badge @DrawParticipantAnimationCss(p.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")"
-                                                                                                                                                     @ondragstart="() => draggedParticipantId = p.Id" style="cursor:grab; font-size:.85em">
-                                                                                                                                                    @if (editSeedingEnabled && p.Seed > 0 && p.Seed <= editSeedTopCount)
-                                                                                                                                                    {
-                                                                                                                                                          <span class="badge text-bg-warning me-1">#@p.Seed</span>
-                                                                                                                                                    }
-                                                                                                                                                        @if (editGroupDrawMode == "SeededPots" && p.SeedPot > 0)
-                                                                                                                                                        {
-                                                                                                                                                          <span class="badge @PotBadgeCss(p.SeedPot) me-1">Topf @p.SeedPot</span>
-                                                                                                                                                        }
-                                                                                                                                                    <span class="draw-participant-name">@p.DisplayName.ToUpperInvariant()</span>
-                                                                                                                                                        <button class="btn btn-sm p-0 ms-1 text-white-50 draw-participant-remove-btn" style="font-size:.7em; line-height:1"
-                                                                                                                                                            @onclick="() => UnassignParticipantFromGroupAsync(p.Id)" @onclick:stopPropagation
-                                                                                                                                                            disabled="@(isWorking || !CanEditTournamentStructure)"
-                                                                                                                                                            title="Aus Gruppe entfernen">✕</button>
-                                                                                                                                                </div>
-                                                                                                                                            }
-                                                                                                                                            @if (!groupParts.Any())
-                                                                                                                                            {
-                                                                                                                                                <div class="text-muted small text-center py-2">Teilnehmer hierher ziehen</div>
-                                                                                                                                            }
-                                                                                                                                        </div>
-                                                                                                                                    </div>
-                                                                                                                                </div>
-                                                                                                                            }
-                                                                                                                        </div>
-                                                                                                                    </div>
-                                                                                                                </div>
-
-                                                                                                            }
-
-                                                                                                            @* ─── Draw Area: Knockout mode ─── *@
-                                                                                                            @if (selectedTournament.Mode == "Knockout" && IsCurrentUserManager && !selectedTournament.IsLocked
-                                                                                                                 && selectedTournament.Status is "Erstellt" or "Geplant")
-                                                                                                            {
-                                                                                                                <div class="d-flex flex-wrap gap-2 mb-3">
-                                                                                                                    <div class="d-flex align-items-center gap-2 me-2">
-                                                                                                                        <label class="small text-muted mb-0">Animation</label>
-                                                                                                                        <select class="form-select form-select-sm" style="width: 140px;" @bind="drawAnimationMode" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">
-                                                                                                                            <option value="Off">Aus</option>
-                                                                                                                            <option value="Exciting">Spannend</option>
-                                                                                                                            <option value="Moderate">Moderat</option>
-                                                                                                                        </select>
-                                                                                                                    </div>
-                                                                                                                    <span class="@(CanEditTournamentStructure ? "" : "btn-reason-wrap")" title="@CannotEditStructureReason">
-                                                                                                                        <button class="btn btn-primary btn-sm" @onclick="AutoDrawAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">⚡ Auslosung starten</button>
-                                                                                                                    </span>
-                                                                                                                    @if (KnockoutAssignedParticipants.Any())
-                                                                                                                    {
-                                                                                                                        @if (CanEditTournamentStructure)
-                                                                                                                        {
-                                                                                                                            <button class="btn btn-outline-warning btn-sm" title="Setzt die K.O.-Auslosung zurück." @onclick="ResetKnockoutDrawCards" disabled="@(isWorking || isDrawAnimating)">↩ Auslosung zurücksetzen</button>
-                                                                                                                        }
-                                                                                                                        else
-                                                                                                                        {
-                                                                                                                            <button type="button" class="btn btn-outline-warning btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Zurücksetzen gesperrt")'>↩ Auslosung zurücksetzen</button>
-                                                                                                                        }
-                                                                                                                    }
-                                                                                                                </div>
-                                                                                                                @if (isDrawAnimating)
-                                                                                                                {
-                                                                                                                    <div class="alert alert-secondary py-1 small">Auslosung läuft…</div>
-                                                                                                                }
-
-                                                                                                                <div class="row g-3">
-                                                                                                                    <div class="col-md-4">
-                                                                                                                        <div class="card">
-                                                                                                                            <div class="card-header py-2">
-                                                                                                                                <strong class="small">@(IsTeamplayActive ? "Teams" : "Teilnehmer")</strong>
-                                                                                                                                <span class="badge text-bg-secondary ms-1">@KnockoutUnassignedParticipants.Count</span>
-                                                                                                                            </div>
-                                                                                                                            <div class="card-body p-2" style="max-height:500px; overflow-y:auto">
-                                                                                                                                @foreach (var p in KnockoutUnassignedParticipants)
-                                                                                                                                {
-                                                                                                                                                                                                                                                                            <div class="badge bg-dark p-2 me-1 mb-1 user-select-none draw-participant-badge @DrawParticipantAnimationCss(p.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")"
-                                                                                                                                         @ondragstart="() => StartKnockoutDrag(p.Id)" style="cursor:grab; font-size:.85em">
-                                                                                                                                        @if (editSeedingEnabled && p.Seed > 0 && p.Seed <= editSeedTopCount)
-                                                                                                                                        {
-                                                                                                                                            <span class="badge text-bg-warning me-1">#@p.Seed</span>
-                                                                                                                                        }
-                                                                                                                                                                                                                                                                                <span class="draw-participant-name">@p.DisplayName.ToUpperInvariant()</span>
-                                                                                                                                    </div>
-                                                                                                                                }
-                                                                                                                            </div>
-                                                                                                                        </div>
-                                                                                                                    </div>
-
-                                                                                                                    <div class="col-md-8">
-                                                                                                                        <div id="ko-draw-grid" class="position-relative">
-                                                                                                                            <div class="row g-2">
-                                                                                                                            @foreach (var card in knockoutDrawCards.OrderBy(c => c.MatchNumber))
-                                                                                                                            {
-                                                                                                                                var home = FindParticipant(card.HomeParticipantId);
-                                                                                                                                var away = FindParticipant(card.AwayParticipantId);
-                                                                                                                                <div class="col-md-6">
-                                                                                                                                    <div class="card">
-                                                                                                                                        <div class="card-header py-2 d-flex justify-content-between align-items-center">
-                                                                                                                                            <strong class="small">Match @card.MatchNumber</strong>
-                                                                                                                                        </div>
-                                                                                                                                        <div class="card-body p-2">
-                                                                                                                                            <div id="ko-slot-@card.MatchNumber-home" class="ko-draw-slot mb-2 @DrawKnockoutSlotCss(card.MatchNumber, true)"
-                                                                                                                                                 @ondragover:preventDefault
-                                                                                                                                                 @ondrop="() => AssignDraggedToKnockoutCard(card.MatchNumber, true)">
-                                                                                                                                                @if (home is not null)
-                                                                                                                                                {
-                                                                                                                                                    <span class="badge bg-dark draw-participant-badge @DrawParticipantAnimationCss(home.Id)">
-                                                                                                                                                        <span class="draw-participant-name">@ParticipantDisplayName(home)</span>
-                                                                                                                                                        <button class="btn btn-sm p-0 ms-1 text-white-50 draw-participant-remove-btn" @onclick="() => ClearKnockoutCardSlot(card.MatchNumber, true)" @onclick:stopPropagation disabled="@(isWorking || !CanEditTournamentStructure)">✕</button>
-                                                                                                                                                    </span>
-                                                                                                                                                }
-                                                                                                                                                else
-                                                                                                                                                {
-                                                                                                                                                    <span class="text-muted small">Spieler 1 hier ablegen</span>
-                                                                                                                                                }
-                                                                                                                                            </div>
-
-                                                                                                                                            <div id="ko-slot-@card.MatchNumber-away" class="ko-draw-slot @DrawKnockoutSlotCss(card.MatchNumber, false)"
-                                                                                                                                                 @ondragover:preventDefault
-                                                                                                                                                 @ondrop="() => AssignDraggedToKnockoutCard(card.MatchNumber, false)">
-                                                                                                                                                @if (away is not null)
-                                                                                                                                                {
-                                                                                                                                                    <span class="badge bg-dark draw-participant-badge @DrawParticipantAnimationCss(away.Id)">
-                                                                                                                                                        <span class="draw-participant-name">@ParticipantDisplayName(away)</span>
-                                                                                                                                                        <button class="btn btn-sm p-0 ms-1 text-white-50 draw-participant-remove-btn" @onclick="() => ClearKnockoutCardSlot(card.MatchNumber, false)" @onclick:stopPropagation disabled="@(isWorking || !CanEditTournamentStructure)">✕</button>
-                                                                                                                                                    </span>
-                                                                                                                                                }
-                                                                                                                                                else
-                                                                                                                                                {
-                                                                                                                                                    <span class="text-muted small">Spieler 2 hier ablegen</span>
-                                                                                                                                                }
-                                                                                                                                            </div>
-                                                                                                                                        </div>
-                                                                                                                                    </div>
-                                                                                                                                </div>
-                                                                                                                            }
-                                                                                                                            </div>
-                                                                                                                            <div class="ko-draw-token @(showKoDrawToken ? "show" : "")" style="@koDrawTokenStyle">🎯</div>
-                                                                                                                        </div>
-                                                                                                                    </div>
-                                                                                                                </div>
-                                                                                                            }
-
-                                                                                                            @* ─── Plan Create/Delete Buttons ─── *@
-                                                                                                            <div class="mt-3">
-                                                                                                                @if (ShouldShowDrawTeamFormationWarning)
-                                                                                                                {
-                                                                                                                    <div class="alert alert-warning py-2 small mb-2">Turnierplan kann erst erstellt werden, wenn die Teamzuordnung vollständig und gespeichert ist.</div>
-                                                                                                                }
-                                                                                                                <div class="d-flex flex-wrap align-items-center gap-2">
-                                                                                                                    @if (selectedTournament.Mode == "GroupAndKnockout" && editGroupDrawMode is "Random" or "SeededPots")
-                                                                                                                    {
-                                                                                                                        @if (CanEditTournamentStructure)
-                                                                                                                        {
-                                                                                                                            <button class="btn btn-primary btn-sm" title="Startet eine automatische Verteilung auf Gruppen." @onclick="AutoDrawAsync" disabled="@(isWorking || isDrawAnimating)">⚡ Automatisch auslosen</button>
-                                                                                                                        }
-                                                                                                                        else
-                                                                                                                        {
-                                                                                                                            <button type="button" class="btn btn-primary btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Auslosung gesperrt")'>⚡ Automatisch auslosen</button>
-                                                                                                                        }
-                                                                                                                    }
-                                                                                                                    @if (selectedTournament.Mode == "GroupAndKnockout" && HasDrawAssignments())
-                                                                                                                    {
-                                                                                                                        @if (CanEditTournamentStructure)
-                                                                                                                        {
-                                                                                                                            <button class="btn btn-outline-warning btn-sm" title="Setzt alle Gruppenzuordnungen zurück." @onclick="ResetDrawAsync" disabled="@(isWorking || isDrawAnimating)">↩ Auslosung zurücksetzen</button>
-                                                                                                                        }
-                                                                                                                        else
-                                                                                                                        {
-                                                                                                                            <button type="button" class="btn btn-outline-warning btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Zurücksetzen gesperrt")'>↩ Auslosung zurücksetzen</button>
-                                                                                                                        }
-                                                                                                                    }
-                                                                                                                    @if (selectedTournament.Mode == "Knockout" && KnockoutAssignedParticipants.Any())
-                                                                                                                    {
-                                                                                                                        @if (CanEditTournamentStructure)
-                                                                                                                        {
-                                                                                                                            <button class="btn btn-outline-warning btn-sm" title="Setzt die K.O.-Auslosung zurück." @onclick="ResetKnockoutDrawCards" disabled="@(isWorking || isDrawAnimating)">↩ Auslosung zurücksetzen</button>
-                                                                                                                        }
-                                                                                                                        else
-                                                                                                                        {
-                                                                                                                            <button type="button" class="btn btn-outline-warning btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Zurücksetzen gesperrt")'>↩ Auslosung zurücksetzen</button>
-                                                                                                                        }
-                                                                                                                    }
-
-                                                                                                                    @if (CanShowDrawCreatePlanButton)
-                                                                                                                    {
-                                                                                                                        @if (CanEditTournamentStructure && CanProceedWithTeamDraw)
-                                                                                                                        {
-                                                                                                                            <button class="btn btn-success btn-sm" title="Erstellt den Turnierplan aus der aktuellen Auslosung." @onclick="CreateTournamentPlanAsync" disabled="@isWorking">✓ Turnierplan erstellen</button>
-                                                                                                                        }
-                                                                                                                        else
-                                                                                                                        {
-                                                                                                                            <button type="button" class="btn btn-success btn-sm btn-inactive-action" title="@DrawCreatePlanDisabledReason" @onclick='() => ShowInactiveActionInfo(DrawCreatePlanDisabledReason, "Turnierplan erstellen nicht möglich")'>✓ Turnierplan erstellen</button>
-                                                                                                                        }
-                                                                                                                    }
-                                                                                                                    else if (CanShowDrawDeletePlanButton)
-                                                                                                                    {
-                                                                                                                        @if (CanEditTournamentStructure)
-                                                                                                                        {
-                                                                                                                            <button class="btn btn-outline-danger btn-sm" title="Löscht den bestehenden Turnierplan und zugehörige Matches." @onclick="DeleteTournamentPlanAsync" disabled="@isWorking">🗑 Turnierplan löschen</button>
-                                                                                                                        }
-                                                                                                                        else
-                                                                                                                        {
-                                                                                                                            <button type="button" class="btn btn-outline-danger btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Turnierplan löschen nicht möglich")'>🗑 Turnierplan löschen</button>
-                                                                                                                        }
-                                                                                                                    }
-                                                                                                                </div>
-
-                                                                                                                @if (!matches.Any() && selectedTournament.Mode == "GroupAndKnockout" && UnassignedParticipants.Count > 0)
-                                                                                                                {
-                                                                                                                    <div class="alert alert-info py-2 small mt-2">Alle Teilnehmer müssen einer Gruppe zugewiesen sein, bevor der Turnierplan erstellt werden kann. Noch @UnassignedParticipants.Count nicht zugewiesen.</div>
-                                                                                                                }
-                                                                                                                @if (!matches.Any() && selectedTournament.Mode == "Knockout" && editGroupDrawMode == "Manual" && !IsKnockoutDrawComplete)
-                                                                                                                {
-                                                                                                                    <div class="alert alert-info py-2 small mt-2">Bei manueller K.O.-Auslosung müssen alle Teilnehmer einem Match-Slot zugewiesen werden.</div>
-                                                                                                                }
-                                                                                                                @if (matches.Any() && HasPlayedMatches())
-                                                                                                                {
-                                                                                                                    <div class="alert alert-warning py-2 mt-2">⚠ Es wurden bereits Matches gespielt. Beim Neugenerieren werden alle Ergebnisse gelöscht.</div>
-                                                                                                                }
-
-                                                                                                                @if (!matches.Any() && participants.Count < 2)
-                                                                                                                {
-                                                                                                                    <p class="text-muted">Mindestens 2 Teilnehmer erforderlich.</p>
-                                                                                                                }
-                                                                                                            </div>
+                                                                                                            <TournamentDrawTab CanEditTournamentStructure="@CanEditTournamentStructure"
+                                                                                                                              HasProgressedMatches="@HasProgressedMatches"
+                                                                                                                              SelectedTournamentMode="@(selectedTournament?.Mode ?? string.Empty)"
+                                                                                                                              SelectedTournamentStatus="@(selectedTournament?.Status ?? string.Empty)"
+                                                                                                                              SelectedTournamentIsLocked="@(selectedTournament?.IsLocked ?? false)"
+                                                                                                                              IsCurrentUserManager="@IsCurrentUserManager"
+                                                                                                                              IsWorking="@isWorking"
+                                                                                                                              IsDrawAnimating="@isDrawAnimating"
+                                                                                                                              IsSavingScoringCriteria="@isSavingScoringCriteria"
+                                                                                                                              IsTeamplayActive="@IsTeamplayActive"
+                                                                                                                              CanProceedWithTeamDraw="@CanProceedWithTeamDraw"
+                                                                                                                              CanShowDrawCreatePlanButton="@CanShowDrawCreatePlanButton"
+                                                                                                                              CanShowDrawDeletePlanButton="@CanShowDrawDeletePlanButton"
+                                                                                                                              ShouldShowDrawTeamFormationWarning="@ShouldShowDrawTeamFormationWarning"
+                                                                                                                              HasStartedGroupMatch="@HasStartedGroupMatch"
+                                                                                                                              CanEditGroupConfig="@CanEditGroupConfig"
+                                                                                                                              CanEditScoring="@CanEditScoring"
+                                                                                                                              EditSeedingEnabled="@editSeedingEnabled"
+                                                                                                                              ShowGroupSettings="@ShowGroupSettingsSection()"
+                                                                                                                              IsKnockoutDrawComplete="@IsKnockoutDrawComplete"
+                                                                                                                              DrawAnimationMode="@drawAnimationMode"
+                                                                                                                              CannotEditStructureReason="@CannotEditStructureReason"
+                                                                                                                              DrawCreatePlanDisabledReason="@DrawCreatePlanDisabledReason"
+                                                                                                                              GroupDropzoneColumnCss="@GroupDropzoneColumnCss"
+                                                                                                                              EditGroupCount="@editGroupCount"
+                                                                                                                              EditPlayoffAdvancers="@editPlayoffAdvancers"
+                                                                                                                              EditMatchesPerOpponent="@editMatchesPerOpponent"
+                                                                                                                              EditKnockoutsPerRound="@editKnockoutsPerRound"
+                                                                                                                              EditWinPoints="@editWinPoints"
+                                                                                                                              EditLegFactor="@editLegFactor"
+                                                                                                                              EditSeedTopCount="@editSeedTopCount"
+                                                                                                                              IdealGroupSize="@IdealGroupSize"
+                                                                                                                              EditGroupMode="@editGroupMode"
+                                                                                                                              EditGroupDrawMode="@editGroupDrawMode"
+                                                                                                                              EditPlanningVariant="@editPlanningVariant"
+                                                                                                                              EditGroupOrderMode="@editGroupOrderMode"
+                                                                                                                              ScoringCriteria="@scoringCriteria"
+                                                                                                                              ScoringCriteriaError="@scoringCriteriaError"
+                                                                                                                              Participants="@participants"
+                                                                                                                              Matches="@matches"
+                                                                                                                              EffectiveDrawParticipants="@EffectiveDrawParticipants"
+                                                                                                                              UnassignedParticipants="@UnassignedParticipants"
+                                                                                                                              KnockoutUnassignedParticipants="@KnockoutUnassignedParticipants"
+                                                                                                                              KnockoutAssignedParticipants="@KnockoutAssignedParticipants"
+                                                                                                                              KnockoutDrawCards="@knockoutDrawCards"
+                                                                                                                              DropTargetGroupNumber="@dropTargetGroupNumber"
+                                                                                                                              ShowKoDrawToken="@showKoDrawToken"
+                                                                                                                              KoDrawTokenStyle="@koDrawTokenStyle"
+                                                                                                                              HasGroupSettingsRequiredMissing="@HasGroupSettingsRequiredMissing"
+                                                                                                                              HasScoringRequiredMissing="@HasScoringRequiredMissing"
+                                                                                                                              GroupSettingsSummary="@GroupSettingsSummary"
+                                                                                                                              ScoringSummary="@ScoringSummary"
+                                                                                                                              HasDrawAssignments="@HasDrawAssignments"
+                                                                                                                              HasPlayedMatches="@HasPlayedMatches"
+                                                                                                                              ScoringCriterionLabel="@ScoringCriterionLabel"
+                                                                                                                              GroupParticipants="@GroupParticipants"
+                                                                                                                              GroupLabel="@GroupLabel"
+                                                                                                                              GroupDropHighlightCss="@GroupDropHighlightCss"
+                                                                                                                              DrawGroupAnimationCss="@DrawGroupAnimationCss"
+                                                                                                                              DrawPotAnimationCss="@DrawPotAnimationCss"
+                                                                                                                              PotBadgeCss="@PotBadgeCss"
+                                                                                                                              DrawParticipantAnimationCss="@DrawParticipantAnimationCss"
+                                                                                                                              ParticipantDisplayName="@ParticipantDisplayName"
+                                                                                                                              FindParticipant="@FindParticipant"
+                                                                                                                              DrawKnockoutSlotCss="@DrawKnockoutSlotCss"
+                                                                                                                              EditGroupCountChanged="OnEditGroupCountChangedAsync"
+                                                                                                                              EditPlayoffAdvancersChanged="OnEditPlayoffAdvancersChangedAsync"
+                                                                                                                              EditMatchesPerOpponentChanged="OnEditMatchesPerOpponentChangedAsync"
+                                                                                                                              EditKnockoutsPerRoundChanged="OnEditKnockoutsPerRoundChangedAsync"
+                                                                                                                              EditWinPointsChanged="OnEditWinPointsChangedAsync"
+                                                                                                                              EditLegFactorChanged="OnEditLegFactorChangedAsync"
+                                                                                                                              EditGroupModeChanged="OnEditGroupModeChangedAsync"
+                                                                                                                              EditGroupDrawModeChanged="OnEditGroupDrawModeChangedAsync"
+                                                                                                                              EditPlanningVariantChanged="OnEditPlanningVariantChangedAsync"
+                                                                                                                              EditGroupOrderModeChanged="OnEditGroupOrderModeChangedAsync"
+                                                                                                                              DrawAnimationModeChanged="OnDrawAnimationModeChangedAsync"
+                                                                                                                              ShowInactiveActionInfo="@ShowInactiveActionInfo"
+                                                                                                                              MoveScoringCriterionUp="@MoveScoringCriterionUp"
+                                                                                                                              MoveScoringCriterionDown="@MoveScoringCriterionDown"
+                                                                                                                              SaveScoringCriteria="SaveScoringCriteriaAsync"
+                                                                                                                              AutoDraw="AutoDrawAsync"
+                                                                                                                              AssignSeedPotsAndDistribute="AssignSeedPotsAndDistributeAsync"
+                                                                                                                              ResetDraw="ResetDrawAsync"
+                                                                                                                              ResetKnockoutDrawCards="@ResetKnockoutDrawCards"
+                                                                                                                              CreateTournamentPlan="CreateTournamentPlanAsync"
+                                                                                                                              DeleteTournamentPlan="DeleteTournamentPlanAsync"
+                                                                                                                              SetDropTargetGroupNumber="SetDropTargetGroupNumberAsync"
+                                                                                                                              StartParticipantDrag="@StartParticipantDrag"
+                                                                                                                              AssignParticipantToGroup="AssignParticipantToGroupAsync"
+                                                                                                                              UnassignParticipantFromGroup="UnassignParticipantFromGroupAsync"
+                                                                                                                              StartKnockoutDrag="@StartKnockoutDrag"
+                                                                                                                              AssignDraggedToKnockoutCard="@AssignDraggedToKnockoutCard"
+                                                                                                                              ClearKnockoutCardSlot="@ClearKnockoutCardSlot" />
                                                                                                         }
-
-                                                                                                        @* ═══════ Tab: Gruppenphase ═══════ *@
+@* ═══════ Tab: Gruppenphase ═══════ *@
                                                                                                         @if (activeTab == "groups")
                                                                                                         {
                                                                                                             <TournamentGroupsTab Matches="@matches"
                                                                                                                                GroupStandings="@groupStandings"
-                                                                                                                               PlayoffAdvancers="@selectedTournament.PlayoffAdvancers"
+                                                                                                                               PlayoffAdvancers="@selectedTournament!.PlayoffAdvancers"
                                                                                                                                IsWorking="@isWorking"
                                                                                                                                IsCompactViewport="@isCompactViewport"
                                                                                                                                ShowFlashTable="@showFlashTable"
@@ -2102,7 +1669,7 @@
                                                                                                                             {
                                                                                                                                 <TournamentKnockoutTab Matches="@matches"
                                                                                                                                                      Boards="@boards"
-                                                                                                                                                     SelectedTournamentVariantIsOnSite="@(selectedTournament.Variant == "OnSite")"
+                                                                                                                                                     SelectedTournamentVariantIsOnSite="@(selectedTournament!.Variant == "OnSite")"
                                                                                                                                                      IsWorking="@isWorking"
                                                                                                                                                      KoViewMode="@koViewMode"
                                                                                                                                                      OnSetKoViewMode="SetKoViewModeAsync"
@@ -2139,174 +1706,60 @@
                                                                                                                                             @* ═══════ Tab: Spielplan (chronologisch) ═══════ *@
                                                                                                                                             @if (activeTab == "schedule")
                                                                                                                                             {
-                                                                                                                                                <div id="section-tournaments-schedule" class="d-flex justify-content-between align-items-center mb-3">
-                                                                                                                                                    <h6 class="fw-semibold mb-0">Spielplan — Chronologische Übersicht</h6>
-                                                                                                                                                    <div class="d-flex gap-2">
-                                                                                                                                                        <button class="btn btn-sm btn-outline-secondary"
-                                                                                                                                                                title="MatchCard-Einstellungen fuer Spielplan"
-                                                                                                                                                                @onclick='() => OpenMatchCardScopeEditor("tournaments::schedule")'
-                                                                                                                                                                @onclick:stopPropagation>⚙</button>
-                                                                                                                                                        @if (matches.Any() && !selectedTournament.IsLocked && IsCurrentUserManager &&
-                                                                                                                                                                            !string.IsNullOrEmpty(selectedTournament.StartTime))
-                                                                                                                                                        {
-                                                                                                                                                            <span class="@(IsCurrentUserManager && !selectedTournament.IsLocked ? "" : "btn-reason-wrap")" title="@(IsCurrentUserManager ? (selectedTournament.IsLocked ? "Turnier ist gesperrt." : "") : "Nur Spielleiter können den Spielplan generieren.")">
-                                                                                                                                                                <button class="btn btn-primary btn-sm" @onclick="GenerateScheduleAsync" disabled="@isWorking">⏰ Spielplan generieren</button>
-                                                                                                                                                            </span>
-                                                                                                                                                        }
-                                                                                                                                                    </div>
-                                                                                                                                                    </div>
-
-                                                                                                                                                    @* Spielplan Filters *@
-                                                                                                                                                    <div class="d-flex flex-wrap gap-3 align-items-center mb-3 small">
-                                                                                                                                                        <div class="form-check">
-                                                                                                                                                            <input class="form-check-input" type="checkbox" id="schedHideFinished" @bind="scheduleHideFinished" />
-                                                                                                                                                            <label class="form-check-label" for="schedHideFinished">Beendete ausblenden</label>
-                                                                                                                                                        </div>
-                                                                                                                                                        <div class="form-check">
-                                                                                                                                                            <input class="form-check-input" type="checkbox" id="schedNoBoard" @bind="scheduleShowNoBoard" />
-                                                                                                                                                            <label class="form-check-label" for="schedNoBoard">Nur ohne Board</label>
-                                                                                                                                                        </div>
-                                                                                                                                                        <select class="form-select form-select-sm" style="width:auto" @bind="scheduleStatusFilter">
-                                                                                                                                                            <option value="all">Alle Status</option>
-                                                                                                                                                            <option value="running">Laufende Spiele</option>
-                                                                                                                                                            <option value="upcoming">Anstehende Spiele</option>
-                                                                                                                                                        </select>
-                                                                                                                                                    </div>
-
-@* Unassigned matches warning *@
-                                                                                                                                                    @if (UnassignedUpcoming.Any())
-                                                                                                                                                    {
-                                                                                                                                                        <div class="alert alert-warning py-2 small mb-3">
-                                                                                                                                                            ⚠ <strong>@UnassignedUpcoming.Count</strong> anstehende Matches ohne Board-Zuweisung:
-                                                                                                                                                            @foreach (var m in UnassignedUpcoming.Take(10))
-                                                                                                                                                            {
-                                                                                                                                                                <span class="badge text-bg-warning me-1" style="cursor:pointer"
-                                                                                                                                                                     @onclick="() => OpenMatchDetail(m, true)">@MatchLabel(m)</span>
-                                                                                                                                                            }
-                                                                                                                                                            @if (UnassignedUpcoming.Count > 10)
-                                                                                                                                                            {
-                                                                                                                                                                <span class="text-muted">… und @(UnassignedUpcoming.Count -
-                                                                                                                                                                                            10) weitere</span>
-                                                                                                                                                                }
-                                                                                                                                                            </div>
-                                                                                                                                                        }
-
-                                                                                                                                                        @* Doppelte Matchliste entfernt: Spielplan zeigt nur die Zeitplan-Ansicht. *@
-
-                                                                                                                                                        @* Full chronological match list *@
-                                                                                                                                                        @if (ScheduledMatches.Any())
-                                                                                                                                                        {
-                                                                                                                                                            <div id="section-tournaments-schedule-zeitplan" class="d-flex justify-content-between align-items-center mb-2">
-                                                                                                                                                                <h6 class="fw-semibold text-muted small mb-0">Zeitplan</h6>
-                                                                                                                                                                <button class="btn btn-sm btn-outline-secondary"
-                                                                                                                                                                        title="MatchCard-Einstellungen fuer Zeitplan"
-                                                                                                                                                                        @onclick='() => OpenMatchCardScopeEditor("tournaments::schedule-zeitplan")'
-                                                                                                                                                                        @onclick:stopPropagation>⚙</button>
-                                                                                                                                                            </div>
-                                                                                                                                                                var timelineCardSettings = GetMatchCardSettings(MatchCardSectionScheduleZeitplan);
-                                                                                                                                                            <div class="d-flex flex-column gap-1">
-                                                                                                                                                                        @foreach (var match in ScheduledMatches)
-                                                                                                                                                                        {
-                                                                                                                                                                            var assignedBoard = boards.FirstOrDefault(b => b.Id == match.BoardId);
-                                                                                                                                                                            var isDone = match.FinishedUtc is not null;
-                                                                                                                                                                            <div class="@BuildScheduleMatchCardCss(match, includeBoardDropTarget: true)"
-                                                                                                                                                                                draggable="@(CanDragScheduleMatch(match) ? "true" : "false")"
-                                                                                                                                                                                @ondragstart="() => StartScheduleMatchDrag(match.Id)"
-                                                                                                                                                                                @ondragend="EndScheduleMatchDrag"
-                                                                                                                                                                                @ondragover:preventDefault
-                                                                                                                                                                                @ondragover="() => { if (draggedBoardId.HasValue) dropTargetMatchId = match.Id; MarkScheduleDropTargetMatch(match.Id); }"
-                                                                                                                                                                                @ondragleave="() => { if (dropTargetMatchId == match.Id) dropTargetMatchId = null; ClearScheduleDropTargetMatch(match.Id); }"
-                                                                                                                                                                                @ondrop="() => DropOnTimelineMatchAsync(match.Id)">
-                                                                                                                                                                                <MatchCard Match="@match"
-                                                                                                                                                                                           ViewSettings="@timelineCardSettings"
-                                                                                                                                                                                           Layout="@timelineCardSettings.Layout"
-                                                                                                                                                                                           Label="@MatchLabel(match)"
-                                                                                                                                                                                           ShowRuntimeBadge="@timelineCardSettings.ShowRuntimeBadge"
-                                                                                                                                                                                           ShowMonitoringStatus="@ShowMatchCardMonitoring(timelineCardSettings)"
-                                                                                                                                                                                           MonitoringStatusText="@GetMonitoringBadgeText(match)"
-                                                                                                                                                                                           MonitoringStatusCssClass="@GetMonitoringBadgeCss(match)"
-                                                                                                                                                                                           EnablePlayerLinks="@timelineCardSettings.EnablePlayerLinks"
-                                                                                                                                                                                           EnableBoardLink="@timelineCardSettings.EnableBoardLink"
-                                                                                                                                                                                           HomeName="@ParticipantName(match.HomeParticipantId)"
-                                                                                                                                                                                           AwayName="@ParticipantName(match.AwayParticipantId)"
-                                                                                                                                                                                           BoardName="@MatchBoardName(match)"
-                                                                                                                                                                                           SetModeActive="@IsSetMode(match)"
-                                                                                                                                                                                           LiveScoreEnabled="@timelineCardSettings.LiveScoreEnabled"
-                                                                                                                                                                                           ShowMatchStatus="@timelineCardSettings.ShowMatchStatus"
-                                                                                                                                                                                           ShowSchedulingStatus="@timelineCardSettings.ShowSchedulingStatus"
-                                                                                                                                                                                           ShowAverage="@timelineCardSettings.ShowAverage"
-                                                                                                                                                                                           ShowHighestPpr="@timelineCardSettings.ShowHighestPpr"
-                                                                                                                                                                                           ShowHighestCheckout="@timelineCardSettings.ShowHighestCheckout"
-                                                                                                                                                                                           ShowAverageDartsPerLeg="@timelineCardSettings.ShowAverageDartsPerLeg"
-                                                                                                                                                                                           ShowMinimalDartsPerLeg="@timelineCardSettings.ShowMinimalDartsPerLeg"
-                                                                                                                                                                                           OnHomePlayerClick="BuildPlayerDetailCallback(match.HomeParticipantId)"
-                                                                                                                                                                                           OnAwayPlayerClick="BuildPlayerDetailCallback(match.AwayParticipantId)"
-                                                                                                                                                                                           OnBoardClick="BuildMatchBoardDetailCallback(match)"
-                                                                                                                                                                                           ShowActionButtons="@IsCurrentUserManager"
-                                                                                                                                                                                           OnStartMatch="() => SendUpcomingMatchAsync(match)"
-                                                                                                                                                                                           CanStartMatch="@(CanSendUpcomingMatch(match) && !isWorking)"
-                                                                                                                                                                                           EnableDetailPanel="false"
-                                                                                                                                                                                           EnableRealtimeConsumer="@(match.StartedUtc is not null && match.FinishedUtc is null)"
-                                                                                                                                                                                           OnClick="() => OpenMatchDetail(match, true)" />
-                                                                                                                                                                                @if (ShowScheduleLockedMarker(match))
-                                                                                                                                                                                {
-                                                                                                                                                                                    <div class="small text-muted px-1 pb-1">🔒 Gesperrt für Drag &amp; Drop</div>
-                                                                                                                                                                                }
-                                                                                                                                                                                @if (IsCurrentUserManager && !selectedTournament.IsLocked && !isDone)
-                                                                                                                                                                                {
-                                                                                                                                                                                    <div class="d-flex gap-2 align-items-center ps-2 pb-1 small flex-wrap" @onclick:stopPropagation>
-                                                                                                                                                                                        @if (editingMatchTimeId == match.Id)
-                                                                                                                                                                                        {
-                                                                                                                                                                                            <div class="d-flex gap-1 align-items-center">
-                                                                                                                                                                                                <input type="text" class="form-control form-control-sm" style="width:5rem" placeholder="HH:mm" @bind="editMatchTimeValue" />
-                                                                                                                                                                                                <button class="btn btn-sm btn-success py-0 px-1" @onclick="() => SaveMatchTimeAsync(match)" disabled="@isWorking">✓</button>
-                                                                                                                                                                                                <button class="btn btn-sm btn-secondary py-0 px-1" @onclick="CancelEditMatchTime">✕</button>
-                                                                                                                                                                                            </div>
-                                                                                                                                                                                        }
-                                                                                                                                                                                        else
-                                                                                                                                                                                        {
-                                                                                                                                                                                            <span @onclick="() => StartEditMatchTime(match)" style="cursor:text"
-                                                                                                                                                                                                  class="@(match.IsStartTimeLocked ? "text-primary fw-semibold" : "text-muted")">
-                                                                                                                                                                                                @if (match.PlannedStartUtc is not null)
-                                                                                                                                                                                                {
-                                                                                                                                                                                                    @match.PlannedStartUtc.Value.LocalDateTime.ToString("HH:mm")
-                                                                                                                                                                                                }
-                                                                                                                                                                                                else
-                                                                                                                                                                                                {
-                                                                                                                                                                                                    <span>—</span>
-                                                                                                                                                                                                }
-                                                                                                                                                                                            </span>
-                                                                                                                                                                                            <button class="btn btn-link btn-sm p-0 @(match.IsStartTimeLocked ? "text-primary" : "text-muted")"
-                                                                                                                                                                                                    @onclick="() => ToggleTimeLockAsync(match)"
-                                                                                                                                                                                                    title="@(match.IsStartTimeLocked ? "Startzeit entsperren" : "Startzeit sperren")">
-                                                                                                                                                                                                @(match.IsStartTimeLocked ? "🔓" : "🔒")
-                                                                                                                                                                                            </button>
-                                                                                                                                                                                        }
-                                                                                                                                                                                        @if (assignedBoard is not null)
-                                                                                                                                                                                        {
-                                                                                                                                                                                            <button class="btn btn-link btn-sm p-0 @(match.IsBoardLocked ? "text-primary" : "text-muted")"
-                                                                                                                                                                                                    @onclick="() => ToggleBoardLockAsync(match)"
-                                                                                                                                                                                                    title="@(match.IsBoardLocked ? "Board entsperren" : "Board sperren")">
-                                                                                                                                                                                                @(match.IsBoardLocked ? "🔓" : "🔒") @assignedBoard.Name
-                                                                                                                                                                                            </button>
-                                                                                                                                                                                        }
-                                                                                                                                                                                    </div>
-                                                                                                                                                                                }
-                                                                                                                                                            </div>
-                                                                                                                                                        }
-                                                                                                                                                            </div>
-                                                                                                                                                                }
-                else
-                                                                                                                                                                {
-                                                                                                                                                                    <p class="text-muted">Noch kein Spielplan vorhanden. Generieren Sie zuerst den Turnierplan im Tab
-                                                                                                                                                                        „Auslosung" und danach den Spielplan.</p>
-                                                                                                                                                                    }
-                                                                                                                                                                }
-                                                                                                                                                            </div>
-                                                                                                                                                        </div>
-                                                                                                                                                    </div>
-                                                                                                                                                }
-                                                                                                                                            </div>
+                                                                                                                                                <TournamentScheduleTab Matches="@matches"
+                                                                                                                                                                       Boards="@boards"
+                                                                                                                                                                       ScheduledMatches="@ScheduledMatches"
+                                                                                                                                                                       UnassignedUpcoming="@UnassignedUpcoming"
+                                                                                                                                                                       SelectedTournamentIsLocked="@(selectedTournament?.IsLocked ?? false)"
+                                                                                                                                                                       HasTournamentStartTime="@(!string.IsNullOrEmpty(selectedTournament?.StartTime))"
+                                                                                                                                                                       IsCurrentUserManager="@IsCurrentUserManager"
+                                                                                                                                                                       IsWorking="@isWorking"
+                                                                                                                                                                       ScheduleHideFinished="@scheduleHideFinished"
+                                                                                                                                                                       ScheduleShowNoBoard="@scheduleShowNoBoard"
+                                                                                                                                                                       ScheduleStatusFilter="@scheduleStatusFilter"
+                                                                                                                                                                       EditingMatchTimeId="@editingMatchTimeId"
+                                                                                                                                                                       EditMatchTimeValue="@editMatchTimeValue"
+                                                                                                                                                                       DropTargetMatchId="@dropTargetMatchId"
+                                                                                                                                                                       HasDraggedBoard="@draggedBoardId.HasValue"
+                                                                                                                                                                       TimelineCardSettings="@GetMatchCardSettings(MatchCardSectionScheduleZeitplan)"
+                                                                                                                                                                       ScheduleHideFinishedChanged="OnHideFinishedChangedAsync"
+                                                                                                                                                                       ScheduleShowNoBoardChanged="OnShowNoBoardChangedAsync"
+                                                                                                                                                                       ScheduleStatusFilterChanged="OnStatusFilterChangedAsync"
+                                                                                                                                                                       OpenMatchCardScopeEditor="OpenMatchCardScopeEditorAsync"
+                                                                                                                                                                       GenerateSchedule="GenerateScheduleAsync"
+                                                                                                                                                                       MatchLabel="@MatchLabel"
+                                                                                                                                                                       ShowMatchCardMonitoring="@ShowMatchCardMonitoring"
+                                                                                                                                                                       GetMonitoringBadgeText="@GetMonitoringBadgeText"
+                                                                                                                                                                       GetMonitoringBadgeCss="@GetMonitoringBadgeCss"
+                                                                                                                                                                       ParticipantName="@ParticipantName"
+                                                                                                                                                                       MatchBoardName="@MatchBoardName"
+                                                                                                                                                                       IsSetMode="@IsSetMode"
+                                                                                                                                                                       BuildPlayerDetailCallback="@BuildPlayerDetailCallback"
+                                                                                                                                                                       BuildMatchBoardDetailCallback="@BuildMatchBoardDetailCallback"
+                                                                                                                                                                       BuildScheduleMatchCardCss="@(match => BuildScheduleMatchCardCss(match, includeBoardDropTarget: true))"
+                                                                                                                                                                       CanDragScheduleMatch="@CanDragScheduleMatch"
+                                                                                                                                                                       SetDropTargetMatchId="SetDropTargetMatchIdAsync"
+                                                                                                                                                                       StartScheduleMatchDrag="StartScheduleMatchDragAsync"
+                                                                                                                                                                       EndScheduleMatchDrag="EndScheduleMatchDragAsync"
+                                                                                                                                                                       MarkScheduleDropTargetMatch="MarkScheduleDropTargetMatchAsync"
+                                                                                                                                                                       ClearScheduleDropTargetMatch="ClearScheduleDropTargetMatchAsync"
+                                                                                                                                                                       DropOnTimelineMatch="DropOnTimelineMatchAsync"
+                                                                                                                                                                       OpenMatchDetail="OpenScheduledMatchDetailAsync"
+                                                                                                                                                                       ShowScheduleLockedMarker="@ShowScheduleLockedMarker"
+                                                                                                                                                                       StartEditMatchTime="@StartEditMatchTime"
+                                                                                                                                                                       CancelEditMatchTime="@CancelEditMatchTime"
+                                                                                                                                                                       EditMatchTimeValueChanged="OnEditMatchTimeValueChangedAsync"
+                                                                                                                                                                       SaveMatchTime="SaveMatchTimeAsync"
+                                                                                                                                                                       ToggleTimeLock="ToggleTimeLockAsync"
+                                                                                                                                                                       ToggleBoardLock="ToggleBoardLockAsync"
+                                                                                                                                                                       CanSendUpcomingMatch="@CanSendUpcomingMatch"
+                                                                                                                                                                       SendUpcomingMatch="SendUpcomingMatchAsync" />
+                                                                                                                                            }
+                                                                                                                                        </div>
+                                                                                                                                    </div>
+                                                                                                                                </div>
+                                                                                                                            }
+                                                                                                                        </div>
 
 @if (selectedTournament is not null)
 {

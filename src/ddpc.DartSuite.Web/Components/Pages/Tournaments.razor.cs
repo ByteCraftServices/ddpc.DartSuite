@@ -834,14 +834,6 @@ public partial class Tournaments : IAsyncDisposable
     private bool hasUnsavedTeamDraftChanges;
     private string? teamDraftError;
 
-    // ─── Knockout Draw (UI-only staging before plan generation) ───
-    private sealed class KnockoutDrawCard
-    {
-        public int MatchNumber { get; init; }
-        public Guid? HomeParticipantId { get; set; }
-        public Guid? AwayParticipantId { get; set; }
-    }
-
     private List<KnockoutDrawCard> knockoutDrawCards = [];
     private Guid? draggedKnockoutParticipantId;
 
@@ -1309,6 +1301,72 @@ public partial class Tournaments : IAsyncDisposable
         await AutoSaveSettingAsync();
     }
 
+    private async Task OnEditGroupCountChangedAsync(int value)
+    {
+        editGroupCount = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditPlayoffAdvancersChangedAsync(int value)
+    {
+        editPlayoffAdvancers = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditMatchesPerOpponentChangedAsync(int value)
+    {
+        editMatchesPerOpponent = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditKnockoutsPerRoundChangedAsync(int value)
+    {
+        editKnockoutsPerRound = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditWinPointsChangedAsync(int value)
+    {
+        editWinPoints = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditLegFactorChangedAsync(int value)
+    {
+        editLegFactor = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditGroupModeChangedAsync(string value)
+    {
+        editGroupMode = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditGroupDrawModeChangedAsync(string value)
+    {
+        editGroupDrawMode = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditPlanningVariantChangedAsync(string value)
+    {
+        editPlanningVariant = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private async Task OnEditGroupOrderModeChangedAsync(string value)
+    {
+        editGroupOrderMode = value;
+        await AutoSaveSettingAsync();
+    }
+
+    private Task OnDrawAnimationModeChangedAsync(string value)
+    {
+        drawAnimationMode = value;
+        return Task.CompletedTask;
+    }
+
     private Task OnShowCompletedRoundsChangedAsync(bool value)
     {
         showCompletedRounds = value;
@@ -1429,10 +1487,27 @@ public partial class Tournaments : IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    private Task OpenScheduledMatchDetailAsync(MatchDto match)
+    {
+        OpenMatchDetail(match, true);
+        return Task.CompletedTask;
+    }
+
     private Task SetKoViewModeAsync(string mode)
     {
         koViewMode = mode;
         return Task.CompletedTask;
+    }
+
+    private Task SetDropTargetGroupNumberAsync(int? groupNumber)
+    {
+        dropTargetGroupNumber = groupNumber;
+        return Task.CompletedTask;
+    }
+
+    private void StartParticipantDrag(Guid participantId)
+    {
+        draggedParticipantId = participantId;
     }
 
     private Task SetDropTargetMatchIdAsync(Guid? matchId)
@@ -1468,6 +1543,36 @@ public partial class Tournaments : IAsyncDisposable
     private Task OnStatusFilterChangedAsync(string value)
     {
         scheduleStatusFilter = value;
+        return Task.CompletedTask;
+    }
+
+    private Task StartScheduleMatchDragAsync(Guid matchId)
+    {
+        StartScheduleMatchDrag(matchId);
+        return Task.CompletedTask;
+    }
+
+    private Task EndScheduleMatchDragAsync()
+    {
+        EndScheduleMatchDrag();
+        return Task.CompletedTask;
+    }
+
+    private Task MarkScheduleDropTargetMatchAsync(Guid matchId)
+    {
+        MarkScheduleDropTargetMatch(matchId);
+        return Task.CompletedTask;
+    }
+
+    private Task ClearScheduleDropTargetMatchAsync(Guid matchId)
+    {
+        ClearScheduleDropTargetMatch(matchId);
+        return Task.CompletedTask;
+    }
+
+    private Task OnEditMatchTimeValueChangedAsync(string value)
+    {
+        editMatchTimeValue = value;
         return Task.CompletedTask;
     }
 
@@ -2843,13 +2948,6 @@ public partial class Tournaments : IAsyncDisposable
         {
             isSavingScoringCriteria = false;
         }
-    }
-
-    private sealed class ScoringCriterionEditorItem
-    {
-        public required string Type { get; set; }
-        public int Priority { get; set; }
-        public bool IsEnabled { get; set; }
     }
 
     // ─── Save Tournament (auto-save: each setting change triggers this) ───
