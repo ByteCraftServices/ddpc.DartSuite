@@ -6591,7 +6591,9 @@ public partial class Tournaments : IAsyncDisposable
     /// <summary>Auto-draw participants into groups using selected mode and optional animation.</summary>
     private async Task AutoDrawAsync()
     {
-        if (selectedTournament is null || editGroupCount < 1) return;
+        if (selectedTournament is null) return;
+        // editGroupCount only matters for GroupAndKnockout; K.O.-only draw has no group count.
+        if (selectedTournament.Mode != "Knockout" && editGroupCount < 1) return;
         if (!EnsureTournamentStructureEditable(message => editError = message)) return;
 
         if (selectedTournament.Mode == "Knockout")
