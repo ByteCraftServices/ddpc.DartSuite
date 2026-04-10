@@ -363,6 +363,48 @@
         </div>
     </div>
 }
+@else if (ShowGroupSettings)
+{
+    @* Read-only fallback: draw assignments visible but non-interactive *@
+    @if (HasDrawAssignments())
+    {
+        <div class="row g-2 mb-3">
+            @for (var g = 1; g <= EditGroupCount; g++)
+            {
+                var groupNum = g;
+                var groupParts = GroupParticipants(groupNum);
+                <div class="@GroupDropzoneColumnCss">
+                    <div class="card">
+                        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                            <strong class="small">Gruppe @GroupLabel(groupNum)</strong>
+                            <span class="badge text-bg-secondary">@groupParts.Count</span>
+                        </div>
+                        <div class="card-body p-2">
+                            @foreach (var participant in groupParts)
+                            {
+                                <div class="badge bg-dark p-2 me-1 mb-1 user-select-none">
+                                    @if (EditSeedingEnabled && participant.Seed > 0 && participant.Seed <= EditSeedTopCount)
+                                    {
+                                        <span class="badge text-bg-warning me-1">#@participant.Seed</span>
+                                    }
+                                    <span class="draw-participant-name">@participant.DisplayName.ToUpperInvariant()</span>
+                                </div>
+                            }
+                            @if (!groupParts.Any())
+                            {
+                                <span class="text-muted small">Keine Zuordnungen</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-info py-2 small mb-3">Auslosung wurde noch nicht durchgeführt.</div>
+    }
+}
 
 @if (SelectedTournamentMode == "Knockout" && IsCurrentUserManager && !SelectedTournamentIsLocked && SelectedTournamentStatus is "Erstellt" or "Geplant")
 {
@@ -473,6 +515,65 @@
             </div>
         </div>
     </div>
+}
+@else if (SelectedTournamentMode == "Knockout")
+{
+    @* Read-only fallback: KO draw slots visible but non-interactive *@
+    @if (KnockoutAssignedParticipants.Any())
+    {
+        <div class="row g-2 mb-3">
+            @foreach (var card in KnockoutDrawCards.OrderBy(c => c.MatchNumber))
+            {
+                var home = FindParticipant(card.HomeParticipantId);
+                var away = FindParticipant(card.AwayParticipantId);
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header py-2">
+                            <strong class="small">Match @card.MatchNumber</strong>
+                        </div>
+                        <div class="card-body p-2">
+                            <div class="mb-1">
+                                @if (home is not null)
+                                {
+                                    <span class="badge bg-dark draw-participant-badge">
+                                        @if (EditSeedingEnabled && home.Seed > 0 && home.Seed <= EditSeedTopCount)
+                                        {
+                                            <span class="badge text-bg-warning me-1">#@home.Seed</span>
+                                        }
+                                        <span class="draw-participant-name">@ParticipantDisplayName(home)</span>
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted small">Slot 1 nicht besetzt</span>
+                                }
+                            </div>
+                            <div>
+                                @if (away is not null)
+                                {
+                                    <span class="badge bg-dark draw-participant-badge">
+                                        @if (EditSeedingEnabled && away.Seed > 0 && away.Seed <= EditSeedTopCount)
+                                        {
+                                            <span class="badge text-bg-warning me-1">#@away.Seed</span>
+                                        }
+                                        <span class="draw-participant-name">@ParticipantDisplayName(away)</span>
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted small">Slot 2 nicht besetzt</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-info py-2 small mb-3">Auslosung wurde noch nicht durchgeführt.</div>
+    }
 }
 
 <div class="mt-3">
