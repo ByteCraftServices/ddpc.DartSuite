@@ -962,12 +962,32 @@ public partial class Tournaments : IAsyncDisposable
             ? "Auslosung und Turnierplan abgeschlossen"
             : IsDrawCompleted
                 ? "Auslosung abgeschlossen, Turnierplan wurde noch nicht erstellt."
-                : $"Auslosung noch nicht abgeschlossen: Noch {UnassignedDrawCount} {(IsTeamplayActive ? "Teams" : "Teilnehmer")} ohne Zuordnung.";
+                : $"Auslosung noch nicht abgeschlossen: Noch {UnassignedDrawCount} {(IsTeamplayActive ? "Teams" : "Teilnehmer")} ohne Zuordnung ({DrawProgressPercent}%).";
 
     private int UnassignedDrawCount
         => selectedTournament?.Mode == "GroupAndKnockout"
             ? UnassignedParticipants.Count
             : KnockoutUnassignedParticipants.Count;
+
+    private int DrawTotalCount
+        => selectedTournament?.Mode is "GroupAndKnockout" or "Knockout"
+            ? EffectiveDrawParticipants.Count
+            : 0;
+
+    private int DrawAssignedCount
+        => selectedTournament?.Mode == "GroupAndKnockout"
+            ? Math.Max(0, DrawTotalCount - UnassignedParticipants.Count)
+            : KnockoutAssignedParticipants.Count;
+
+    private int DrawProgressPercent
+        => DrawTotalCount <= 0
+            ? 0
+            : (int)Math.Round((double)DrawAssignedCount * 100 / DrawTotalCount, MidpointRounding.AwayFromZero);
+
+    private string DrawProgressText => $"{DrawProgressPercent}%";
+
+    private string DrawProgressTitle
+        => $"Auslosungsfortschritt: {DrawAssignedCount}/{DrawTotalCount} {(IsTeamplayActive ? "Teams" : "Teilnehmer")} zugewiesen ({DrawProgressPercent}%).";
 
     private bool ShouldShowDrawTeamFormationWarning
         => IsTeamplayActive

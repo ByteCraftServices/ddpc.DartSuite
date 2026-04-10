@@ -11,6 +11,7 @@
             <span class="badge @DrawStatusBadgeCss ms-1" title="@DrawStatusTitle" aria-label="@DrawStatusTitle">
                 <i class="bi @DrawStatusIconCss"></i>
             </span>
+            <span class="badge text-bg-secondary ms-1" title="@DrawProgressTitle" aria-label="@DrawProgressTitle">@DrawProgressText</span>
         </button>
     </li>
     <li class="nav-item">
@@ -59,6 +60,8 @@
     [Parameter] public string DrawStatusBadgeCss { get; set; } = "text-bg-danger";
     [Parameter] public string DrawStatusIconCss { get; set; } = "bi-hand-index-thumb-fill";
     [Parameter] public string DrawStatusTitle { get; set; } = "Auslosung wurde noch nicht ausgeführt!";
+    [Parameter] public string DrawProgressText { get; set; } = "0%";
+    [Parameter] public string DrawProgressTitle { get; set; } = "Auslosungsfortschritt: 0%.";
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }
 
     private Task SelectAsync(string tab)
