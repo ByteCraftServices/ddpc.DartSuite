@@ -83,6 +83,7 @@ window.dartSuiteDraw = {
 window.dartSuiteUi = window.dartSuiteUi || {
     _swipeHandlers: {},
     _touchDnDHandlers: {},
+    _outsideClickHandlers: {},
     isDocumentVisible: function () {
         return document.visibilityState === "visible";
     },
@@ -165,8 +166,9 @@ window.dartSuiteUi = window.dartSuiteUi || {
 
         this.unregisterTouchDragDrop(elementId);
 
-        const LONG_PRESS_MS = 280;
-        const MOVE_CANCEL_PX = 10;
+        const LONG_PRESS_MS = 220;
+        const MOVE_CANCEL_PX = 18;
+        const DRAG_START_CANCEL_PX = 6;
 
         const state = {
             timer: null,
@@ -190,6 +192,12 @@ window.dartSuiteUi = window.dartSuiteUi || {
             clearTimer();
             if (state.ghostEl && state.ghostEl.parentNode) {
                 state.ghostEl.parentNode.removeChild(state.ghostEl);
+            }
+            try {
+                document.body.style.touchAction = "";
+                document.body.style.overscrollBehavior = "";
+            } catch (e) {
+                // best effort only
             }
             state.sourceEl = null;
             state.dropEl = null;
@@ -222,10 +230,62 @@ window.dartSuiteUi = window.dartSuiteUi || {
             return ghost;
         };
 
+        const createDataTransferFallback = () => ({
+            dropEffect: "move",
+            effectAllowed: "all",
+            files: [],
+            items: [],
+            types: [],
+            setData: () => { },
+            getData: () => "",
+            clearData: () => { }
+        });
+
         const fire = (node, type) => {
             if (!node) return;
+
+            let dataTransfer = null;
             try {
-                node.dispatchEvent(new Event(type, { bubbles: true, cancelable: true }));
+                if (typeof DataTransfer === "function") {
+                    dataTransfer = new DataTransfer();
+                }
+            } catch (e) {
+                dataTransfer = null;
+            }
+
+            if (!dataTransfer) {
+                dataTransfer = createDataTransferFallback();
+            }
+
+            try {
+                if (typeof DragEvent === "function") {
+                    const dragEvent = new DragEvent(type, {
+                        bubbles: true,
+                        cancelable: true,
+                        dataTransfer: dataTransfer
+                    });
+
+                    if (!dragEvent.dataTransfer) {
+                        Object.defineProperty(dragEvent, "dataTransfer", {
+                            value: dataTransfer,
+                            configurable: true
+                        });
+                    }
+
+                    node.dispatchEvent(dragEvent);
+                    return;
+                }
+            } catch (e) {
+                // fall through to generic event dispatch
+            }
+
+            try {
+                const fallbackEvent = new Event(type, { bubbles: true, cancelable: true });
+                Object.defineProperty(fallbackEvent, "dataTransfer", {
+                    value: dataTransfer,
+                    configurable: true
+                });
+                node.dispatchEvent(fallbackEvent);
             } catch (e) {
                 // best effort only
             }
@@ -239,6 +299,15 @@ window.dartSuiteUi = window.dartSuiteUi || {
             if (!draggable || !root.contains(draggable)) return;
 
             reset();
+
+            // Prevent native touch scrolling/selection on potential drag sources.
+            ev.preventDefault();
+            try {
+                document.body.style.touchAction = "none";
+                document.body.style.overscrollBehavior = "none";
+            } catch (e) {
+                // best effort only
+            }
 
             state.touchId = touch.identifier;
             state.sourceEl = draggable;
@@ -262,7 +331,12 @@ window.dartSuiteUi = window.dartSuiteUi || {
 
             if (!state.dragging && (Math.abs(dx) > MOVE_CANCEL_PX || Math.abs(dy) > MOVE_CANCEL_PX)) {
                 clearTimer();
+                reset();
                 return;
+            }
+
+            if (!state.dragging && (Math.abs(dx) > DRAG_START_CANCEL_PX || Math.abs(dy) > DRAG_START_CANCEL_PX)) {
+                ev.preventDefault();
             }
 
             if (!state.dragging) return;
@@ -304,17 +378,64 @@ window.dartSuiteUi = window.dartSuiteUi || {
             reset();
         };
 
-        root.addEventListener("touchstart", onTouchStart, { passive: true });
+        const onPointerDown = (ev) => {
+            if (!ev || ev.pointerType !== "touch") return;
+            if (state.sourceEl) return;
+
+            onTouchStart({
+                touches: [{ identifier: ev.pointerId, clientX: ev.clientX, clientY: ev.clientY }],
+                changedTouches: [{ identifier: ev.pointerId, clientX: ev.clientX, clientY: ev.clientY }],
+                target: ev.target,
+                preventDefault: () => ev.preventDefault()
+            });
+        };
+
+        const onPointerMove = (ev) => {
+            if (!ev || ev.pointerType !== "touch") return;
+            if (state.touchId !== null && ev.pointerId !== state.touchId) return;
+
+            onTouchMove({
+                touches: [{ identifier: ev.pointerId, clientX: ev.clientX, clientY: ev.clientY }],
+                changedTouches: [{ identifier: ev.pointerId, clientX: ev.clientX, clientY: ev.clientY }],
+                preventDefault: () => ev.preventDefault()
+            });
+        };
+
+        const onPointerUp = (ev) => {
+            if (!ev || ev.pointerType !== "touch") return;
+            if (state.touchId !== null && ev.pointerId !== state.touchId) return;
+
+            onTouchEnd({
+                touches: [],
+                changedTouches: [{ identifier: ev.pointerId, clientX: ev.clientX, clientY: ev.clientY }],
+                preventDefault: () => ev.preventDefault()
+            });
+        };
+
+        const onPointerCancel = (ev) => {
+            if (!ev || ev.pointerType !== "touch") return;
+            onTouchCancel();
+        };
+
+        root.addEventListener("touchstart", onTouchStart, { passive: false });
         root.addEventListener("touchmove", onTouchMove, { passive: false });
         root.addEventListener("touchend", onTouchEnd, { passive: true });
         root.addEventListener("touchcancel", onTouchCancel, { passive: true });
+        root.addEventListener("pointerdown", onPointerDown, { passive: false });
+        root.addEventListener("pointermove", onPointerMove, { passive: false });
+        root.addEventListener("pointerup", onPointerUp, { passive: false });
+        root.addEventListener("pointercancel", onPointerCancel, { passive: true });
 
         this._touchDnDHandlers[elementId] = {
             root: root,
             onTouchStart: onTouchStart,
             onTouchMove: onTouchMove,
             onTouchEnd: onTouchEnd,
-            onTouchCancel: onTouchCancel
+            onTouchCancel: onTouchCancel,
+            onPointerDown: onPointerDown,
+            onPointerMove: onPointerMove,
+            onPointerUp: onPointerUp,
+            onPointerCancel: onPointerCancel
         };
     },
     unregisterTouchDragDrop: function (elementId) {
@@ -326,10 +447,71 @@ window.dartSuiteUi = window.dartSuiteUi || {
             reg.root.removeEventListener("touchmove", reg.onTouchMove);
             reg.root.removeEventListener("touchend", reg.onTouchEnd);
             reg.root.removeEventListener("touchcancel", reg.onTouchCancel);
+            reg.root.removeEventListener("pointerdown", reg.onPointerDown);
+            reg.root.removeEventListener("pointermove", reg.onPointerMove);
+            reg.root.removeEventListener("pointerup", reg.onPointerUp);
+            reg.root.removeEventListener("pointercancel", reg.onPointerCancel);
         } catch (e) {
             // best effort only
         }
 
         delete this._touchDnDHandlers[elementId];
+    },
+    registerOutsideClick: function (key, dotNetRef, callbackMethodName, ignoreSelector) {
+        if (!key || !dotNetRef || !callbackMethodName) return;
+
+        this.unregisterOutsideClick(key);
+
+        const onPointerDown = (ev) => {
+            const target = ev && ev.target ? ev.target : null;
+            if (!target) return;
+
+            if (ignoreSelector && typeof ignoreSelector === "string") {
+                try {
+                    if (target.closest(ignoreSelector)) {
+                        return;
+                    }
+                } catch (e) {
+                    // ignore invalid selector
+                }
+            }
+
+            dotNetRef.invokeMethodAsync(callbackMethodName).catch(() => { });
+        };
+
+        document.addEventListener("pointerdown", onPointerDown, true);
+        this._outsideClickHandlers[key] = { onPointerDown: onPointerDown };
+    },
+    unregisterOutsideClick: function (key) {
+        const reg = this._outsideClickHandlers[key];
+        if (!reg) return;
+
+        try {
+            document.removeEventListener("pointerdown", reg.onPointerDown, true);
+        } catch (e) {
+            // best effort only
+        }
+
+        delete this._outsideClickHandlers[key];
+    },
+    focusAndSelect: function (selector) {
+        if (!selector || typeof selector !== "string") return;
+
+        const input = document.querySelector(selector);
+        if (!input || typeof input.focus !== "function") return;
+
+        try {
+            input.focus({ preventScroll: true });
+        } catch (e) {
+            input.focus();
+        }
+
+        if (typeof input.select === "function") {
+            try {
+                input.select();
+            } catch (e) {
+                // ignore select errors for non-text inputs
+            }
+        }
     }
 };

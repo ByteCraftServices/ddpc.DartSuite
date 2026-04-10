@@ -41,7 +41,7 @@ public sealed class DartSuiteApiService
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
         {
-            RedirectToLogin();
+            // Read requests can be polled in the background; avoid hard navigation loops on expired sessions.
             return default;
         }
     }
@@ -52,7 +52,10 @@ public sealed class DartSuiteApiService
 
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
-            RedirectToLogin();
+            var isReadRequest = response.RequestMessage?.Method == HttpMethod.Get;
+            if (!isReadRequest)
+                RedirectToLogin();
+
             throw new InvalidOperationException("Nicht authentifiziert. Bitte erneut anmelden.");
         }
 

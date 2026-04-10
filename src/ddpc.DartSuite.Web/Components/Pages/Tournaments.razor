@@ -774,7 +774,7 @@
                             }
 
                             @* ─── Tournament List + Detail ─── *@
-                            <div class="row g-3">
+                            <div class="row g-3 tournaments-main-row">
                                 @if (selectedTournament is not null && tournamentListCollapsed)
                                 {
                                     <div class="d-none d-lg-flex col-lg-1 tournament-list-rail flex-column gap-2">
@@ -1394,14 +1394,14 @@
                                                                                             {
                                                                                                 <div class="alert alert-danger py-2 small mb-2">@teamDraftError</div>
                                                                                             }
-                                                                                            <div class="row g-3">
-                                                                                                <div class="col-md-4">
-                                                                                                    <div class="card">
+                                                                                            <div class="@TeamDraftLayoutCss">
+                                                                                                <div class="@TeamDraftUnassignedMobileColumnCss">
+                                                                                                    <div class="@TeamDraftUnassignedCardCss">
                                                                                                         <div class="card-header py-2 d-flex justify-content-between align-items-center">
                                                                                                             <strong class="small">Nicht zugewiesen</strong>
                                                                                                             <span class="badge text-bg-secondary">@TeamDraftUnassignedParticipants.Count</span>
                                                                                                         </div>
-                                                                                                        <div class="card-body p-2" style="min-height:120px;max-height:360px;overflow-y:auto">
+                                                                                                        <div class="card-body p-2 team-unassigned-body">
                                                                                                             @foreach (var p in TeamDraftUnassignedParticipants)
                                                                                                             {
                                                                                                                 <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(p.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")" @ondragstart="() => StartTeamParticipantDrag(p.Id)" style="cursor:grab; font-size:.85em">
@@ -1411,8 +1411,24 @@
                                                                                                         </div>
                                                                                                     </div>
                                                                                                 </div>
-                                                                                                <div class="col-md-8">
-                                                                                                    <div class="row g-2" id="@TeamSeedGridId">
+                                                                                                <div class="@TeamDraftUnassignedColumnCss">
+                                                                                                    <div class="@TeamDraftUnassignedCardCss">
+                                                                                                        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                                                                                                            <strong class="small">Nicht zugewiesen</strong>
+                                                                                                            <span class="badge text-bg-secondary">@TeamDraftUnassignedParticipants.Count</span>
+                                                                                                        </div>
+                                                                                                        <div class="card-body p-2 team-unassigned-body">
+                                                                                                            @foreach (var p in TeamDraftUnassignedParticipants)
+                                                                                                            {
+                                                                                                                <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(p.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")" @ondragstart="() => StartTeamParticipantDrag(p.Id)" style="cursor:grab; font-size:.85em">
+                                                                                                                    @p.DisplayName.ToUpperInvariant()
+                                                                                                                </div>
+                                                                                                            }
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                                <div class="@TeamDraftTeamsColumnCss">
+                                                                                                    <div class="row g-2 mx-0" id="@TeamSeedGridId">
                                                                                                         @for (var teamIdx = 0; teamIdx < teamDrafts.Count; teamIdx++)
                                                                                                         {
                                                                                                             var idx = teamIdx;
@@ -1423,37 +1439,72 @@
                                                                                                                 .Cast<ParticipantDto>()
                                                                                                                 .ToList();
                                                                                                             <div class="col-md-6 team-seed-card" data-flip-key="@team.UiKey" @key="team.UiKey">
-                                                                                                                <div class="card @DrawTeamAnimationCss(idx) @(dropTargetTeamIndex == idx ? "draw-target-group" : "") @(draggedTeamParticipantId != null && IsTeamFull(idx) ? "team-slot-full" : "") @(draggedTeamParticipantId != null && !IsTeamFull(idx) && dropTargetTeamIndex != idx ? "team-slot-available" : "")"
+                                                                                                                  <div class="@TeamSeedInsertMarkerCss(idx) @(isTeamSeedDragging ? "armed" : string.Empty)"
+                                                                                                                     @ondragover:preventDefault
+                                                                                                                     @ondragover="() => MarkTeamSeedInsertTarget(idx)"
+                                                                                                                     @ondragleave="() => ClearTeamSeedInsertTarget(idx)"
+                                                                                                                     @ondrop="async () => await InsertTeamSeedBeforeAsync(idx)"></div>
+                                                                                                                <div class="card @DrawTeamAnimationCss(idx) @TeamSeedCardDragCss(idx) @(dropTargetTeamIndex == idx ? "draw-target-group" : "") @(draggedTeamParticipantId != null && IsTeamFull(idx) ? "team-slot-full" : "") @(draggedTeamParticipantId != null && !IsTeamFull(idx) && dropTargetTeamIndex != idx ? "team-slot-available" : "")"
                                                                                                                      @ondragover:preventDefault
                                                                                                                      @ondragover="() => { if (draggedTeamSeedIndex.HasValue) return; if (CanEditTournamentStructure && !IsTeamFull(idx)) dropTargetTeamIndex = idx; }"
                                                                                                                      @ondragleave="() => { if (dropTargetTeamIndex == idx) dropTargetTeamIndex = null; }"
-                                                                                                                     @ondrop="async () => { if (draggedTeamSeedIndex.HasValue) await DropTeamSeedAtAsync(idx); else AssignDraggedParticipantToTeam(idx); }">
+                                                                                                                     @ondrop="async () => { if (draggedTeamSeedIndex.HasValue) await DropTeamSeedAtAsync(idx); else await AssignDraggedParticipantToTeamAsync(idx); }">
                                                                                                                     <div class="card-header py-2 d-flex justify-content-between align-items-center">
                                                                                                                         <div class="d-flex align-items-center gap-2 flex-grow-1 team-name-editable-wrap"
                                                                                                                              draggable="@(CanSeedTeams ? "true" : "false")"
-                                                                                                                             @ondragstart="() => StartTeamSeedDrag(idx)">
+                                                                                                                             @ondragstart="() => StartTeamSeedDrag(idx)"
+                                                                                                                             @ondragend="EndTeamSeedDrag">
                                                                                                                             @if (editSeedingEnabled)
                                                                                                                             {
                                                                                                                                 <span class="badge text-bg-warning" title="Setzlistenposition Team">#@TeamSeedForDraft(team, idx + 1)</span>
                                                                                                                             }
-                                                                                                                            @if (editingTeamNameIndex == idx)
-                                                                                                                            {
-                                                                                                                                <input class="form-control form-control-sm"
+                                                                                                                                @if (editingTeamNameIndex == idx)
+                                                                                                                                {
+                                                                                                                                    <input id="@TeamNameEditInputId(idx)"
+                                                                                                                                       class="form-control form-control-sm team-name-edit-input"
                                                                                                                                        style="max-width:220px"
                                                                                                                                        @bind="editingTeamNameValue"
                                                                                                                                        @bind:event="oninput"
-                                                                                                                                      @onblur="async () => await CommitTeamNameEditAsync(idx)" />
-                                                                                                                            }
+                                                                                                                                       @onkeydown="async (e) => await HandleTeamNameEditKeyDownAsync(idx, e)"
+                                                                                                                                       @onblur="async () => await CommitTeamNameEditAsync(idx)" />
+                                                                                                                                }
                                                                                                                             else
                                                                                                                             {
-                                                                                                                                <strong class="small text-truncate team-name-editable" style="max-width:220px" @onclick="() => BeginTeamNameEdit(idx)">@(string.IsNullOrWhiteSpace(team.Name) ? $"Team {idx + 1}" : team.Name)</strong>
-                                                                                                                                <span class="team-name-actions">
+                                                                                                                                <strong class="small text-truncate team-name-editable" style="max-width:220px" title="@TeamDraftNameHint(team)" @onclick="() => BeginTeamNameEdit(idx)">@TeamDraftDisplayName(team, idx)</strong>
+                                                                                                                                <span class="team-name-actions d-none d-md-inline-flex">
                                                                                                                                     <button class="btn btn-sm btn-link p-0 text-muted" title="Teamnamen bearbeiten" @onclick="() => BeginTeamNameEdit(idx)" @onclick:stopPropagation disabled="@(isWorking || !CanEditTournamentStructure)">✎</button>
                                                                                                                                     <button class="btn btn-sm btn-link p-0 text-muted ms-1" title="Namen automatisch aus Mitgliedern erzeugen" @onclick="async () => await ResetTeamDraftNameToAutoAsync(idx)" @onclick:stopPropagation disabled="@(isWorking || !CanEditTournamentStructure)">↺</button>
                                                                                                                                 </span>
                                                                                                                             }
                                                                                                                         </div>
-                                                                                                                        <span class="badge @(members.Count == editPlayersPerTeam ? "text-bg-success" : "text-bg-secondary")">@members.Count / @editPlayersPerTeam</span>
+                                                                                                                        <div class="d-flex align-items-center gap-2">
+                                                                                                                            <div class="dropdown d-md-none @(openTeamNameMenuIndex == idx ? "show" : "")">
+                                                                                                                                <button class="btn btn-sm btn-link p-0 text-muted team-name-menu-toggle"
+                                                                                                                                        type="button"
+                                                                                                                                        title="Team-Aktionen"
+                                                                                                                                        @onclick="() => ToggleTeamNameMenu(idx)"
+                                                                                                                                        @onclick:stopPropagation>
+                                                                                                                                    ⋮
+                                                                                                                                </button>
+                                                                                                                                <ul class="dropdown-menu dropdown-menu-end team-name-actions-menu @(openTeamNameMenuIndex == idx ? "show" : "")">
+                                                                                                                                    <li>
+                                                                                                                                        <button class="dropdown-item"
+                                                                                                                                                @onclick="() => { BeginTeamNameEdit(idx); CloseTeamNameMenu(); }"
+                                                                                                                                                disabled="@(isWorking || !CanEditTournamentStructure)">
+                                                                                                                                            ✎ Teamnamen bearbeiten
+                                                                                                                                        </button>
+                                                                                                                                    </li>
+                                                                                                                                    <li>
+                                                                                                                                        <button class="dropdown-item"
+                                                                                                                                                @onclick="async () => { await ResetTeamDraftNameToAutoAsync(idx); CloseTeamNameMenu(); }"
+                                                                                                                                                disabled="@(isWorking || !CanEditTournamentStructure)">
+                                                                                                                                            ↺ Namen automatisch erzeugen
+                                                                                                                                        </button>
+                                                                                                                                    </li>
+                                                                                                                                </ul>
+                                                                                                                            </div>
+                                                                                                                            <span class="badge @(members.Count == editPlayersPerTeam ? "text-bg-success" : "text-bg-secondary")">@members.Count / @editPlayersPerTeam</span>
+                                                                                                                        </div>
                                                                                                                     </div>
                                                                                                                     <div class="card-body p-2">
                                                                                                                         <div class="team-slot-area" style="min-height:64px">
@@ -1461,7 +1512,7 @@
                                                                                                                             {
                                                                                                                                 <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(member.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")" @ondragstart="() => StartTeamParticipantDrag(member.Id)" style="cursor:grab; font-size:.85em">
                                                                                                                                     @member.DisplayName.ToUpperInvariant()
-                                                                                                                                    <button class="btn btn-sm p-0 ms-1 text-white-50" style="font-size:.7em; line-height:1" @onclick="() => RemoveParticipantFromTeam(member.Id)" @onclick:stopPropagation disabled="@(isWorking || !CanEditTournamentStructure)" title="Aus Team entfernen">✕</button>
+                                                                                                                                    <button class="btn btn-sm p-0 ms-1 text-white-50" style="font-size:.7em; line-height:1" @onclick="async () => await RemoveParticipantFromTeamAsync(member.Id)" @onclick:stopPropagation disabled="@(isWorking || !CanEditTournamentStructure)" title="Aus Team entfernen">✕</button>
                                                                                                                                 </div>
                                                                                                                             }
                                                                                                                             @if (!members.Any())
@@ -2319,6 +2370,16 @@
                         OnClosed="OnMatchCardScopeModalClosedAsync" />
 
 <style>
+    .page > main {
+        min-width: 0 !important;
+        max-width: 100%;
+    }
+
+    .page > main > article.content {
+        max-width: 100%;
+        overflow: visible;
+    }
+
     details > summary {
         list-style: none;
         position: relative;
@@ -2353,6 +2414,198 @@
     .team-name-editable-wrap:focus-within .team-name-actions {
         opacity: 1;
         pointer-events: auto;
+    }
+
+    .team-name-menu-toggle {
+        line-height: 1;
+        text-decoration: none;
+        font-size: 1.15rem;
+    }
+
+    .team-name-menu-toggle:hover,
+    .team-name-menu-toggle:focus {
+        text-decoration: none;
+    }
+
+    .team-name-actions-menu {
+        right: 0;
+        left: auto;
+        width: min(14rem, calc(100vw - 1rem));
+        max-width: calc(100vw - 1rem);
+    }
+
+    .team-name-actions-menu .dropdown-item {
+        white-space: normal;
+    }
+
+    .team-seed-card-drag-source .team-name-editable-wrap {
+        outline: 2px solid rgba(13, 110, 253, 0.65);
+        outline-offset: 2px;
+        border-radius: 0.35rem;
+    }
+
+    .team-seed-card-drag-hover {
+        box-shadow: 0 0 0 0.16rem rgba(13, 110, 253, 0.22);
+    }
+
+    .team-seed-insert-marker {
+        height: 0;
+        margin-bottom: 0;
+        border-top: 2px solid transparent;
+        pointer-events: none;
+        transition: border-color 0.16s ease, height 0.16s ease, margin-bottom 0.16s ease;
+    }
+
+    .team-seed-insert-marker.armed {
+        pointer-events: auto;
+        height: 6px;
+        margin-bottom: 4px;
+    }
+
+    .team-seed-insert-marker.active {
+        height: 10px;
+        margin-bottom: 6px;
+        border-top-color: rgba(13, 110, 253, 0.85);
+    }
+
+    .team-draft-layout {
+        margin-left: 0;
+        margin-right: 0;
+        max-width: 100%;
+        overflow: visible;
+    }
+
+    @@media (min-width: 992px) {
+        .team-draft-layout {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: flex-start;
+            gap: 0.75rem;
+        }
+
+        .team-draft-layout > .team-draft-unassigned-col-desktop {
+            flex: 0 0 18rem;
+            max-width: 18rem;
+            width: 18rem;
+        }
+
+        .team-draft-layout > .team-draft-teams-col {
+            flex: 1 1 auto;
+            min-width: 0;
+            width: auto;
+            max-width: none;
+        }
+    }
+
+    .tournaments-main-row {
+        margin-left: 0;
+        margin-right: 0;
+        max-width: 100%;
+        overflow: visible;
+    }
+
+    .team-draft-unassigned-col,
+    .team-draft-teams-col {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .team-draft-teams-col > .row {
+        margin-left: 0;
+        margin-right: 0;
+        min-width: 0;
+    }
+
+    .team-draft-unassigned-col .team-unassigned-card {
+        transition: transform 320ms cubic-bezier(.22,.61,.36,1), width 320ms cubic-bezier(.22,.61,.36,1);
+        transform-origin: left bottom;
+    }
+
+    .team-draft-unassigned-col .team-unassigned-card .team-unassigned-body {
+        min-height: 72px;
+        max-height: 360px;
+        overflow-y: auto;
+    }
+
+    .team-draft-unassigned-col .team-unassigned-card.is-collapsed .team-unassigned-body {
+        min-height: 0;
+        max-height: 0;
+        overflow: hidden;
+        padding-top: 0;
+        padding-bottom: 0;
+    }
+
+    .team-draft-unassigned-col .team-unassigned-card .card-body {
+        transition: max-height 280ms ease, opacity 280ms ease, padding 280ms ease;
+    }
+
+    .team-draft-unassigned-col-mobile {
+        padding-left: 0;
+        padding-right: 0;
+        align-self: flex-start;
+    }
+
+    .team-draft-unassigned-col-mobile .team-unassigned-card {
+        position: sticky;
+        top: 0.35rem;
+        z-index: 6;
+        background: var(--bs-body-bg);
+        margin-bottom: 0.25rem;
+    }
+
+    .team-draft-unassigned-col-desktop {
+        padding-left: 0;
+        padding-right: 0;
+        align-self: stretch;
+    }
+
+    .team-draft-unassigned-col-desktop .team-unassigned-card {
+        position: sticky;
+        top: 4rem;
+        z-index: 3;
+    }
+
+    .team-draft-unassigned-col-desktop.is-collapsed {
+        flex: 0 0 2.8rem;
+        max-width: 2.8rem;
+        min-width: 2.8rem;
+        width: 2.8rem;
+        overflow: visible;
+    }
+
+    .team-draft-unassigned-col-desktop.is-collapsed .team-unassigned-card.is-collapsed {
+        width: 18rem;
+        transform: rotate(-90deg) translateX(-100%);
+        box-shadow: 0 0.125rem 0.4rem rgba(0, 0, 0, 0.08);
+    }
+
+    .team-draft-unassigned-col-desktop.is-collapsed .team-unassigned-card.is-collapsed .card-body {
+        max-height: 0;
+        opacity: 0;
+        overflow: hidden;
+        padding-top: 0;
+        padding-bottom: 0;
+    }
+
+    .team-draft-unassigned-col-desktop.is-collapsed .team-unassigned-card.is-collapsed .card-header {
+        white-space: nowrap;
+    }
+
+    .team-draft-layout [draggable='true'] {
+        touch-action: none;
+    }
+
+    .team-name-editable-wrap {
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .team-name-editable,
+    .team-name-edit-input {
+        min-width: 0;
+        width: 100%;
+        max-width: 100% !important;
     }
 
     /* Disabled-button tooltip wrapper: outer span intercepts hover for native title tooltip */
@@ -2469,13 +2722,26 @@
         border-top: 1px solid rgba(0, 0, 0, 0.1);
         background: rgba(255, 255, 255, 0.97);
         backdrop-filter: blur(3px);
+        min-width: 0;
+        overflow: hidden;
     }
 
     .tournament-tab-footer-nav > .btn {
-        max-width: 42%;
+        flex: 1 1 0;
+        min-width: 0;
+        max-width: none;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+    }
+
+    .tournament-tab-footer-nav > .small {
+        flex: 0 1 30%;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-align: center;
     }
 
     .dropzone .badge,
@@ -2587,18 +2853,4 @@
         scroll-snap-align: start;
     }
 
-    @@media (max-width: 991.98px) {
-        .schedule-board-strip {
-            flex-wrap: nowrap;
-            overflow-x: auto;
-            scroll-snap-type: x proximity;
-            padding-bottom: 0.25rem;
-        }
-
-        .schedule-board-item {
-            flex: 0 0 88vw;
-            max-width: 88vw;
-            scroll-snap-align: start;
-        }
-    }
 </style>
