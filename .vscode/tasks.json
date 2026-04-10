@@ -2,6 +2,19 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
+			"label": "preflight-stop-locking-processes",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"scripts/stop-locking-dotnet-processes.ps1"
+			],
+			"problemMatcher": []
+		},
+		{
 			"label": "build",
 			"type": "shell",
 			"command": "dotnet",
@@ -10,6 +23,9 @@
 				"ddpc.DartSuite.slnx"
 			],
 			"group": "build",
+			"dependsOn": [
+				"preflight-stop-locking-processes"
+			],
 			"problemMatcher": [
 				"$msCompile"
 			]
@@ -23,6 +39,9 @@
 				"ddpc.DartSuite.slnx"
 			],
 			"group": "test",
+			"dependsOn": [
+				"preflight-stop-locking-processes"
+			],
 			"problemMatcher": [
 				"$msCompile"
 			]
