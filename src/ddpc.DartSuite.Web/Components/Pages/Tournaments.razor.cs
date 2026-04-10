@@ -5954,8 +5954,9 @@ public partial class Tournaments : IAsyncDisposable
         try
         {
             isWorking = true;
-            var updatedParticipants = await Api.AssignSeedPotsAsync(selectedTournament.Id);
-            participants = updatedParticipants.ToList();
+            await Api.AssignSeedPotsAsync(selectedTournament.Id);
+            await LoadParticipantsAsync(selectedTournament.Id);
+            await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex) { editError = ex.Message; }
         finally { isWorking = false; }

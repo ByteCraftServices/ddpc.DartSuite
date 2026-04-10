@@ -431,7 +431,21 @@
                         }
                         else
                         {
-                            <div class="alert alert-info py-2 small mb-0">Keine Lostöpfe vorhanden. Bitte zuerst "Lostöpfe zuteilen" ausführen.</div>
+                            <div class="alert alert-info py-2 small mb-2">Keine Lostöpfe vorhanden. Bitte zuerst "🎲 Lostöpfe zuteilen" ausführen oder Teilnehmer manuell per Drag&amp;Drop zuweisen.</div>
+                            @foreach (var participant in unassigned.OrderBy(p => p.Seed > 0 ? p.Seed : int.MaxValue).ThenBy(p => p.DisplayName))
+                            {
+                                <div class="badge bg-dark p-2 me-1 mb-1 user-select-none draw-participant-badge @DrawParticipantAnimationCss(participant.Id)"
+                                     draggable="@(CanEditTournamentStructure ? "true" : "false")"
+                                     @ondragstart="() => StartParticipantDrag(participant.Id)"
+                                     @ondragend="HandleParticipantDragEnded"
+                                     style="cursor:grab; font-size:.85em">
+                                    @if (EditSeedingEnabled && participant.Seed > 0 && participant.Seed <= EditSeedTopCount)
+                                    {
+                                        <span class="badge text-bg-warning me-1">#@participant.Seed</span>
+                                    }
+                                    <span class="draw-participant-name">@participant.DisplayName.ToUpperInvariant()</span>
+                                </div>
+                            }
                         }
                     </div>
                 }
