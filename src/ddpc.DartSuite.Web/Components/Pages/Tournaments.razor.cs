@@ -1388,8 +1388,10 @@ public partial class Tournaments : IAsyncDisposable
     {
         get
         {
+            // GroupAndKnockout: groups → schedule → knockout gives the DS-024 special flow
+            // (Gruppenphase → Spielplan one-click, then Spielplan → K.O. for the final phase).
             if (selectedTournament?.Mode == "GroupAndKnockout")
-                return ["general", "boards-participants", "draw", "rounds", "groups", "knockout", "schedule"];
+                return ["general", "boards-participants", "draw", "rounds", "groups", "schedule", "knockout"];
             return ["general", "boards-participants", "draw", "rounds", "knockout", "schedule"];
         }
     }
