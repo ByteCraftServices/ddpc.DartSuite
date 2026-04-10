@@ -1763,6 +1763,13 @@ public partial class Tournaments : IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    private Task ClearDraggedBoardIdAsync()
+    {
+        draggedBoardId = null;
+        dropTargetMatchId = null;
+        return Task.CompletedTask;
+    }
+
     private Task OnHideFinishedChangedAsync(bool value)
     {
         scheduleHideFinished = value;

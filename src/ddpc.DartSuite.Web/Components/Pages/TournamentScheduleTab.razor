@@ -36,6 +36,26 @@
     </select>
 </div>
 
+@if (Boards.Any() && Matches.Any())
+{
+    <div class="p-2 border rounded mb-3 bg-light">
+        <div class="small fw-semibold text-muted mb-2">Verfuegbare Boards - auf Match ziehen zum Zuweisen</div>
+        <div class="d-flex flex-wrap gap-2">
+            @foreach (var board in Boards)
+            {
+                <div class="badge bg-dark p-2 user-select-none"
+                     draggable="true"
+                     @ondragstart="() => HandleBoardDragStartAsync(board.Id)"
+                     @ondragend="HandleBoardDragEndAsync"
+                     style="cursor:grab; font-size:.85em">
+                    📋 @board.Name
+                    <span class="badge @BoardStatusBadge(board.Status) ms-1" style="font-size:.75em">@board.Status</span>
+                </div>
+            }
+        </div>
+    </div>
+}
+
 @if (UnassignedUpcoming.Any())
 {
     <div class="alert alert-warning py-2 small mb-3">
@@ -180,6 +200,7 @@ else
     [Parameter] public Func<string, Task> OpenMatchCardScopeEditor { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<Task> GenerateSchedule { get; set; } = () => Task.CompletedTask;
     [Parameter] public Func<MatchDto, string> MatchLabel { get; set; } = _ => string.Empty;
+    [Parameter] public Func<string, string> BoardStatusBadge { get; set; } = _ => string.Empty;
     [Parameter] public Func<MatchCardViewSettings, bool> ShowMatchCardMonitoring { get; set; } = _ => false;
     [Parameter] public Func<MatchDto, string> GetMonitoringBadgeText { get; set; } = _ => string.Empty;
     [Parameter] public Func<MatchDto, string> GetMonitoringBadgeCss { get; set; } = _ => string.Empty;
@@ -193,6 +214,8 @@ else
     [Parameter] public Func<Guid?, Task> SetDropTargetMatchId { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<Guid, Task> StartScheduleMatchDrag { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<Task> EndScheduleMatchDrag { get; set; } = () => Task.CompletedTask;
+    [Parameter] public Func<Guid, Task> OnBoardDragStart { get; set; } = _ => Task.CompletedTask;
+    [Parameter] public Func<Task> OnBoardDragEnd { get; set; } = () => Task.CompletedTask;
     [Parameter] public Func<Guid, Task> MarkScheduleDropTargetMatch { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<Guid, Task> ClearScheduleDropTargetMatch { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<Guid, Task> DropOnTimelineMatch { get; set; } = _ => Task.CompletedTask;
@@ -238,6 +261,10 @@ else
 
     private Task HandleEditMatchTimeValueChangedAsync(ChangeEventArgs args)
         => EditMatchTimeValueChanged(Convert.ToString(args.Value) ?? string.Empty);
+
+    private Task HandleBoardDragStartAsync(Guid boardId) => OnBoardDragStart(boardId);
+
+    private Task HandleBoardDragEndAsync() => OnBoardDragEnd();
 
     private Task HandleCancelEditMatchTimeAsync()
     {
