@@ -538,24 +538,24 @@
                                             {
                                                 <div class="row g-2 align-items-end mb-2">
                                                     <div class="col">
-                                                        <label class="form-label small">@(homeP?.DisplayName?.ToUpperInvariant() ?? "Heim") — Sets</label>
+                                                        <label class="form-label small score-player-label" title="@(homeP?.DisplayName?.ToUpperInvariant() ?? "Heim")">@(homeP?.DisplayName?.ToUpperInvariant() ?? "Heim") — Sets</label>
                                                         <input type="number" class="form-control" @bind="editHomeSets" min="0" />
                                                     </div>
                                                     <div class="col-auto pt-4">:</div>
                                                     <div class="col">
-                                                        <label class="form-label small">@(awayP?.DisplayName?.ToUpperInvariant() ?? "Gast") — Sets</label>
+                                                        <label class="form-label small score-player-label" title="@(awayP?.DisplayName?.ToUpperInvariant() ?? "Gast")">@(awayP?.DisplayName?.ToUpperInvariant() ?? "Gast") — Sets</label>
                                                         <input type="number" class="form-control" @bind="editAwaySets" min="0" />
                                                     </div>
                                                 </div>
                                             }
                                             <div class="row g-2 align-items-end mb-2">
                                                 <div class="col">
-                                                    <label class="form-label small">@(homeP?.DisplayName?.ToUpperInvariant() ?? "Heim") — Legs</label>
+                                                    <label class="form-label small score-player-label" title="@(homeP?.DisplayName?.ToUpperInvariant() ?? "Heim")">@(homeP?.DisplayName?.ToUpperInvariant() ?? "Heim") — Legs</label>
                                                     <input type="number" class="form-control" @bind="editHomeLegs" min="0" />
                                                 </div>
                                                 <div class="col-auto pt-4">:</div>
                                                 <div class="col">
-                                                    <label class="form-label small">@(awayP?.DisplayName?.ToUpperInvariant() ?? "Gast") — Legs</label>
+                                                    <label class="form-label small score-player-label" title="@(awayP?.DisplayName?.ToUpperInvariant() ?? "Gast")">@(awayP?.DisplayName?.ToUpperInvariant() ?? "Gast") — Legs</label>
                                                     <input type="number" class="form-control" @bind="editAwayLegs" min="0" />
                                                 </div>
                                                 <div class="col-auto">
@@ -800,7 +800,7 @@
                                                 <li class="list-group-item list-group-item-action @(selectedTournament?.Id == t.Id ? "active" : "")"
                                                     style="cursor:pointer" @onclick="() => SelectTournamentAsync(t)">
                                                     <div class="d-flex justify-content-between align-items-center">
-                                                        <span>
+                                                        <span class="list-group-item-name" title="@t.Name">
                                                             @t.Name
                                                             @if (!string.IsNullOrEmpty(t.JoinCode))
                                                             {
@@ -827,7 +827,7 @@
                                                 <li class="list-group-item list-group-item-action @(selectedTournament?.Id == t.Id ? "active" : "")"
                                                     style="cursor:pointer" @onclick="() => SelectTournamentAsync(t)">
                                                     <div class="d-flex justify-content-between align-items-center">
-                                                        <span>
+                                                        <span class="list-group-item-name" title="@t.Name">
                                                             @t.Name
                                                             @if (t.IsLocked)
                                                             {
@@ -850,7 +850,7 @@
                                                 <li class="list-group-item list-group-item-action @(selectedTournament?.Id == t.Id ? "active" : "")"
                                                     style="cursor:pointer" @onclick="() => SelectTournamentAsync(t)">
                                                     <div class="d-flex justify-content-between align-items-center">
-                                                        <span>@t.Name</span>
+                                                        <span class="list-group-item-name" title="@t.Name">@t.Name</span>
                                                         <span
                                                         class="badge @(selectedTournament?.Id == t.Id ? "bg-light text-dark" : "bg-secondary")">@t.ParticipantCount</span>
                                                     </div>

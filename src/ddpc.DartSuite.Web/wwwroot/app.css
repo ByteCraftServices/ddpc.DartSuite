@@ -310,3 +310,32 @@ h1:focus {
 .tournament-tabs-nowrap::-webkit-scrollbar {
     display: none;
 }
+
+/* DS-039: Form label truncation — prevents long player/team names from breaking layout */
+.form-label-truncate {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* DS-039: Participant name in score-entry forms */
+.score-player-label {
+    display: block;
+    max-width: clamp(7rem, 40vw, 18rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+/* DS-039: Constrain long text in list-group items (tournament list, participant list) */
+.list-group-item-name {
+    max-width: calc(100% - 3rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+    vertical-align: middle;
+}
