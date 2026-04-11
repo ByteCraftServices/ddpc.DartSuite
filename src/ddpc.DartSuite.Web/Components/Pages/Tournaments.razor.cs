@@ -890,8 +890,23 @@ public partial class Tournaments : IAsyncDisposable
 
     private int TeamSeedForDraft(TeamDraftItem draft, int fallback)
     {
+        if (!editSeedingEnabled)
+            return fallback;
+
         var member = TeamMemberForDraft(draft);
-        return member is not null && member.Seed > 0 ? member.Seed : fallback;
+        if (member is null || member.Seed <= 0)
+            return fallback;
+
+        if (editSeedingEnabled && editSeedTopCount > 0 && member.Seed > editSeedTopCount)
+            return fallback;
+
+        return member.Seed;
+    }
+
+    private int? VisibleTeamSeedForDraft(TeamDraftItem draft)
+    {
+        var seed = TeamSeedForDraft(draft, 0);
+        return seed > 0 ? seed : null;
     }
 
     private void SortTeamDraftsBySeedInMemory()
@@ -1029,7 +1044,10 @@ public partial class Tournaments : IAsyncDisposable
 
     private List<TeamDraftItem> teamDrafts = [];
     private Guid? draggedTeamParticipantId;
+    private Guid? selectedTeamParticipantId;
     private int? draggedTeamSeedIndex;
+    private int? selectedTeamSeedIndex;
+    private CancellationTokenSource? teamSeedLongPressCts;
     private int? editingTeamNameIndex;
     private string editingTeamNameValue = string.Empty;
     private int? pendingTeamNameFocusIndex;
@@ -1041,6 +1059,7 @@ public partial class Tournaments : IAsyncDisposable
     private bool hasUnsavedTeamDraftChanges;
     private string? teamDraftError;
     private const string TeamSeedGridId = "team-seed-grid";
+    private const int TeamSeedLongPressMs = 380;
 
     private List<KnockoutDrawCard> knockoutDrawCards = [];
     private Guid? draggedKnockoutParticipantId;
@@ -3284,9 +3303,22 @@ public partial class Tournaments : IAsyncDisposable
 
     private async Task OnSeedingEnabledChangedAsync()
     {
+        var maxSeedCount = Math.Max(0, EffectiveDrawParticipants.Count);
+        editSeedTopCount = Math.Clamp(editSeedTopCount, 0, maxSeedCount);
+
+        if (!editSeedingEnabled)
+            editSeedTopCount = 0;
+
         await AutoSaveSettingAsync();
+
         if (editSeedingEnabled)
+        {
             await NormalizeSeedRanksAsync();
+            return;
+        }
+
+        selectedTeamSeedIndex = null;
+        await ResetAllSeedRanksAsync();
     }
 
     private async Task OnSeedTopCountChangedAsync()
@@ -3294,6 +3326,10 @@ public partial class Tournaments : IAsyncDisposable
         var maxSeedCount = Math.Max(0, EffectiveDrawParticipants.Count);
         editSeedTopCount = Math.Clamp(editSeedTopCount, 0, maxSeedCount);
         await AutoSaveSettingAsync();
+
+        if (!editSeedingEnabled)
+            return;
+
         await NormalizeSeedRanksAsync();
     }
 
@@ -3396,6 +3432,9 @@ public partial class Tournaments : IAsyncDisposable
 
         SortTeamDraftsBySeedInMemory();
         EnsureTeamDraftSlots();
+        selectedTeamParticipantId = null;
+        draggedTeamParticipantId = null;
+        dropTargetTeamIndex = null;
         hasUnsavedTeamDraftChanges = false;
         teamDraftError = null;
     }
@@ -3460,6 +3499,125 @@ public partial class Tournaments : IAsyncDisposable
         => isTeamSeedDragging && teamSeedInsertTargetIndex == index
             ? "team-seed-insert-marker active"
             : "team-seed-insert-marker";
+
+    private void CancelTeamSeedLongPress()
+    {
+        if (teamSeedLongPressCts is null)
+            return;
+
+        try
+        {
+            teamSeedLongPressCts.Cancel();
+        }
+        catch
+        {
+            // ignore cancellation races
+        }
+        finally
+        {
+            teamSeedLongPressCts.Dispose();
+            teamSeedLongPressCts = null;
+        }
+    }
+
+    private async Task OnTeamSeedPointerDownAsync(int teamIndex, PointerEventArgs e)
+    {
+        if (!isCompactViewport || !CanSeedTeams || !CanEditTournamentStructure)
+            return;
+
+        if (!string.Equals(e.PointerType, "touch", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        CancelTeamSeedLongPress();
+        var cts = new CancellationTokenSource();
+        teamSeedLongPressCts = cts;
+
+        try
+        {
+            await Task.Delay(TeamSeedLongPressMs, cts.Token);
+            if (cts.IsCancellationRequested)
+                return;
+
+            selectedTeamSeedIndex = teamIndex;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (TaskCanceledException)
+        {
+            // expected when pointer is released before long-press threshold
+        }
+        finally
+        {
+            if (ReferenceEquals(teamSeedLongPressCts, cts))
+            {
+                teamSeedLongPressCts.Dispose();
+                teamSeedLongPressCts = null;
+            }
+        }
+    }
+
+    private void OnTeamSeedPointerUp(PointerEventArgs e)
+    {
+        if (!string.Equals(e.PointerType, "touch", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        CancelTeamSeedLongPress();
+    }
+
+    private void OnTeamSeedPointerCancel(PointerEventArgs e)
+    {
+        if (!string.Equals(e.PointerType, "touch", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        CancelTeamSeedLongPress();
+    }
+
+    private async Task OnTeamSeedBadgeClickAsync(int teamIndex)
+    {
+        if (!isCompactViewport || !CanSeedTeams || !CanEditTournamentStructure)
+            return;
+
+        if (!selectedTeamSeedIndex.HasValue)
+        {
+            selectedTeamSeedIndex = teamIndex;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (selectedTeamSeedIndex.Value == teamIndex)
+        {
+            selectedTeamSeedIndex = null;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        draggedTeamSeedIndex = selectedTeamSeedIndex.Value;
+        isTeamSeedDragging = true;
+        await DropTeamSeedAtAsync(teamIndex);
+        selectedTeamSeedIndex = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnTeamSeedCardTapAsync(int teamIndex)
+    {
+        if (!isCompactViewport || !CanSeedTeams || !CanEditTournamentStructure)
+            return;
+
+        if (!selectedTeamSeedIndex.HasValue)
+            return;
+
+        if (selectedTeamSeedIndex.Value == teamIndex)
+        {
+            selectedTeamSeedIndex = null;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        draggedTeamSeedIndex = selectedTeamSeedIndex.Value;
+        isTeamSeedDragging = true;
+        await DropTeamSeedAtAsync(teamIndex);
+        selectedTeamSeedIndex = null;
+        await InvokeAsync(StateHasChanged);
+    }
 
     private async Task LoadMatchesAsync(Guid tournamentId)
         => matches = (await Api.GetMatchesAsync(tournamentId)).ToList();
@@ -5136,19 +5294,74 @@ public partial class Tournaments : IAsyncDisposable
             return;
 
         draggedTeamParticipantId = participantId;
+        selectedTeamParticipantId = participantId;
         teamDraftError = null;
+    }
+
+    private void SelectTeamParticipant(Guid participantId)
+    {
+        if (!CanEditTournamentStructure)
+            return;
+
+        if (selectedTeamParticipantId == participantId)
+        {
+            selectedTeamParticipantId = null;
+            draggedTeamParticipantId = null;
+            dropTargetTeamIndex = null;
+            return;
+        }
+
+        selectedTeamParticipantId = participantId;
+        draggedTeamParticipantId = null;
+        teamDraftError = null;
+    }
+
+    private bool IsSelectedTeamParticipant(Guid participantId)
+        => selectedTeamParticipantId == participantId;
+
+    private string? SelectedTeamParticipantName
+        => selectedTeamParticipantId.HasValue
+            ? participants.FirstOrDefault(p => p.Id == selectedTeamParticipantId.Value)?.DisplayName
+            : null;
+
+    private async Task AssignSelectedParticipantToTeamAsync(int teamIndex)
+    {
+        if (selectedTeamParticipantId is null)
+            return;
+
+        await AssignParticipantToTeamAsync(teamIndex, selectedTeamParticipantId.Value);
     }
 
     private async Task AssignDraggedParticipantToTeamAsync(int teamIndex)
     {
         if (!CanEditTournamentStructure || draggedTeamParticipantId is null)
             return;
+
+        await AssignParticipantToTeamAsync(teamIndex, draggedTeamParticipantId.Value);
+    }
+
+    private async Task AssignParticipantToTeamAsync(int teamIndex, Guid participantId)
+    {
+        if (!CanEditTournamentStructure)
+            return;
         if (teamIndex < 0 || teamIndex >= teamDrafts.Count)
             return;
 
-        var participantId = draggedTeamParticipantId.Value;
-        draggedTeamParticipantId = null;
         dropTargetTeamIndex = null;
+
+        var team = teamDrafts[teamIndex];
+        if (team.MemberParticipantIds.Contains(participantId))
+        {
+            draggedTeamParticipantId = null;
+            selectedTeamParticipantId = null;
+            return;
+        }
+
+        if (team.MemberParticipantIds.Count >= editPlayersPerTeam)
+        {
+            teamDraftError = $"Team {teamIndex + 1} ist bereits voll ({editPlayersPerTeam}/{editPlayersPerTeam}).";
+            return;
+        }
 
         for (var i = 0; i < teamDrafts.Count; i++)
         {
@@ -5156,15 +5369,10 @@ public partial class Tournaments : IAsyncDisposable
                 RecomputeTeamDraftNameIfAuto(i);
         }
 
-        var team = teamDrafts[teamIndex];
-        if (team.MemberParticipantIds.Count >= editPlayersPerTeam)
-        {
-            teamDraftError = $"Team {teamIndex + 1} ist bereits voll ({editPlayersPerTeam}/{editPlayersPerTeam}).";
-            return;
-        }
-
         team.MemberParticipantIds.Add(participantId);
         RecomputeTeamDraftNameIfAuto(teamIndex);
+        draggedTeamParticipantId = null;
+        selectedTeamParticipantId = null;
         hasUnsavedTeamDraftChanges = true;
         await AutoSaveTeamDraftIfCompleteAsync();
     }
@@ -5180,6 +5388,8 @@ public partial class Tournaments : IAsyncDisposable
                 continue;
 
             RecomputeTeamDraftNameIfAuto(i);
+            if (selectedTeamParticipantId == participantId)
+                selectedTeamParticipantId = null;
             hasUnsavedTeamDraftChanges = true;
             await AutoSaveTeamDraftIfCompleteAsync();
             return;
@@ -5339,6 +5549,7 @@ public partial class Tournaments : IAsyncDisposable
             return;
 
         openTeamNameMenuIndex = null;
+        selectedTeamSeedIndex = null;
         teamSeedInsertTargetIndex = null;
         isTeamSeedDragging = true;
         draggedTeamSeedIndex = teamIndex;
@@ -5346,7 +5557,9 @@ public partial class Tournaments : IAsyncDisposable
 
     private void EndTeamSeedDrag()
     {
+        CancelTeamSeedLongPress();
         draggedTeamSeedIndex = null;
+        selectedTeamSeedIndex = null;
         teamSeedInsertTargetIndex = null;
         isTeamSeedDragging = false;
     }
@@ -5461,7 +5674,7 @@ public partial class Tournaments : IAsyncDisposable
                 continue;
 
             // Only teams within the configured seeded count receive a seed number; the rest get 0.
-            var targetSeed = (editSeedTopCount <= 0 || i < editSeedTopCount) ? i + 1 : 0;
+            var targetSeed = (editSeedingEnabled && editSeedTopCount > 0 && i < editSeedTopCount) ? i + 1 : 0;
             if (teamMember.Seed == targetSeed)
                 continue;
 
@@ -5473,55 +5686,6 @@ public partial class Tournaments : IAsyncDisposable
                 teamMember.IsAutodartsAccount,
                 teamMember.IsManager,
                 targetSeed,
-                teamMember.SeedPot,
-                teamMember.GroupNumber,
-                teamMember.Type));
-        }
-
-        // A final normalization pass guarantees uniqueness even after interrupted or mixed operations.
-        var assignedSeeds = new HashSet<int>();
-        for (var i = 0; i < teamDrafts.Count; i++)
-        {
-            var teamMember = TeamMemberForDraft(teamDrafts[i]);
-            if (teamMember is null)
-                continue;
-
-            // Teams beyond the seeded count should have seed 0.
-            if (editSeedTopCount > 0 && i >= editSeedTopCount)
-            {
-                if (teamMember.Seed != 0)
-                {
-                    await Api.UpdateParticipantAsync(selectedTournament.Id, new UpdateParticipantRequest(
-                        selectedTournament.Id,
-                        teamMember.Id,
-                        teamMember.DisplayName,
-                        teamMember.AccountName,
-                        teamMember.IsAutodartsAccount,
-                        teamMember.IsManager,
-                        0,
-                        teamMember.SeedPot,
-                        teamMember.GroupNumber,
-                        teamMember.Type));
-                }
-                continue;
-            }
-
-            var desiredSeed = i + 1;
-            if (assignedSeeds.Contains(desiredSeed))
-                desiredSeed = assignedSeeds.Count + 1;
-
-            assignedSeeds.Add(desiredSeed);
-            if (teamMember.Seed == desiredSeed)
-                continue;
-
-            await Api.UpdateParticipantAsync(selectedTournament.Id, new UpdateParticipantRequest(
-                selectedTournament.Id,
-                teamMember.Id,
-                teamMember.DisplayName,
-                teamMember.AccountName,
-                teamMember.IsAutodartsAccount,
-                teamMember.IsManager,
-                desiredSeed,
                 teamMember.SeedPot,
                 teamMember.GroupNumber,
                 teamMember.Type));
@@ -5599,7 +5763,20 @@ public partial class Tournaments : IAsyncDisposable
             teamDraftError = null;
 
             EnsureTeamDraftSlots();
-            for (var i = 0; i < teamDrafts.Count; i++)
+
+            var lockedTeamIndices = Enumerable.Range(0, teamDrafts.Count)
+                .Where(i => teamDrafts[i].MemberParticipantIds.Count == editPlayersPerTeam)
+                .ToHashSet();
+
+            var editableTeamIndices = Enumerable.Range(0, teamDrafts.Count)
+                .Where(i => !lockedTeamIndices.Contains(i))
+                .ToList();
+
+            var lockedParticipantIds = lockedTeamIndices
+                .SelectMany(i => teamDrafts[i].MemberParticipantIds)
+                .ToHashSet();
+
+            foreach (var i in editableTeamIndices)
             {
                 teamDrafts[i].TeamId = null;
                 teamDrafts[i].MemberParticipantIds.Clear();
@@ -5607,13 +5784,32 @@ public partial class Tournaments : IAsyncDisposable
                 teamDrafts[i].Name = $"Team {i + 1}";
             }
 
-            var shuffled = EffectivePlayerParticipants.OrderBy(_ => Random.Shared.Next()).ToList();
-            var nextTeamIndex = 0;
+            var shuffled = EffectivePlayerParticipants
+                .Where(p => !lockedParticipantIds.Contains(p.Id))
+                .OrderBy(_ => Random.Shared.Next())
+                .ToList();
+
+            var expectedRemainingSlots = editableTeamIndices.Count * editPlayersPerTeam;
+            if (shuffled.Count != expectedRemainingSlots)
+            {
+                teamDraftError = $"Zufallsbildung nicht möglich: {shuffled.Count} freie Teilnehmer für {expectedRemainingSlots} freie Team-Slots.";
+                return;
+            }
+
+            if (editableTeamIndices.Count == 0)
+            {
+                teamDraftError = "Alle Teams sind bereits vollständig. Für komplette Neuverteilung bitte zuerst Entwurf leeren.";
+                return;
+            }
+
+            var nextEditableIndex = 0;
 
             foreach (var participant in shuffled)
             {
-                while (teamDrafts[nextTeamIndex].MemberParticipantIds.Count >= editPlayersPerTeam)
-                    nextTeamIndex = (nextTeamIndex + 1) % teamDrafts.Count;
+                while (teamDrafts[editableTeamIndices[nextEditableIndex]].MemberParticipantIds.Count >= editPlayersPerTeam)
+                    nextEditableIndex = (nextEditableIndex + 1) % editableTeamIndices.Count;
+
+                var nextTeamIndex = editableTeamIndices[nextEditableIndex];
 
                 drawCandidateParticipantId = participant.Id;
                 drawHighlightedTeamIndex = nextTeamIndex;
@@ -5637,7 +5833,7 @@ public partial class Tournaments : IAsyncDisposable
                     await Task.Delay(260);
 
                 drawWinnerParticipantId = null;
-                nextTeamIndex = (nextTeamIndex + 1) % teamDrafts.Count;
+                nextEditableIndex = (nextEditableIndex + 1) % editableTeamIndices.Count;
             }
 
             hasUnsavedTeamDraftChanges = true;
@@ -5652,7 +5848,9 @@ public partial class Tournaments : IAsyncDisposable
             isWorking = false;
         }
 
-        await AutoSaveTeamDraftIfCompleteAsync();
+        await SaveTeamDraftAsync();
+        if (editSeedingEnabled)
+            await PersistTeamSeedOrderAsync();
     }
 
     private async Task SaveTeamDraftAsync()
@@ -5799,6 +5997,9 @@ public partial class Tournaments : IAsyncDisposable
             teamDrafts[i].Name = $"Team {i + 1}";
         }
 
+        selectedTeamParticipantId = null;
+        draggedTeamParticipantId = null;
+        dropTargetTeamIndex = null;
         hasUnsavedTeamDraftChanges = true;
         teamDraftError = null;
     }
@@ -6790,6 +6991,12 @@ public partial class Tournaments : IAsyncDisposable
     {
         if (selectedTournament is null || !editSeedingEnabled) return;
 
+        if (IsTeamplayActive)
+        {
+            await PersistTeamSeedOrderAsync();
+            return;
+        }
+
         var targetCount = Math.Min(editSeedTopCount, EffectiveDrawParticipants.Count);
 
         var ordered = EffectiveDrawParticipants
@@ -6818,6 +7025,53 @@ public partial class Tournaments : IAsyncDisposable
         }
         catch (Exception ex) { editError = ex.Message; }
         finally { isWorking = false; }
+    }
+
+    private async Task ResetAllSeedRanksAsync()
+    {
+        if (selectedTournament is null)
+            return;
+
+        var updates = EffectiveDrawParticipants
+            .Where(p => p.Seed != 0)
+            .ToList();
+
+        if (updates.Count == 0)
+            return;
+
+        try
+        {
+            isWorking = true;
+            foreach (var participant in updates)
+            {
+                await Api.UpdateParticipantAsync(selectedTournament.Id, new UpdateParticipantRequest(
+                    selectedTournament.Id,
+                    participant.Id,
+                    participant.DisplayName,
+                    participant.AccountName,
+                    participant.IsAutodartsAccount,
+                    participant.IsManager,
+                    0,
+                    participant.SeedPot,
+                    participant.GroupNumber,
+                    participant.Type));
+            }
+
+            await LoadParticipantsAsync(selectedTournament.Id);
+            if (IsTeamplayActive)
+            {
+                await LoadTeamsAsync(selectedTournament.Id);
+                await SortTeamDraftsBySeedAnimatedAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            editError = ex.Message;
+        }
+        finally
+        {
+            isWorking = false;
+        }
     }
 
     // ─── Seeding: Update participant seed via drag & drop ───

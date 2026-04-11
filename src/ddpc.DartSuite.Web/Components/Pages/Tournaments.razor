@@ -1193,7 +1193,7 @@
                                                                                                     <table class="table table-sm table-hover align-middle mb-0">
                                                                                                         <thead>
                                                                                                             <tr>
-                                                                                                                <th>Teilnehmer</th>
+                                                                                                                <th>@(IsTeamplayActive ? "Spieler" : "Teilnehmer")</th>
                                                                                                                 <th class="d-none d-xl-table-cell">Account</th>
                                                                                                                 <th class="d-none d-lg-table-cell">Gruppe</th>
                                                                                                                 @if (editTeamplay)
@@ -1377,10 +1377,10 @@
                                                                                             }
                                                                                             @if (!TeamSizeDividesParticipants)
                                                                                             {
-                                                                                                <div class="alert alert-warning py-2 small mb-3">Die Teilnehmeranzahl (@EffectivePlayerCount) ist nicht durch Spieler/Team (@editPlayersPerTeam) teilbar. Bitte Teamgröße oder Teilnehmer anpassen.</div>
+                                                                                                <div class="alert alert-warning py-2 small mb-3">Die Spieleranzahl (@EffectivePlayerCount) ist nicht durch Spieler/Team (@editPlayersPerTeam) teilbar. Bitte Teamgröße oder Spieleranzahl anpassen.</div>
                                                                                             }
                                                                                             <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
-                                                                                                <button class="btn btn-sm btn-primary" @onclick="GenerateRandomTeamsAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure || !TeamSizeDividesParticipants)">⚡ Teams zufällig bilden</button>
+                                                                                                <button class="btn btn-sm btn-primary" @onclick="GenerateRandomTeamsAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure || !TeamSizeDividesParticipants)" title="Füllt nur unvollständige Teams zufällig auf. Vollständige Teams bleiben bestehen.">⚡ Teams zufällig bilden</button>
                                                                                                 <button class="btn btn-sm btn-outline-warning" @onclick="ResetTeamDraftLocal" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">↩ Entwurf leeren</button>
                                                                                                 <div class="d-flex align-items-center gap-2 ms-auto">
                                                                                                     <label class="small text-muted mb-0">Animation</label>
@@ -1399,6 +1399,12 @@
                                                                                             {
                                                                                                 <div class="alert alert-danger py-2 small mb-2">@teamDraftError</div>
                                                                                             }
+                                                                                            @if (!string.IsNullOrWhiteSpace(SelectedTeamParticipantName))
+                                                                                            {
+                                                                                                <div class="alert alert-primary py-2 small mb-2">
+                                                                                                    Spieler <strong>@SelectedTeamParticipantName</strong> ausgewählt. Ziel-Team antippen oder erneut antippen zum Abwählen.
+                                                                                                </div>
+                                                                                            }
                                                                                             <div class="@TeamDraftLayoutCss">
                                                                                                 <div class="@TeamDraftUnassignedMobileColumnCss">
                                                                                                     <div class="@TeamDraftUnassignedCardCss">
@@ -1409,7 +1415,7 @@
                                                                                                         <div class="card-body p-2 team-unassigned-body">
                                                                                                             @foreach (var p in TeamDraftUnassignedParticipants)
                                                                                                             {
-                                                                                                                <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(p.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")" @ondragstart="() => StartTeamParticipantDrag(p.Id)" style="cursor:grab; font-size:.85em">
+                                                                                                                <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(p.Id) @(IsSelectedTeamParticipant(p.Id) ? "team-draft-pick-active" : string.Empty)" draggable="@(CanEditTournamentStructure ? "true" : "false")" @ondragstart="() => StartTeamParticipantDrag(p.Id)" @onclick="() => SelectTeamParticipant(p.Id)" @onclick:stopPropagation style="cursor:grab; font-size:.85em">
                                                                                                                     @p.DisplayName.ToUpperInvariant()
                                                                                                                 </div>
                                                                                                             }
@@ -1425,7 +1431,7 @@
                                                                                                         <div class="card-body p-2 team-unassigned-body">
                                                                                                             @foreach (var p in TeamDraftUnassignedParticipants)
                                                                                                             {
-                                                                                                                <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(p.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")" @ondragstart="() => StartTeamParticipantDrag(p.Id)" style="cursor:grab; font-size:.85em">
+                                                                                                                <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(p.Id) @(IsSelectedTeamParticipant(p.Id) ? "team-draft-pick-active" : string.Empty)" draggable="@(CanEditTournamentStructure ? "true" : "false")" @ondragstart="() => StartTeamParticipantDrag(p.Id)" @onclick="() => SelectTeamParticipant(p.Id)" @onclick:stopPropagation style="cursor:grab; font-size:.85em">
                                                                                                                     @p.DisplayName.ToUpperInvariant()
                                                                                                                 </div>
                                                                                                             }
@@ -1449,19 +1455,26 @@
                                                                                                                      @ondragover="() => MarkTeamSeedInsertTarget(idx)"
                                                                                                                      @ondragleave="() => ClearTeamSeedInsertTarget(idx)"
                                                                                                                      @ondrop="async () => await InsertTeamSeedBeforeAsync(idx)"></div>
-                                                                                                                <div class="card @DrawTeamAnimationCss(idx) @TeamSeedCardDragCss(idx) @(dropTargetTeamIndex == idx ? "draw-target-group" : "") @(draggedTeamParticipantId != null && IsTeamFull(idx) ? "team-slot-full" : "") @(draggedTeamParticipantId != null && !IsTeamFull(idx) && dropTargetTeamIndex != idx ? "team-slot-available" : "")"
+                                                                                                                  <div class="card @DrawTeamAnimationCss(idx) @TeamSeedCardDragCss(idx) @(dropTargetTeamIndex == idx ? "draw-target-group" : "") @((selectedTeamParticipantId is not null && !IsTeamFull(idx)) ? "team-slot-tap-target" : string.Empty) @((draggedTeamParticipantId != null || selectedTeamParticipantId != null) && IsTeamFull(idx) ? "team-slot-full" : "") @((draggedTeamParticipantId != null || selectedTeamParticipantId != null) && !IsTeamFull(idx) && dropTargetTeamIndex != idx ? "team-slot-available" : "") @((isCompactViewport && selectedTeamSeedIndex.HasValue && selectedTeamSeedIndex != idx) ? "team-seed-tap-target" : string.Empty)"
+                                                                                                                     @onclick="async () => await OnTeamSeedBadgeClickAsync(idx)"
                                                                                                                      @ondragover:preventDefault
                                                                                                                      @ondragover="() => { if (draggedTeamSeedIndex.HasValue) return; if (CanEditTournamentStructure && !IsTeamFull(idx)) dropTargetTeamIndex = idx; }"
                                                                                                                      @ondragleave="() => { if (dropTargetTeamIndex == idx) dropTargetTeamIndex = null; }"
                                                                                                                      @ondrop="async () => { if (draggedTeamSeedIndex.HasValue) await DropTeamSeedAtAsync(idx); else await AssignDraggedParticipantToTeamAsync(idx); }">
                                                                                                                     <div class="card-header py-2 d-flex justify-content-between align-items-center">
                                                                                                                         <div class="d-flex align-items-center gap-2 flex-grow-1 team-name-editable-wrap"
-                                                                                                                             draggable="@(CanSeedTeams ? "true" : "false")"
+                                                                                                                             draggable="@(CanSeedTeams && !isCompactViewport ? "true" : "false")"
                                                                                                                              @ondragstart="() => StartTeamSeedDrag(idx)"
                                                                                                                              @ondragend="EndTeamSeedDrag">
-                                                                                                                            @if (editSeedingEnabled)
+                                                                                                                            @{ var visibleTeamSeed = VisibleTeamSeedForDraft(team); }
+                                                                                                                            @if (visibleTeamSeed.HasValue)
                                                                                                                             {
-                                                                                                                                <span class="badge text-bg-warning" title="Setzlistenposition Team">#@TeamSeedForDraft(team, idx + 1)</span>
+                                                                                                                                <span class="badge text-bg-warning @(selectedTeamSeedIndex == idx ? "team-seed-selected" : string.Empty) @(isCompactViewport ? "team-seed-badge-mobile" : string.Empty)"
+                                                                                                                                      title="@(isCompactViewport ? "Lange druecken zum Auswaehlen, dann Zielteam antippen" : "Setzlistenposition Team")"
+                                                                                                                                      @onpointerdown="(e) => OnTeamSeedPointerDownAsync(idx, e)"
+                                                                                                                                      @onpointerup="OnTeamSeedPointerUp"
+                                                                                                                                      @onpointercancel="OnTeamSeedPointerCancel"
+                                                                                                                                      @onclick="async () => await OnTeamSeedBadgeClickAsync(idx)">#@visibleTeamSeed.Value</span>
                                                                                                                             }
                                                                                                                                 @if (editingTeamNameIndex == idx)
                                                                                                                                 {
@@ -1512,17 +1525,17 @@
                                                                                                                         </div>
                                                                                                                     </div>
                                                                                                                     <div class="card-body p-2">
-                                                                                                                        <div class="team-slot-area" style="min-height:64px">
+                                                                                                                        <div class="team-slot-area @(selectedTeamParticipantId is not null && !IsTeamFull(idx) ? "team-slot-area-clickable" : string.Empty)" style="min-height:64px" @onclick="async () => await AssignSelectedParticipantToTeamAsync(idx)">
                                                                                                                             @foreach (var member in members)
                                                                                                                             {
-                                                                                                                                <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(member.Id)" draggable="@(CanEditTournamentStructure ? "true" : "false")" @ondragstart="() => StartTeamParticipantDrag(member.Id)" style="cursor:grab; font-size:.85em">
+                                                                                                                                <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(member.Id) @(IsSelectedTeamParticipant(member.Id) ? "team-draft-pick-active" : string.Empty)" draggable="@(CanEditTournamentStructure ? "true" : "false")" @ondragstart="() => StartTeamParticipantDrag(member.Id)" @onclick="() => SelectTeamParticipant(member.Id)" @onclick:stopPropagation style="cursor:grab; font-size:.85em">
                                                                                                                                     @member.DisplayName.ToUpperInvariant()
                                                                                                                                     <button class="btn btn-sm p-0 ms-1 text-white-50" style="font-size:.7em; line-height:1" @onclick="async () => await RemoveParticipantFromTeamAsync(member.Id)" @onclick:stopPropagation disabled="@(isWorking || !CanEditTournamentStructure)" title="Aus Team entfernen">✕</button>
                                                                                                                                 </div>
                                                                                                                             }
                                                                                                                             @if (!members.Any())
                                                                                                                             {
-                                                                                                                                <div class="text-muted small text-center py-2">Teilnehmer hierher ziehen</div>
+                                                                                                                                <div class="text-muted small text-center py-2">Spieler hierher ziehen</div>
                                                                                                                             }
                                                                                                                         </div>
                                                                                                                     </div>
@@ -2464,6 +2477,19 @@
         border-radius: 0.35rem;
     }
 
+    .team-seed-badge-mobile {
+        cursor: pointer;
+        touch-action: none;
+    }
+
+    .team-seed-selected {
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.35);
+    }
+
+    .team-seed-tap-target {
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.22);
+    }
+
     .team-seed-card-drag-hover {
         box-shadow: 0 0 0 0.16rem rgba(13, 110, 253, 0.22);
     }
@@ -2614,6 +2640,20 @@
 
     .team-draft-layout [draggable='true'] {
         touch-action: none;
+    }
+
+    .team-draft-pick-active {
+        outline: 2px solid #0d6efd;
+        outline-offset: 1px;
+        box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.18);
+    }
+
+    .team-slot-tap-target {
+        box-shadow: 0 0 0 0.15rem rgba(13, 110, 253, 0.12);
+    }
+
+    .team-slot-area-clickable {
+        cursor: pointer;
     }
 
     .team-name-editable-wrap {

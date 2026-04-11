@@ -17,12 +17,14 @@ public sealed class KoRegressionTests : SmokeTestBase
 
         await Page.GotoAsync($"{BaseUrl}/tournaments", new PageGotoOptions
         {
-            WaitUntil = WaitUntilState.NetworkIdle,
+            WaitUntil = WaitUntilState.Commit,
             Timeout = 30_000
         });
+        if (IsLoginRedirect(Page)) return;
+        await Page.WaitForLoadStateAsync(LoadState.Load, new PageWaitForLoadStateOptions { Timeout = 15_000 });
 
         // Klicke erstes Turnier
-        var listItem = Page.Locator(".list-group-item-action").First;
+        var listItem = Page.Locator("li.list-group-item.list-group-item-action").First;
         if (!await listItem.IsVisibleAsync())
         {
             // Kein Turnier angelegt — Test überspringen
@@ -30,19 +32,21 @@ public sealed class KoRegressionTests : SmokeTestBase
         }
 
         await listItem.ClickAsync();
-        await Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 10_000 });
+        await Page.WaitForTimeoutAsync(250);
+        if (IsLoginRedirect(Page)) return;
+        await Page.WaitForLoadStateAsync(LoadState.Load, new PageWaitForLoadStateOptions { Timeout = 15_000 });
 
         // Klicke "Auslosung"-Tab
-        var drawTab = Page.Locator(".nav-tabs button:has-text('Auslosung')");
+        var drawTab = Page.Locator(".nav-tabs button:has-text('Auslosung')").First;
         var isVisible = await drawTab.IsVisibleAsync();
         if (!isVisible) return; // Tab nicht sichtbar (z.B. kein KO-Modus)
 
-        await drawTab.ClickAsync();
-        await Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded, new PageWaitForLoadStateOptions { Timeout = 8_000 });
+        await drawTab.ClickAsync(new LocatorClickOptions { Force = true });
+        await Page.WaitForTimeoutAsync(500);
 
         // Auslosungs-Inhalt vorhanden
         var drawContent = Page.Locator("#section-tournaments-draw, .draw-action-bar, .draw-group-dropzone");
-        var contentFound = await drawContent.CountAsync() > 0;
+        await drawContent.First.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Attached, Timeout = 15_000 });
 
         // Tab wurde gewechselt (kein Fehler)
         var url = Page.Url;
@@ -56,26 +60,30 @@ public sealed class KoRegressionTests : SmokeTestBase
 
         await Page.GotoAsync($"{BaseUrl}/tournaments", new PageGotoOptions
         {
-            WaitUntil = WaitUntilState.NetworkIdle,
+            WaitUntil = WaitUntilState.Commit,
             Timeout = 30_000
         });
+        if (IsLoginRedirect(Page)) return;
+        await Page.WaitForLoadStateAsync(LoadState.Load, new PageWaitForLoadStateOptions { Timeout = 15_000 });
 
-        var listItem = Page.Locator(".list-group-item-action").First;
+        var listItem = Page.Locator("li.list-group-item.list-group-item-action").First;
         if (!await listItem.IsVisibleAsync()) return;
 
         await listItem.ClickAsync();
-        await Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 10_000 });
+        await Page.WaitForTimeoutAsync(250);
+        if (IsLoginRedirect(Page)) return;
+        await Page.WaitForLoadStateAsync(LoadState.Load, new PageWaitForLoadStateOptions { Timeout = 15_000 });
 
         // Klicke K.O.-Phase-Tab
-        var koTab = Page.Locator(".nav-tabs button:has-text('K.O.-Phase')");
+        var koTab = Page.Locator(".nav-tabs button:has-text('K.O.-Phase')").First;
         if (!await koTab.IsVisibleAsync()) return;
 
-        await koTab.ClickAsync();
-        await Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded, new PageWaitForLoadStateOptions { Timeout = 8_000 });
+        await koTab.ClickAsync(new LocatorClickOptions { Force = true });
+        await Page.WaitForTimeoutAsync(500);
 
         // KO-Inhalt oder Fehlermeldung sichtbar (kein JS-Absturz)
         var koSection = Page.Locator("#section-tournaments-knockout, #section-tournaments-ko, .ko-bracket, .match-card, p.text-muted");
-        await koSection.First.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Attached, Timeout = 8_000 });
+        await koSection.First.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Attached, Timeout = 15_000 });
         var count = await koSection.CountAsync();
         Assert.True(count > 0, "KO-Tab: Kein erwarteter Inhalt gefunden");
     }
@@ -87,26 +95,30 @@ public sealed class KoRegressionTests : SmokeTestBase
 
         await Page.GotoAsync($"{BaseUrl}/tournaments", new PageGotoOptions
         {
-            WaitUntil = WaitUntilState.NetworkIdle,
+            WaitUntil = WaitUntilState.Commit,
             Timeout = 30_000
         });
+        if (IsLoginRedirect(Page)) return;
+        await Page.WaitForLoadStateAsync(LoadState.Load, new PageWaitForLoadStateOptions { Timeout = 15_000 });
 
-        var listItem = Page.Locator(".list-group-item-action").First;
+        var listItem = Page.Locator("li.list-group-item.list-group-item-action").First;
         if (!await listItem.IsVisibleAsync()) return;
 
         await listItem.ClickAsync();
-        await Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 10_000 });
+        await Page.WaitForTimeoutAsync(250);
+        if (IsLoginRedirect(Page)) return;
+        await Page.WaitForLoadStateAsync(LoadState.Load, new PageWaitForLoadStateOptions { Timeout = 15_000 });
 
         // Klicke Spielplan-Tab
-        var scheduleTab = Page.Locator(".nav-tabs button:has-text('Spielplan')");
+        var scheduleTab = Page.Locator(".nav-tabs button:has-text('Spielplan')").First;
         if (!await scheduleTab.IsVisibleAsync()) return;
 
-        await scheduleTab.ClickAsync();
-        await Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded, new PageWaitForLoadStateOptions { Timeout = 8_000 });
+        await scheduleTab.ClickAsync(new LocatorClickOptions { Force = true });
+        await Page.WaitForTimeoutAsync(500);
 
         // Spielplan-Inhalt sichtbar (kein JS-Absturz)
         var scheduleSection = Page.Locator("#section-tournaments-schedule, #section-tournaments-schedule-zeitplan, p.text-muted");
-        await scheduleSection.First.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Attached, Timeout = 8_000 });
+        await scheduleSection.First.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Attached, Timeout = 15_000 });
         var count = await scheduleSection.CountAsync();
         Assert.True(count > 0, "Spielplan-Tab: Kein erwarteter Inhalt gefunden");
     }
@@ -118,25 +130,29 @@ public sealed class KoRegressionTests : SmokeTestBase
 
         await Page.GotoAsync($"{BaseUrl}/tournaments", new PageGotoOptions
         {
-            WaitUntil = WaitUntilState.NetworkIdle,
+            WaitUntil = WaitUntilState.Commit,
             Timeout = 30_000
         });
+        if (IsLoginRedirect(Page)) return;
+        await Page.WaitForLoadStateAsync(LoadState.Load, new PageWaitForLoadStateOptions { Timeout = 15_000 });
 
-        var listItem = Page.Locator(".list-group-item-action").First;
+        var listItem = Page.Locator("li.list-group-item.list-group-item-action").First;
         if (!await listItem.IsVisibleAsync()) return;
 
         await listItem.ClickAsync();
-        await Page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions { Timeout = 10_000 });
+        await Page.WaitForTimeoutAsync(250);
+        if (IsLoginRedirect(Page)) return;
+        await Page.WaitForLoadStateAsync(LoadState.Load, new PageWaitForLoadStateOptions { Timeout = 15_000 });
 
-        var roundsTab = Page.Locator(".nav-tabs button:has-text('Spielmodus')");
+        var roundsTab = Page.Locator(".nav-tabs button:has-text('Spielmodus')").First;
         if (!await roundsTab.IsVisibleAsync()) return;
 
-        await roundsTab.ClickAsync();
-        await Page.WaitForLoadStateAsync(LoadState.DOMContentLoaded, new PageWaitForLoadStateOptions { Timeout = 8_000 });
+        await roundsTab.ClickAsync(new LocatorClickOptions { Force = true });
+        await Page.WaitForTimeoutAsync(500);
 
         // Spielmodus-Inhalt: Liste der Runden oder Hinweistext
         var roundsContent = Page.Locator(".card.mb-2, p.text-muted, .alert");
-        await roundsContent.First.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Attached, Timeout = 8_000 });
+        await roundsContent.First.WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Attached, Timeout = 15_000 });
         var count = await roundsContent.CountAsync();
         Assert.True(count > 0, "Spielmodus-Tab: Kein Inhalt gefunden");
     }

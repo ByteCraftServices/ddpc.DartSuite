@@ -169,16 +169,21 @@ window.dartSuiteUi = window.dartSuiteUi || {
         const LONG_PRESS_MS = 220;
         const MOVE_CANCEL_PX = 18;
         const DRAG_START_CANCEL_PX = 6;
+        const AUTO_SCROLL_EDGE_PX = 72;
+        const AUTO_SCROLL_STEP_PX = 20;
 
         const state = {
             timer: null,
             sourceEl: null,
+            sourceWasDraggable: false,
             dropEl: null,
             ghostEl: null,
             touchId: null,
             startX: 0,
             startY: 0,
-            dragging: false
+            startAtMs: 0,
+            dragging: false,
+            suppressContextMenu: false
         };
 
         const clearTimer = () => {
@@ -193,26 +198,65 @@ window.dartSuiteUi = window.dartSuiteUi || {
             if (state.ghostEl && state.ghostEl.parentNode) {
                 state.ghostEl.parentNode.removeChild(state.ghostEl);
             }
+            if (state.sourceEl) {
+                state.sourceEl.draggable = state.sourceWasDraggable;
+            }
             try {
                 document.body.style.touchAction = "";
                 document.body.style.overscrollBehavior = "";
+                document.body.style.webkitUserSelect = "";
+                document.body.style.userSelect = "";
+                document.body.style.webkitTouchCallout = "";
             } catch (e) {
                 // best effort only
             }
             state.sourceEl = null;
+            state.sourceWasDraggable = false;
             state.dropEl = null;
             state.ghostEl = null;
             state.touchId = null;
+            state.startAtMs = 0;
             state.dragging = false;
+            state.suppressContextMenu = false;
+        };
+
+        const beginDragIfPossible = () => {
+            if (state.dragging || !state.sourceEl) {
+                return;
+            }
+
+            clearTimer();
+            state.dragging = true;
+            try {
+                document.body.style.touchAction = "none";
+                document.body.style.overscrollBehavior = "none";
+                document.body.style.webkitUserSelect = "none";
+                document.body.style.userSelect = "none";
+                document.body.style.webkitTouchCallout = "none";
+            } catch (e) {
+                // best effort only
+            }
+            state.ghostEl = createGhost(state.sourceEl, state.startX, state.startY);
+            fire(state.sourceEl, "dragstart");
         };
 
         const findTouch = (touchList) => {
-            if (!touchList || state.touchId === null) return null;
-            for (let i = 0; i < touchList.length; i++) {
-                if (touchList[i].identifier === state.touchId) {
-                    return touchList[i];
+            if (!touchList || touchList.length === 0) return null;
+
+            if (state.touchId !== null) {
+                const stateTouchId = Number(state.touchId);
+                for (let i = 0; i < touchList.length; i++) {
+                    if (Number(touchList[i].identifier) === stateTouchId) {
+                        return touchList[i];
+                    }
                 }
             }
+
+            // Fallback for browsers/devices where identifier mapping is unstable.
+            if (touchList.length === 1) {
+                return touchList[0];
+            }
+
             return null;
         };
 
@@ -240,6 +284,35 @@ window.dartSuiteUi = window.dartSuiteUi || {
             getData: () => "",
             clearData: () => { }
         });
+
+        const autoScrollAtPoint = (x, y) => {
+            const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+            if (viewportHeight > 0) {
+                if (y >= viewportHeight - AUTO_SCROLL_EDGE_PX) {
+                    window.scrollBy(0, AUTO_SCROLL_STEP_PX);
+                } else if (y <= AUTO_SCROLL_EDGE_PX) {
+                    window.scrollBy(0, -AUTO_SCROLL_STEP_PX);
+                }
+            }
+
+            if (root.scrollHeight > root.clientHeight) {
+                const rect = root.getBoundingClientRect();
+                if (y >= rect.bottom - AUTO_SCROLL_EDGE_PX) {
+                    root.scrollTop += AUTO_SCROLL_STEP_PX;
+                } else if (y <= rect.top + AUTO_SCROLL_EDGE_PX) {
+                    root.scrollTop -= AUTO_SCROLL_STEP_PX;
+                }
+            }
+        };
+
+        const resolveDropCandidate = (x, y) => {
+            const rawCandidate = document.elementFromPoint(x, y);
+            if (!rawCandidate || !rawCandidate.closest) return rawCandidate;
+
+            return rawCandidate.closest(
+                ".team-seed-insert-marker, .team-seed-card > .card, .team-slot-area, .draw-group-dropzone, .ko-draw-slot-card, .schedule-board-dropzone, .schedule-board-header, .schedule-timeline-match"
+            ) || rawCandidate;
+        };
 
         const fire = (node, type) => {
             if (!node) return;
@@ -300,26 +373,30 @@ window.dartSuiteUi = window.dartSuiteUi || {
 
             reset();
 
-            // Prevent native touch scrolling/selection on potential drag sources.
-            ev.preventDefault();
-            try {
-                document.body.style.touchAction = "none";
-                document.body.style.overscrollBehavior = "none";
-            } catch (e) {
-                // best effort only
-            }
-
             state.touchId = touch.identifier;
             state.sourceEl = draggable;
+            state.sourceWasDraggable = !!draggable.draggable;
+            // Disable native HTML5 drag on touch devices; we emulate DnD manually.
+            draggable.draggable = false;
             state.startX = touch.clientX;
             state.startY = touch.clientY;
+            state.startAtMs = Date.now();
+            state.suppressContextMenu = true;
 
             state.timer = setTimeout(() => {
-                if (!state.sourceEl) return;
-                state.dragging = true;
-                state.ghostEl = createGhost(state.sourceEl, state.startX, state.startY);
-                fire(state.sourceEl, "dragstart");
+                beginDragIfPossible();
             }, LONG_PRESS_MS);
+        };
+
+        const onContextMenu = (ev) => {
+            const target = ev && ev.target ? ev.target : null;
+            if (!target || !target.closest) return;
+
+            const draggable = target.closest("[draggable='true']");
+            if ((state.suppressContextMenu || state.dragging) && draggable && root.contains(draggable)) {
+                ev.preventDefault();
+                ev.stopPropagation();
+            }
         };
 
         const onTouchMove = (ev) => {
@@ -328,8 +405,14 @@ window.dartSuiteUi = window.dartSuiteUi || {
 
             const dx = touch.clientX - state.startX;
             const dy = touch.clientY - state.startY;
+            const distance = Math.max(Math.abs(dx), Math.abs(dy));
+            const elapsedMs = Math.max(0, Date.now() - state.startAtMs);
 
-            if (!state.dragging && (Math.abs(dx) > MOVE_CANCEL_PX || Math.abs(dy) > MOVE_CANCEL_PX)) {
+            if (!state.dragging && elapsedMs >= LONG_PRESS_MS - 40 && distance > DRAG_START_CANCEL_PX) {
+                beginDragIfPossible();
+            }
+
+            if (!state.dragging && elapsedMs < LONG_PRESS_MS && distance > MOVE_CANCEL_PX) {
                 clearTimer();
                 reset();
                 return;
@@ -348,7 +431,9 @@ window.dartSuiteUi = window.dartSuiteUi || {
                 state.ghostEl.style.top = (touch.clientY + 10) + "px";
             }
 
-            const candidate = document.elementFromPoint(touch.clientX, touch.clientY);
+            autoScrollAtPoint(touch.clientX, touch.clientY);
+
+            const candidate = resolveDropCandidate(touch.clientX, touch.clientY);
             if (!candidate) return;
 
             state.dropEl = candidate;
@@ -356,14 +441,17 @@ window.dartSuiteUi = window.dartSuiteUi || {
         };
 
         const onTouchEnd = (ev) => {
-            const touch = findTouch(ev.changedTouches);
+            let touch = findTouch(ev.changedTouches);
+            if (!touch && ev.changedTouches && ev.changedTouches.length === 1) {
+                touch = ev.changedTouches[0];
+            }
             if (!touch || !state.sourceEl) {
                 reset();
                 return;
             }
 
             if (state.dragging) {
-                const dropCandidate = state.dropEl || document.elementFromPoint(touch.clientX, touch.clientY);
+                const dropCandidate = state.dropEl || resolveDropCandidate(touch.clientX, touch.clientY);
                 fire(dropCandidate, "drop");
                 fire(state.sourceEl, "dragend");
             }
@@ -417,17 +505,26 @@ window.dartSuiteUi = window.dartSuiteUi || {
             onTouchCancel();
         };
 
-        root.addEventListener("touchstart", onTouchStart, { passive: false });
-        root.addEventListener("touchmove", onTouchMove, { passive: false });
-        root.addEventListener("touchend", onTouchEnd, { passive: true });
-        root.addEventListener("touchcancel", onTouchCancel, { passive: true });
-        root.addEventListener("pointerdown", onPointerDown, { passive: false });
-        root.addEventListener("pointermove", onPointerMove, { passive: false });
-        root.addEventListener("pointerup", onPointerUp, { passive: false });
-        root.addEventListener("pointercancel", onPointerCancel, { passive: true });
+        const hasNativeTouch = ("ontouchstart" in window) || (navigator && navigator.maxTouchPoints > 0);
+
+        if (hasNativeTouch) {
+            // On mobile we use native touch events only to avoid duplicate pointer+touch streams.
+            root.addEventListener("touchstart", onTouchStart, { passive: false });
+            document.addEventListener("touchmove", onTouchMove, { passive: false, capture: true });
+            document.addEventListener("touchend", onTouchEnd, { passive: true, capture: true });
+            document.addEventListener("touchcancel", onTouchCancel, { passive: true, capture: true });
+        } else {
+            // Pointer fallback for environments without touch events.
+            root.addEventListener("pointerdown", onPointerDown, { passive: false });
+            document.addEventListener("pointermove", onPointerMove, { passive: false, capture: true });
+            document.addEventListener("pointerup", onPointerUp, { passive: false, capture: true });
+            document.addEventListener("pointercancel", onPointerCancel, { passive: true, capture: true });
+        }
+        root.addEventListener("contextmenu", onContextMenu, true);
 
         this._touchDnDHandlers[elementId] = {
             root: root,
+            hasNativeTouch: hasNativeTouch,
             onTouchStart: onTouchStart,
             onTouchMove: onTouchMove,
             onTouchEnd: onTouchEnd,
@@ -435,7 +532,8 @@ window.dartSuiteUi = window.dartSuiteUi || {
             onPointerDown: onPointerDown,
             onPointerMove: onPointerMove,
             onPointerUp: onPointerUp,
-            onPointerCancel: onPointerCancel
+            onPointerCancel: onPointerCancel,
+            onContextMenu: onContextMenu
         };
     },
     unregisterTouchDragDrop: function (elementId) {
@@ -443,14 +541,18 @@ window.dartSuiteUi = window.dartSuiteUi || {
         if (!reg) return;
 
         try {
-            reg.root.removeEventListener("touchstart", reg.onTouchStart);
-            reg.root.removeEventListener("touchmove", reg.onTouchMove);
-            reg.root.removeEventListener("touchend", reg.onTouchEnd);
-            reg.root.removeEventListener("touchcancel", reg.onTouchCancel);
-            reg.root.removeEventListener("pointerdown", reg.onPointerDown);
-            reg.root.removeEventListener("pointermove", reg.onPointerMove);
-            reg.root.removeEventListener("pointerup", reg.onPointerUp);
-            reg.root.removeEventListener("pointercancel", reg.onPointerCancel);
+            if (reg.hasNativeTouch) {
+                reg.root.removeEventListener("touchstart", reg.onTouchStart);
+                document.removeEventListener("touchmove", reg.onTouchMove, true);
+                document.removeEventListener("touchend", reg.onTouchEnd, true);
+                document.removeEventListener("touchcancel", reg.onTouchCancel, true);
+            } else {
+                reg.root.removeEventListener("pointerdown", reg.onPointerDown);
+                document.removeEventListener("pointermove", reg.onPointerMove, true);
+                document.removeEventListener("pointerup", reg.onPointerUp, true);
+                document.removeEventListener("pointercancel", reg.onPointerCancel, true);
+            }
+            reg.root.removeEventListener("contextmenu", reg.onContextMenu, true);
         } catch (e) {
             // best effort only
         }

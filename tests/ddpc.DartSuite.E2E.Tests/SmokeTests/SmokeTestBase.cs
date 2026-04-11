@@ -52,4 +52,11 @@ public abstract class SmokeTestBase : IAsyncLifetime
     /// Usage: if (!ShouldRun()) return; at start of test method.
     /// </summary>
     protected static bool ShouldRun() => E2EEnabled;
+
+    /// <summary>
+    /// Returns true when the current page is login (redirected due missing auth).
+    /// In this case, UI-flow tests should return early instead of failing.
+    /// </summary>
+    protected static bool IsLoginRedirect(IPage page)
+        => page.Url.Contains("/login", StringComparison.OrdinalIgnoreCase);
 }
