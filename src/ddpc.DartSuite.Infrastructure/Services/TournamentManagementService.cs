@@ -244,6 +244,29 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
                 participant.SeedPot = 0;
             }
         }
+        else
+        {
+            // Teamplay deaktiviert: alle Teams und TeamMember-Participants entfernen,
+            // verbleibende Spieler-Teilnehmer auf Type=Spieler, TeamId=null zurücksetzen.
+            var existingTeams = await dbContext.Teams
+                .Where(x => x.TournamentId == tournament.Id)
+                .ToListAsync(cancellationToken);
+            dbContext.Teams.RemoveRange(existingTeams);
+
+            var teamMemberParticipants = await dbContext.Participants
+                .Where(x => x.TournamentId == tournament.Id && x.Type == ParticipantType.TeamMember)
+                .ToListAsync(cancellationToken);
+            dbContext.Participants.RemoveRange(teamMemberParticipants);
+
+            var assignedParticipants = await dbContext.Participants
+                .Where(x => x.TournamentId == tournament.Id && x.TeamId != null)
+                .ToListAsync(cancellationToken);
+            foreach (var p in assignedParticipants)
+            {
+                p.TeamId = null;
+                p.Type = ParticipantType.Spieler;
+            }
+        }
 
         await dbContext.SaveChangesAsync(cancellationToken);
         var count = await dbContext.Participants.CountAsync(x => x.TournamentId == tournament.Id, cancellationToken);
@@ -397,6 +420,30 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
                 x => x.TournamentId == tournamentId && x.IsManager, cancellationToken);
             if (managerCount <= 1)
                 throw new InvalidOperationException("Der letzte Spielleiter kann nicht entfernt werden.");
+        }
+
+        // Wenn der Teilnehmer einem Team angehört, Team und TeamMember-Participant bereinigen.
+        if (participant.TeamId.HasValue)
+        {
+            var teamId = participant.TeamId.Value;
+
+            var teamMemberParticipants = await dbContext.Participants
+                .Where(x => x.TournamentId == tournamentId && x.TeamId == teamId && x.Type == ParticipantType.TeamMember)
+                .ToListAsync(cancellationToken);
+            dbContext.Participants.RemoveRange(teamMemberParticipants);
+
+            var remainingMembers = await dbContext.Participants
+                .Where(x => x.TournamentId == tournamentId && x.TeamId == teamId && x.Type != ParticipantType.TeamMember && x.Id != participant.Id)
+                .ToListAsync(cancellationToken);
+            foreach (var m in remainingMembers)
+            {
+                m.TeamId = null;
+                m.Type = ParticipantType.Spieler;
+            }
+
+            var team = await dbContext.Teams.FirstOrDefaultAsync(x => x.Id == teamId && x.TournamentId == tournamentId, cancellationToken);
+            if (team is not null)
+                dbContext.Teams.Remove(team);
         }
 
         dbContext.Participants.Remove(participant);
