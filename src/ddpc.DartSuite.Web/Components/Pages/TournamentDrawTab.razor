@@ -97,6 +97,10 @@
     .draw-participant-remove-btn {
         flex: 0 0 auto;
     }
+
+    .draw-group-dropzone.draw-dropzone-candidate * {
+        pointer-events: none;
+    }
 </style>
 
 @if (!CanEditTournamentStructure && HasProgressedMatches)
