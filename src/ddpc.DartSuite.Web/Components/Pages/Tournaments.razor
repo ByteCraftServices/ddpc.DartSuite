@@ -2787,7 +2787,7 @@
         align-items: center;
         justify-content: space-between;
         gap: 0.5rem;
-        padding: 0.6rem 0.75rem;
+        padding: 0.6rem 0.75rem calc(0.6rem + env(safe-area-inset-bottom));
         margin-top: 0.5rem;
         border-top: 1px solid rgba(0, 0, 0, 0.1);
         background: rgba(255, 255, 255, 0.97);
@@ -2812,6 +2812,19 @@
         overflow: hidden;
         text-overflow: ellipsis;
         text-align: center;
+    }
+
+    @@media (max-width: 640.98px) {
+        .tournament-tab-footer-nav {
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+            gap: 0.35rem;
+        }
+
+        .tournament-tab-footer-nav > .small {
+            flex-basis: 22%;
+            font-size: 0.72rem;
+        }
     }
 
     .dropzone .badge,
