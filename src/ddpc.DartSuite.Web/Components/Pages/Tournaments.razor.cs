@@ -3285,13 +3285,29 @@ public partial class Tournaments : IAsyncDisposable
         if (editMode != t.Mode) reasons.Add("Modus");
         if (editTeamplay != t.TeamplayEnabled) reasons.Add("Teamplay");
 
+        var teamplayBeingDisabled = editTeamplay != t.TeamplayEnabled && !editTeamplay;
+
         if (reasons.Count > 0 && matches.Any())
         {
-            confirmationMessage = $"Die Änderung von {string.Join(", ", reasons)} wirkt sich auf den bestehenden Turnierplan aus.";
+            var planMessage = $"Die Änderung von {string.Join(", ", reasons)} wirkt sich auf den bestehenden Turnierplan aus.";
+            if (teamplayBeingDisabled && teams.Any())
+                planMessage += $" Alle {teams.Count} Team-Zuordnung(en) werden dabei unwiderruflich gelöscht.";
+            confirmationMessage = planMessage;
             confirmationAction = ExecuteSaveTournamentAsync;
             showConfirmation = true;
             return;
         }
+
+        // Teamplay deaktivieren mit bestehenden Teams — auch ohne Matches warnen.
+        if (teamplayBeingDisabled && teams.Any())
+        {
+            confirmationMessage = $"Teamplay deaktivieren löscht alle {teams.Count} bestehenden Team-Zuordnung(en) unwiderruflich.";
+            confirmationAction = ExecuteSaveTournamentAsync;
+            showConfirmationPlanImpact = false;
+            showConfirmation = true;
+            return;
+        }
+
         await ExecuteSaveTournamentAsync();
     }
 
@@ -3336,6 +3352,7 @@ public partial class Tournaments : IAsyncDisposable
     private async Task ExecuteSaveTournamentAsync()
     {
         if (selectedTournament is null) return;
+        var teamplayChanged = editTeamplay != selectedTournament.TeamplayEnabled;
         try
         {
             isWorking = true;
@@ -3355,6 +3372,11 @@ public partial class Tournaments : IAsyncDisposable
             await LoadTournamentsAsync();
             selectedTournament = tournaments.FirstOrDefault(x => x.Id == updated.Id) ?? updated;
             PopulateEditFields(selectedTournament);
+            if (teamplayChanged)
+            {
+                await LoadParticipantsAsync(selectedTournament.Id);
+                await LoadTeamsAsync(selectedTournament.Id);
+            }
         }
         catch (Exception ex) { editError = ex.Message; }
         finally { isWorking = false; }
