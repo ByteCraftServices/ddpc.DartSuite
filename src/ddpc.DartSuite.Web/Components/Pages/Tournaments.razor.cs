@@ -5870,13 +5870,16 @@ public partial class Tournaments : IAsyncDisposable
 
                     var hopCount = ComputeExcitingHopCount(suspensePool.Count);
                     var hopDelays = BuildDeceleratingHopDelays(hopCount, 70, 250);
-                    foreach (var delay in hopDelays)
+                    var targetHopCount = ComputeDropzoneHopCount(suspenseTargets.Count);
+                    var targetHopInterval = Math.Max(1, hopDelays.Count / Math.Max(1, targetHopCount));
+                    for (var i = 0; i < hopDelays.Count; i++)
                     {
+                        var delay = hopDelays[i];
                         suspensePool = shuffled.Where(p => !assignedDuringRun.Contains(p.Id)).ToList();
                         if (suspensePool.Count <= 1) break;
 
                         drawCandidateParticipantId = suspensePool[Random.Shared.Next(suspensePool.Count)].Id;
-                        if (suspenseTargets.Count > 0)
+                        if (suspenseTargets.Count > 0 && (i == 0 || i == hopDelays.Count - 1 || (i % targetHopInterval) == 0))
                             drawHighlightedTeamIndex = suspenseTargets[Random.Shared.Next(suspenseTargets.Count)];
 
                         await InvokeAsync(StateHasChanged);
@@ -6676,6 +6679,7 @@ public partial class Tournaments : IAsyncDisposable
     private async Task AnimateKnockoutDrawStepsAsync(List<KnockoutDrawStep> steps)
     {
         isDrawAnimating = true;
+        var assignedDuringRun = new HashSet<Guid>();
         try
         {
             foreach (var step in steps)
@@ -6687,30 +6691,53 @@ public partial class Tournaments : IAsyncDisposable
                     drawHighlightedKoHomeSlot = step.IsHomeSlot;
                     await MoveKoDrawTokenToSlotAsync(step.MatchNumber, step.IsHomeSlot);
                     await InvokeAsync(StateHasChanged);
-                    await Task.Delay(1300);
+                    await Task.Delay(550);
 
                     AssignKnockoutCardSlot(step.MatchNumber, step.IsHomeSlot, step.ParticipantId);
                     drawWinnerParticipantId = step.ParticipantId;
                     drawArrivingParticipantId = step.ParticipantId;
+                    drawCandidateParticipantId = null;
                     await InvokeAsync(StateHasChanged);
-                    await Task.Delay(980);
+                    await Task.Delay(420);
                     drawWinnerParticipantId = null;
                     drawArrivingParticipantId = null;
                 }
                 else if (drawAnimationMode == "Exciting")
                 {
-                    drawCandidateParticipantId = step.ParticipantId;
+                    var slots = FreeKnockoutSlots();
+                    slots = slots.OrderBy(_ => Random.Shared.Next()).ToList();
 
-                    var hops = FreeKnockoutSlots();
-                    hops = hops.OrderBy(_ => Random.Shared.Next()).ToList();
-                    var selectedHops = hops.Take(Math.Min(10, hops.Count)).ToList();
-                    var hopDelays = BuildDeceleratingHopDelays(selectedHops.Count, 70, 220);
-                    for (var i = 0; i < selectedHops.Count; i++)
+                    var suspensePool = steps
+                        .Select(s => s.ParticipantId)
+                        .Where(id => !assignedDuringRun.Contains(id))
+                        .Distinct()
+                        .ToList();
+
+                    var hopCount = ComputeExcitingHopCount(suspensePool.Count);
+                    var hopDelays = BuildDeceleratingHopDelays(hopCount, 70, 220);
+                    var targetHopCount = ComputeDropzoneHopCount(slots.Count);
+                    var targetHopInterval = Math.Max(1, hopDelays.Count / Math.Max(1, targetHopCount));
+
+                    for (var i = 0; i < hopDelays.Count; i++)
                     {
-                        var hop = selectedHops[i];
-                        drawHighlightedKoMatchNumber = hop.MatchNumber;
-                        drawHighlightedKoHomeSlot = hop.IsHomeSlot;
-                        await MoveKoDrawTokenToSlotAsync(hop.MatchNumber, hop.IsHomeSlot);
+                        suspensePool = steps
+                            .Select(s => s.ParticipantId)
+                            .Where(id => !assignedDuringRun.Contains(id))
+                            .Distinct()
+                            .ToList();
+                        if (suspensePool.Count <= 1)
+                            break;
+
+                        drawCandidateParticipantId = suspensePool[Random.Shared.Next(suspensePool.Count)];
+
+                        if (slots.Count > 0 && (i == 0 || i == hopDelays.Count - 1 || (i % targetHopInterval) == 0))
+                        {
+                            var hop = slots[Random.Shared.Next(slots.Count)];
+                            drawHighlightedKoMatchNumber = hop.MatchNumber;
+                            drawHighlightedKoHomeSlot = hop.IsHomeSlot;
+                            await MoveKoDrawTokenToSlotAsync(hop.MatchNumber, hop.IsHomeSlot);
+                        }
+
                         await InvokeAsync(StateHasChanged);
                         await Task.Delay(hopDelays[i]);
                     }
@@ -6721,13 +6748,11 @@ public partial class Tournaments : IAsyncDisposable
                     await InvokeAsync(StateHasChanged);
                     await Task.Delay(280);
 
-                    drawWinnerParticipantId = step.ParticipantId;
                     await MoveKoDrawTokenToSlotAsync(step.MatchNumber, step.IsHomeSlot);
-                    await InvokeAsync(StateHasChanged);
-                    await Task.Delay(860);
-
                     AssignKnockoutCardSlot(step.MatchNumber, step.IsHomeSlot, step.ParticipantId);
+                    drawWinnerParticipantId = step.ParticipantId;
                     drawArrivingParticipantId = step.ParticipantId;
+                    drawCandidateParticipantId = null;
                     await InvokeAsync(StateHasChanged);
                     await Task.Delay(520);
                     drawWinnerParticipantId = null;
@@ -6742,6 +6767,7 @@ public partial class Tournaments : IAsyncDisposable
                 drawHighlightedKoMatchNumber = null;
                 drawHighlightedKoHomeSlot = null;
                 HideKoDrawToken();
+                assignedDuringRun.Add(step.ParticipantId);
                 await InvokeAsync(StateHasChanged);
             }
         }
@@ -6846,6 +6872,14 @@ public partial class Tournaments : IAsyncDisposable
         return Math.Clamp(candidateCount * 2, 8, 18);
     }
 
+    private static int ComputeDropzoneHopCount(int slotCount)
+    {
+        if (slotCount <= 1)
+            return 1;
+
+        return Math.Clamp(slotCount / 3 + 1, 2, 4);
+    }
+
     private async Task BeginViewportLockAsync()
     {
         keepDrawViewportStable = true;
@@ -6903,15 +6937,15 @@ public partial class Tournaments : IAsyncDisposable
                 {
                     drawCandidateParticipantId = step.ParticipantId;
                     await InvokeAsync(StateHasChanged);
-                    await Task.Delay(1300);
+                    await Task.Delay(550);
 
-                    drawCandidateParticipantId = null;
                     await ApplyDrawStepAsync(step);
 
                     drawWinnerParticipantId = step.ParticipantId;
                     drawArrivingParticipantId = step.ParticipantId;
+                    drawCandidateParticipantId = null;
                     await InvokeAsync(StateHasChanged);
-                    await Task.Delay(980);
+                    await Task.Delay(420);
                     drawWinnerParticipantId = null;
                     drawArrivingParticipantId = null;
                 }
@@ -6920,13 +6954,17 @@ public partial class Tournaments : IAsyncDisposable
                     var candidates = GetAnimationSourceCandidates(step.SourcePot);
                     var hopCount = ComputeExcitingHopCount(candidates.Count);
                     var hopDelays = BuildDeceleratingHopDelays(hopCount, 70, 250);
-                    foreach (var delay in hopDelays)
+                    var targetHopCount = ComputeDropzoneHopCount(editGroupCount);
+                    var targetHopInterval = Math.Max(1, hopDelays.Count / Math.Max(1, targetHopCount));
+                    for (var i = 0; i < hopDelays.Count; i++)
                     {
+                        var delay = hopDelays[i];
                         candidates = GetAnimationSourceCandidates(step.SourcePot);
                         if (candidates.Count <= 1) break;
 
                         drawCandidateParticipantId = candidates[Random.Shared.Next(candidates.Count)].Id;
-                        drawHighlightedGroupNumber = Random.Shared.Next(1, editGroupCount + 1);
+                        if (i == 0 || i == hopDelays.Count - 1 || (i % targetHopInterval) == 0)
+                            drawHighlightedGroupNumber = Random.Shared.Next(1, editGroupCount + 1);
                         await InvokeAsync(StateHasChanged);
                         await Task.Delay(delay);
                     }
@@ -6936,12 +6974,10 @@ public partial class Tournaments : IAsyncDisposable
                     await InvokeAsync(StateHasChanged);
                     await Task.Delay(320);
 
-                    drawWinnerParticipantId = step.ParticipantId;
-                    await InvokeAsync(StateHasChanged);
-                    await Task.Delay(860);
-
                     await ApplyDrawStepAsync(step);
+                    drawWinnerParticipantId = step.ParticipantId;
                     drawArrivingParticipantId = step.ParticipantId;
+                    drawCandidateParticipantId = null;
                     await InvokeAsync(StateHasChanged);
                     await Task.Delay(520);
                     drawWinnerParticipantId = null;
@@ -7221,8 +7257,7 @@ public partial class Tournaments : IAsyncDisposable
                     participant.IsManager,
                     0,
                     participant.SeedPot,
-                    participant.GroupNumber,
-                    participant.Type));
+                    participant.GroupNumber));
             }
 
             await LoadParticipantsAsync(selectedTournament.Id);
