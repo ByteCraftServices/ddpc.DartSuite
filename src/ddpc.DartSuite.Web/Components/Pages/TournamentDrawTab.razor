@@ -132,7 +132,6 @@
         {
             <div class="small text-muted d-flex flex-wrap gap-2">
                 <span class="badge text-bg-light border">Gruppen: @EditGroupCount</span>
-                <span class="badge text-bg-light border">Aufsteiger: @EditPlayoffAdvancers</span>
                 <span class="badge text-bg-light border">Matches/Gegner: @EditMatchesPerOpponent</span>
                 <span class="badge text-bg-light border">Knockouts/Runde: @EditKnockoutsPerRound</span>
                 <span class="badge text-bg-light border">Modus: @EditGroupMode</span>
@@ -143,7 +142,7 @@
         else
         {
             <div class="row g-2 mb-3">
-                <div class="col-md-3" title="@GroupCountFieldTitle">
+                <div class="col-md-4" title="@GroupCountFieldTitle">
                     <label class="form-label small" title="@GroupCountFieldTitle">Anzahl Gruppen</label>
                     <select class="form-select form-select-sm @(EditGroupCount < 1 ? "border-danger" : "")"
                             value="@EditGroupCount"
@@ -155,16 +154,7 @@
                         }
                     </select>
                 </div>
-                <div class="col-md-3" title="@PlayoffAdvancersFieldTitle">
-                    <label class="form-label small" title="@PlayoffAdvancersFieldTitle">Playoff-Aufsteiger</label>
-                    <input type="number"
-                           class="form-control form-control-sm @(EditPlayoffAdvancers < 1 ? "border-danger" : "")"
-                           value="@EditPlayoffAdvancers"
-                           @onchange="HandleEditPlayoffAdvancersChangedAsync"
-                           min="1"
-                           disabled="@(!string.IsNullOrWhiteSpace(PlayoffAdvancersEditReason))" />
-                </div>
-                <div class="col-md-3" title="@MatchesPerOpponentFieldTitle">
+                <div class="col-md-4" title="@MatchesPerOpponentFieldTitle">
                     <label class="form-label small" title="@MatchesPerOpponentFieldTitle">Matches/Gegner</label>
                     <select class="form-select form-select-sm @(EditMatchesPerOpponent < 1 ? "border-danger" : "")"
                             value="@EditMatchesPerOpponent"
@@ -176,7 +166,7 @@
                         }
                     </select>
                 </div>
-                <div class="col-md-3" title="@KnockoutsPerRoundFieldTitle">
+                <div class="col-md-4" title="@KnockoutsPerRoundFieldTitle">
                     <label class="form-label small" title="@KnockoutsPerRoundFieldTitle">Knockouts/Runde</label>
                     <input type="number"
                            class="form-control form-control-sm @(EditKnockoutsPerRound < 0 ? "border-danger" : "")"
@@ -216,83 +206,6 @@
     </div>
 </details>
 
-<details class="card mb-3" open="@ScoringPanelExpanded">
-    <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" title="@ScoringPanelReason">
-        <span>
-            Punktemodus
-            @if (HasScoringRequiredMissing())
-            {
-                <span class="text-danger ms-2" title="Pflichteinstellungen fehlen">⚠</span>
-            }
-            @if (!string.IsNullOrWhiteSpace(ScoringPanelReason))
-            {
-                <span class="badge text-bg-light border ms-2" title="@ScoringPanelReason">Info</span>
-            }
-        </span>
-        <span class="d-none d-md-inline small text-muted">@ScoringHeaderSummary</span>
-    </summary>
-    <div class="card-body" title="@ScoringPanelReason">
-        @if (CanEditScoring)
-        {
-            <div class="row g-2 mb-0">
-                <div class="col-md-6" title="Punkte je Sieg in der Gruppentabelle.">
-                    <label class="form-label small" title="Punkte je Sieg in der Gruppentabelle.">Punkte für Sieg</label>
-                    <input type="number"
-                           class="form-control form-control-sm @(EditWinPoints < 1 ? "border-danger" : "")"
-                           value="@EditWinPoints"
-                           @onchange="HandleEditWinPointsChangedAsync"
-                           min="1" />
-                </div>
-                <div class="col-md-6" title="Gewichtung gewonnener Legs für Ranking/Tiebreak.">
-                    <label class="form-label small" title="Gewichtung gewonnener Legs für Ranking/Tiebreak.">Faktor gewonnene Legs</label>
-                    <input type="number"
-                           class="form-control form-control-sm @(EditLegFactor < 0 ? "border-danger" : "")"
-                           value="@EditLegFactor"
-                           @onchange="HandleEditLegFactorChangedAsync"
-                           min="0" />
-                </div>
-            </div>
-
-            <hr class="my-3" />
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <label class="form-label small fw-semibold mb-0">Tiebreaker-Reihenfolge</label>
-                <button class="btn btn-outline-primary btn-sm" @onclick="HandleSaveScoringCriteriaAsync" disabled="@(IsSavingScoringCriteria || IsWorking)">Speichern</button>
-            </div>
-            <div class="small text-muted mb-2">Aktivieren und per Pfeilen sortieren. Die Reihenfolge wird serverseitig fuer die Gruppenwertung genutzt.</div>
-            @for (var idx = 0; idx < ScoringCriteria.Count; idx++)
-            {
-                var criterion = ScoringCriteria[idx];
-                <div class="d-flex align-items-center gap-2 mb-1">
-                    <span class="badge text-bg-light border" style="min-width:2rem">@(idx + 1)</span>
-                    <input class="form-check-input" type="checkbox" @bind="criterion.IsEnabled" />
-                    <span class="small flex-grow-1">@ScoringCriterionLabel(criterion.Type)</span>
-                    <button class="btn btn-outline-secondary btn-sm py-0 px-2" title="Nach oben" @onclick="() => MoveScoringCriterionUp(idx)" disabled="@(idx == 0)">↑</button>
-                    <button class="btn btn-outline-secondary btn-sm py-0 px-2" title="Nach unten" @onclick="() => MoveScoringCriterionDown(idx)" disabled="@(idx == ScoringCriteria.Count - 1)">↓</button>
-                </div>
-            }
-            @if (ScoringCriteriaError is not null)
-            {
-                <div class="alert alert-danger py-1 mt-2 mb-0 small">@ScoringCriteriaError</div>
-            }
-        }
-        else
-        {
-            <div class="small text-muted d-flex flex-wrap gap-2">
-                <span class="badge text-bg-light border">Siegpunkte: @EditWinPoints</span>
-                <span class="badge text-bg-light border">Leg-Faktor: @EditLegFactor</span>
-            </div>
-            @if (ScoringCriteria.Any(c => c.IsEnabled))
-            {
-                <div class="small text-muted d-flex flex-wrap gap-2 mt-2">
-                    @foreach (var criterion in ScoringCriteria.Where(c => c.IsEnabled).OrderBy(c => c.Priority))
-                    {
-                        <span class="badge text-bg-light border">@criterion.Priority. @ScoringCriterionLabel(criterion.Type)</span>
-                    }
-                </div>
-            }
-        }
-    </div>
-</details>
 }
 
 @if (ShowEditableGroupDraw)
@@ -335,15 +248,15 @@
                 <button type="button" class="btn btn-primary btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => HandleShowInactiveActionInfoAsync(CannotEditStructureReason, "Auslosung gesperrt")'>⚡ Automatisch auslosen</button>
             }
         }
-        @if (EditGroupDrawMode == "SeededPots" && EditSeedingEnabled)
+        @if (EditGroupDrawMode == "SeededPots" && EditSeedingEnabled && GroupDrawPct == 0)
         {
-            @if (CanEditTournamentStructure)
+            @if (CanEditTournamentStructure && CanAssignSeedPots)
             {
-                <button class="btn btn-outline-secondary btn-sm" @onclick="HandleAssignSeedPotsAndDistributeAsync" disabled="@IsWorking">🎲 Lostöpfe zuteilen</button>
+                <button class="btn btn-outline-secondary btn-sm" @onclick="HandleAssignSeedPotsAndDistributeAsync" disabled="@IsDrawAnimating">🎲 Lostöpfe zuteilen</button>
             }
             else
             {
-                <button type="button" class="btn btn-outline-secondary btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => HandleShowInactiveActionInfoAsync(CannotEditStructureReason, "Lostöpfe gesperrt")'>🎲 Lostöpfe zuteilen</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm btn-inactive-action" title="@SeedPotAssignUnavailableReason" @onclick='() => HandleShowInactiveActionInfoAsync(SeedPotAssignUnavailableReason, "Lostöpfe gesperrt")'>🎲 Lostöpfe zuteilen</button>
             }
         }
         @if (HasDrawAssignments())
@@ -438,7 +351,7 @@
                                                 {
                                                     <span class="badge text-bg-warning me-1">#@participant.Seed</span>
                                                 }
-                                                <span class="badge @PotBadgeCss(participant.SeedPot) me-1">Topf @participant.SeedPot</span>
+                                                <span class="badge @PotBadgeCss(participant.SeedPot) me-1">P@(participant.SeedPot)</span>
                                                 <span class="draw-participant-name">@participant.DisplayName.ToUpperInvariant()</span>
                                             </div>
                                         }
@@ -526,7 +439,7 @@
                                         }
                                         @if (EditGroupDrawMode == "SeededPots" && participant.SeedPot > 0)
                                         {
-                                            <span class="badge @PotBadgeCss(participant.SeedPot) me-1">Topf @participant.SeedPot</span>
+                                            <span class="badge @PotBadgeCss(participant.SeedPot) me-1">P@(participant.SeedPot)</span>
                                         }
                                         <span class="draw-participant-name">@participant.DisplayName.ToUpperInvariant()</span>
                                         @if (CanEditTournamentStructure)
@@ -902,7 +815,6 @@
     [Parameter] public bool IsCurrentUserManager { get; set; }
     [Parameter] public bool IsWorking { get; set; }
     [Parameter] public bool IsDrawAnimating { get; set; }
-    [Parameter] public bool IsSavingScoringCriteria { get; set; }
     [Parameter] public bool IsTeamplayActive { get; set; }
     [Parameter] public bool CanProceedWithTeamDraw { get; set; }
     [Parameter] public bool CanShowDrawCreatePlanButton { get; set; }
@@ -910,7 +822,6 @@
     [Parameter] public bool ShouldShowDrawTeamFormationWarning { get; set; }
     [Parameter] public bool HasStartedGroupMatch { get; set; }
     [Parameter] public bool CanEditGroupConfig { get; set; }
-    [Parameter] public bool CanEditScoring { get; set; }
     [Parameter] public bool EditSeedingEnabled { get; set; }
     [Parameter] public bool ShowGroupSettings { get; set; }
     [Parameter] public bool IsKnockoutDrawComplete { get; set; }
@@ -919,19 +830,14 @@
     [Parameter] public string DrawCreatePlanDisabledReason { get; set; } = string.Empty;
     [Parameter] public string GroupDropzoneColumnCss { get; set; } = "col-12";
     [Parameter] public int EditGroupCount { get; set; }
-    [Parameter] public int EditPlayoffAdvancers { get; set; }
     [Parameter] public int EditMatchesPerOpponent { get; set; }
     [Parameter] public int EditKnockoutsPerRound { get; set; }
-    [Parameter] public int EditWinPoints { get; set; }
-    [Parameter] public int EditLegFactor { get; set; }
     [Parameter] public int EditSeedTopCount { get; set; }
     [Parameter] public int IdealGroupSize { get; set; }
     [Parameter] public string EditGroupMode { get; set; } = string.Empty;
     [Parameter] public string EditGroupDrawMode { get; set; } = string.Empty;
     [Parameter] public string EditPlanningVariant { get; set; } = string.Empty;
     [Parameter] public string EditGroupOrderMode { get; set; } = string.Empty;
-    [Parameter] public IReadOnlyList<ScoringCriterionEditorItem> ScoringCriteria { get; set; } = [];
-    [Parameter] public string? ScoringCriteriaError { get; set; }
     [Parameter] public IReadOnlyList<ParticipantDto> Participants { get; set; } = [];
     [Parameter] public IReadOnlyList<MatchDto> Matches { get; set; } = [];
     [Parameter] public IReadOnlyList<ParticipantDto> EffectiveDrawParticipants { get; set; } = [];
@@ -944,12 +850,9 @@
     [Parameter] public string KoDrawTokenStyle { get; set; } = string.Empty;
 
     [Parameter] public Func<bool> HasGroupSettingsRequiredMissing { get; set; } = () => false;
-    [Parameter] public Func<bool> HasScoringRequiredMissing { get; set; } = () => false;
     [Parameter] public Func<string> GroupSettingsSummary { get; set; } = () => string.Empty;
-    [Parameter] public Func<string> ScoringSummary { get; set; } = () => string.Empty;
     [Parameter] public Func<bool> HasDrawAssignments { get; set; } = () => false;
     [Parameter] public Func<bool> HasPlayedMatches { get; set; } = () => false;
-    [Parameter] public Func<string, string> ScoringCriterionLabel { get; set; } = _ => string.Empty;
     [Parameter] public Func<int, IReadOnlyList<ParticipantDto>> GroupParticipants { get; set; } = _ => Array.Empty<ParticipantDto>();
     [Parameter] public Func<int, string> GroupLabel { get; set; } = _ => string.Empty;
     [Parameter] public Func<int, string> GroupDropHighlightCss { get; set; } = _ => string.Empty;
@@ -962,20 +865,14 @@
     [Parameter] public Func<int, bool, string> DrawKnockoutSlotCss { get; set; } = (_, _) => string.Empty;
 
     [Parameter] public Func<int, Task> EditGroupCountChanged { get; set; } = _ => Task.CompletedTask;
-    [Parameter] public Func<int, Task> EditPlayoffAdvancersChanged { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<int, Task> EditMatchesPerOpponentChanged { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<int, Task> EditKnockoutsPerRoundChanged { get; set; } = _ => Task.CompletedTask;
-    [Parameter] public Func<int, Task> EditWinPointsChanged { get; set; } = _ => Task.CompletedTask;
-    [Parameter] public Func<int, Task> EditLegFactorChanged { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<string, Task> EditGroupModeChanged { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<string, Task> EditGroupDrawModeChanged { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<string, Task> EditPlanningVariantChanged { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<string, Task> EditGroupOrderModeChanged { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<string, Task> DrawAnimationModeChanged { get; set; } = _ => Task.CompletedTask;
     [Parameter] public Func<string, string?, Task> ShowInactiveActionInfo { get; set; } = (_, _) => Task.CompletedTask;
-    [Parameter] public Action<int> MoveScoringCriterionUp { get; set; } = _ => { };
-    [Parameter] public Action<int> MoveScoringCriterionDown { get; set; } = _ => { };
-    [Parameter] public Func<Task> SaveScoringCriteria { get; set; } = () => Task.CompletedTask;
     [Parameter] public Func<Task> AutoDraw { get; set; } = () => Task.CompletedTask;
     [Parameter] public Func<Task> AssignSeedPotsAndDistribute { get; set; } = () => Task.CompletedTask;
     [Parameter] public Func<Task> ResetDraw { get; set; } = () => Task.CompletedTask;
@@ -999,7 +896,6 @@
     private string GroupAnimationControlCssClass => BuildAnimationControlCssClass(GroupDrawCompleted);
     private string KnockoutAnimationControlCssClass => BuildAnimationControlCssClass(IsKnockoutDrawComplete);
     private bool GroupSettingsPanelExpanded => !PlanExists;
-    private bool ScoringPanelExpanded => !PlanExists;
     private bool ShowGroupSettingsReadOnlyBadges => !CanEditGroupConfig;
     private string GroupSettingsPanelReason
         => ShowGroupSettingsReadOnlyBadges
@@ -1009,17 +905,19 @@
                 : GroupDrawCompleted
                     ? "Einige Einstellungen sind nach der Auslosung schreibgeschützt."
                     : string.Empty;
-    private string ScoringPanelReason
-        => CanEditScoring ? string.Empty : "Punktemodus und Tiebreaker sind ab dem ersten aktiven Match schreibgeschützt.";
-    private string ScoringHeaderSummary
-        => string.Join(", ", ScoringCriteria.Where(c => c.IsEnabled).OrderBy(c => c.Priority).Select(c => ScoringCriterionLabel(c.Type)));
     private bool GroupDrawExists => HasDrawAssignments();
     private bool GroupDrawCompleted => EffectiveDrawParticipants.Count > 0 && !UnassignedParticipants.Any();
     private bool PlanExists => Matches.Any();
     private string GroupCountEditReason => !CanEditGroupConfig ? CannotEditStructureReason : GroupDrawCompleted ? "Nicht mehr änderbar, nachdem die Auslosung vollständig durchgeführt wurde." : string.Empty;
     private string GroupModeEditReason => !CanEditGroupConfig ? CannotEditStructureReason : GroupDrawCompleted ? "Nicht mehr änderbar, nachdem die Auslosung vollständig durchgeführt wurde." : string.Empty;
     private string GroupDrawModeEditReason => !CanEditGroupConfig ? CannotEditStructureReason : GroupDrawCompleted ? "Nicht mehr änderbar, nachdem die Auslosung vollständig durchgeführt wurde." : string.Empty;
-    private string PlayoffAdvancersEditReason => !CanEditGroupConfig ? CannotEditStructureReason : string.Empty;
+    private bool CanAssignSeedPots => GroupDrawPct == 0;
+    private string SeedPotAssignUnavailableReason
+        => !CanEditTournamentStructure
+            ? CannotEditStructureReason
+            : GroupDrawPct > 0
+                ? "Lostöpfe können nur bei Auslosungsfortschritt 0 % (oder nach Rücksetzen) zugeteilt werden."
+                : "Aktion derzeit nicht verfügbar.";
     private string MatchesPerOpponentEditReason => !CanEditGroupConfig ? CannotEditStructureReason : PlanExists ? "Nicht mehr änderbar, nachdem der Turnierplan erstellt wurde." : string.Empty;
     private string KnockoutsPerRoundEditReason => !CanEditGroupConfig ? CannotEditStructureReason : PlanExists ? "Nicht mehr änderbar, nachdem der Turnierplan erstellt wurde." : string.Empty;
     private string PlanningVariantEditReason => !CanEditGroupConfig ? CannotEditStructureReason : PlanExists ? "Nicht mehr änderbar, nachdem der Turnierplan erstellt wurde." : string.Empty;
@@ -1027,7 +925,6 @@
     private static string FieldHelpOrReason(string help, string? reason)
         => string.IsNullOrWhiteSpace(reason) ? help : reason;
     private string GroupCountFieldTitle => FieldHelpOrReason("Anzahl Gruppen für die Gruppenphase.", GroupCountEditReason);
-    private string PlayoffAdvancersFieldTitle => FieldHelpOrReason(IsTeamplayActive ? "Anzahl qualifizierter Teams je Gruppe für die K.O.-Phase." : "Anzahl qualifizierter Spieler je Gruppe für die K.O.-Phase.", PlayoffAdvancersEditReason);
     private string MatchesPerOpponentFieldTitle => FieldHelpOrReason(IsTeamplayActive ? "Wie oft jedes Team gegen denselben Gegner spielt." : "Wie oft jeder Teilnehmer gegen denselben Gegner spielt.", MatchesPerOpponentEditReason);
     private string KnockoutsPerRoundFieldTitle => FieldHelpOrReason("Anzahl parallel gespielter K.O.-Matches je Runde nach der Gruppenphase.", KnockoutsPerRoundEditReason);
     private string GroupModeFieldTitle => FieldHelpOrReason("Jeder gegen jeden oder alternative Gruppenlogik.", GroupModeEditReason);
@@ -1066,17 +963,13 @@
         => ShowInactiveActionInfo(reason, title);
 
     private Task HandleEditGroupCountChangedAsync(ChangeEventArgs args) => EditGroupCountChanged(ParseInt(args, EditGroupCount));
-    private Task HandleEditPlayoffAdvancersChangedAsync(ChangeEventArgs args) => EditPlayoffAdvancersChanged(ParseInt(args, EditPlayoffAdvancers));
     private Task HandleEditMatchesPerOpponentChangedAsync(ChangeEventArgs args) => EditMatchesPerOpponentChanged(ParseInt(args, EditMatchesPerOpponent));
     private Task HandleEditKnockoutsPerRoundChangedAsync(ChangeEventArgs args) => EditKnockoutsPerRoundChanged(ParseInt(args, EditKnockoutsPerRound));
-    private Task HandleEditWinPointsChangedAsync(ChangeEventArgs args) => EditWinPointsChanged(ParseInt(args, EditWinPoints));
-    private Task HandleEditLegFactorChangedAsync(ChangeEventArgs args) => EditLegFactorChanged(ParseInt(args, EditLegFactor));
     private Task HandleEditGroupModeChangedAsync(ChangeEventArgs args) => EditGroupModeChanged(ParseString(args, EditGroupMode));
     private Task HandleEditGroupDrawModeChangedAsync(ChangeEventArgs args) => EditGroupDrawModeChanged(ParseString(args, EditGroupDrawMode));
     private Task HandleEditPlanningVariantChangedAsync(ChangeEventArgs args) => EditPlanningVariantChanged(ParseString(args, EditPlanningVariant));
     private Task HandleEditGroupOrderModeChangedAsync(ChangeEventArgs args) => EditGroupOrderModeChanged(ParseString(args, EditGroupOrderMode));
     private Task HandleDrawAnimationModeChangedAsync(ChangeEventArgs args) => DrawAnimationModeChanged(ParseString(args, DrawAnimationMode));
-    private Task HandleSaveScoringCriteriaAsync() => SaveScoringCriteria();
     private Task HandleAutoDrawAsync() => AutoDraw();
     private Task HandleAssignSeedPotsAndDistributeAsync() => AssignSeedPotsAndDistribute();
     private Task HandleResetDrawAsync() => ResetDraw();

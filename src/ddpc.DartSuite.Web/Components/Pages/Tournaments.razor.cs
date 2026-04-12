@@ -1603,6 +1603,39 @@ public partial class Tournaments : IAsyncDisposable
 
     private async Task OnEditGroupDrawModeChangedAsync(string value)
     {
+        if (string.Equals(editGroupDrawMode, value, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var hasGroupAssignments = EffectiveDrawParticipants.Any(p => p.GroupNumber.HasValue && p.GroupNumber > 0);
+        var hasKnockoutAssignments = knockoutDrawCards.Any(c => c.HomeParticipantId.HasValue || c.AwayParticipantId.HasValue);
+        var hasDrawAssignments = selectedTournament?.Mode == "Knockout" ? hasKnockoutAssignments : hasGroupAssignments;
+        var changingToSeededPots = string.Equals(value, "SeededPots", StringComparison.OrdinalIgnoreCase);
+
+        if (hasDrawAssignments)
+        {
+            confirmationMessage = changingToSeededPots
+                ? "Beim Wechsel auf Modus 'Lostopf' wird die aktuelle Auslosung zurückgesetzt. Möchten Sie fortfahren?"
+                : "Beim Wechsel des Auslosungsmodus wird die aktuelle Auslosung zurückgesetzt. Möchten Sie fortfahren?";
+            showConfirmationPlanImpact = false;
+            confirmationAction = async () =>
+            {
+                if (selectedTournament?.Mode == "Knockout")
+                {
+                    ResetKnockoutDrawCards();
+                    await InvokeAsync(StateHasChanged);
+                }
+                else
+                {
+                    await ResetDrawAsync();
+                }
+
+                editGroupDrawMode = value;
+                await AutoSaveSettingAsync();
+            };
+            showConfirmation = true;
+            return;
+        }
+
         editGroupDrawMode = value;
         await AutoSaveSettingAsync();
     }
@@ -6261,24 +6294,25 @@ public partial class Tournaments : IAsyncDisposable
         try
         {
             isWorking = true;
-            var assignedParticipantIds = EffectiveDrawParticipants
+            // Reset all persisted group assignments to avoid stale team/group edge-cases.
+            var targetIds = participants
                 .Where(p => p.GroupNumber.HasValue && p.GroupNumber > 0)
                 .Select(p => p.Id)
                 .ToHashSet();
 
             // Update the UI immediately so the reset is visible on click, not after the roundtrip completes.
             participants = participants
-                .Select(p => assignedParticipantIds.Contains(p.Id)
-                    ? p with { GroupNumber = null, SeedPot = 0 }
+                .Select(p => targetIds.Contains(p.Id)
+                    ? p with { GroupNumber = null }
                     : p)
                 .ToList();
             await InvokeAsync(StateHasChanged);
 
-            foreach (var p in EffectiveDrawParticipants.Where(p => assignedParticipantIds.Contains(p.Id)))
+            foreach (var p in participants.Where(p => targetIds.Contains(p.Id)).ToList())
             {
                 await Api.UpdateParticipantAsync(selectedTournament.Id, new UpdateParticipantRequest(
                     selectedTournament.Id, p.Id, p.DisplayName, p.AccountName,
-                    p.IsAutodartsAccount, p.IsManager, p.Seed, 0, null));
+                    p.IsAutodartsAccount, p.IsManager, p.Seed, p.SeedPot, null));
             }
             await LoadParticipantsAsync(selectedTournament.Id);
             await InvokeAsync(StateHasChanged);
