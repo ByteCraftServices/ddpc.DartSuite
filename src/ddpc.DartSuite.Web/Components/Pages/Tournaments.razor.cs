@@ -6102,6 +6102,7 @@ public partial class Tournaments : IAsyncDisposable
         {
             isWorking = true;
 
+            await JS.InvokeVoidAsync("dartSuiteUi.saveScrollY");
             // Optimistic local update so assigned entries disappear from the unassigned pool immediately.
             participants = participants
                 .Select(p => targetIds.Contains(p.Id)
@@ -6118,6 +6119,7 @@ public partial class Tournaments : IAsyncDisposable
                     groupNumber));
             }
             await LoadParticipantsAsync(selectedTournament.Id);
+            await JS.InvokeVoidAsync("dartSuiteUi.restoreScrollY");
         }
         catch (Exception ex) { editError = ex.Message; }
         finally { isWorking = false; }
@@ -6138,6 +6140,7 @@ public partial class Tournaments : IAsyncDisposable
         {
             isWorking = true;
 
+            await JS.InvokeVoidAsync("dartSuiteUi.saveScrollY");
             participants = participants
                 .Select(p => targetIds.Contains(p.Id)
                     ? p with { GroupNumber = groupNumber }
@@ -6153,6 +6156,7 @@ public partial class Tournaments : IAsyncDisposable
                     groupNumber));
             }
             await LoadParticipantsAsync(selectedTournament.Id);
+            await JS.InvokeVoidAsync("dartSuiteUi.restoreScrollY");
         }
         catch (Exception ex) { editError = ex.Message; }
         finally { isWorking = false; }
@@ -6174,6 +6178,7 @@ public partial class Tournaments : IAsyncDisposable
         {
             isWorking = true;
 
+            await JS.InvokeVoidAsync("dartSuiteUi.saveScrollY");
             participants = participants
                 .Select(p => targetIds.Contains(p.Id)
                     ? p with { GroupNumber = null }
@@ -6189,6 +6194,7 @@ public partial class Tournaments : IAsyncDisposable
                     null));
             }
             await LoadParticipantsAsync(selectedTournament.Id);
+            await JS.InvokeVoidAsync("dartSuiteUi.restoreScrollY");
         }
         catch (Exception ex) { editError = ex.Message; }
         finally { isWorking = false; }

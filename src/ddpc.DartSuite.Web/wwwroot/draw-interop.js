@@ -84,6 +84,13 @@ window.dartSuiteUi = window.dartSuiteUi || {
     _swipeHandlers: {},
     _touchDnDHandlers: {},
     _outsideClickHandlers: {},
+    _savedScrollY: 0,
+    saveScrollY: function () {
+        this._savedScrollY = window.scrollY;
+    },
+    restoreScrollY: function () {
+        window.scrollTo({ top: this._savedScrollY, behavior: "instant" });
+    },
     isDocumentVisible: function () {
         return document.visibilityState === "visible";
     },
