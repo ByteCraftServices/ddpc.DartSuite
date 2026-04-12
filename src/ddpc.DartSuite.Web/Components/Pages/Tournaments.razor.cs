@@ -2329,14 +2329,23 @@ public partial class Tournaments : IAsyncDisposable
 
     private void OpenMatchCardScopeEditor(string scopeKey)
     {
-        matchCardScopeModalKey = NormalizeMatchCardScopeKey(scopeKey);
+        var normalizedScope = NormalizeMatchCardScopeKey(scopeKey);
+        matchCardScopeModalKey = normalizedScope;
+        // Keep parent modal context aligned with the scope edited in the child modal.
+        activeMatchCardConfigScopeKey = normalizedScope;
         showMatchCardScopeModal = true;
     }
 
     private async Task OnMatchCardScopeModalClosedAsync()
     {
+        var editedScope = string.IsNullOrWhiteSpace(matchCardScopeModalKey)
+            ? activeMatchCardConfigScopeKey
+            : NormalizeMatchCardScopeKey(matchCardScopeModalKey);
+
         showMatchCardScopeModal = false;
         await LoadMatchCardSettingsAsync();
+        activeMatchCardConfigScopeKey = editedScope;
+        _ = GetEditableMatchCardSettings(activeMatchCardConfigScopeKey);
         await InvokeAsync(StateHasChanged);
     }
 
