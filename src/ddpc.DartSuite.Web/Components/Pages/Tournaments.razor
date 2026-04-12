@@ -2879,35 +2879,54 @@
     }
 
     .draw-item-candidate {
-        opacity: 0.35;
-        transform: translateY(-2px) scale(1.03);
-        box-shadow: 0 0 0 .16rem rgba(255, 193, 7, .22);
+        opacity: 0.42;
+        transform: scale(1.02);
+        box-shadow: 0 0 0 .12rem rgba(255, 193, 7, .2);
         transition: opacity 220ms ease, transform 220ms ease, box-shadow 220ms ease;
     }
 
     .draw-item-winner {
-        transform: scale(1.16);
-        box-shadow: 0 0 0 .24rem rgba(25, 135, 84, .48), 0 0 .9rem rgba(25, 135, 84, .55);
-        background: linear-gradient(135deg, rgba(25, 135, 84, .28), rgba(25, 135, 84, .12));
-        transition: transform 286ms ease, box-shadow 286ms ease, background-color 286ms ease;
+        transform: scale(1.08);
+        box-shadow: 0 0 0 .18rem rgba(25, 135, 84, .36), 0 0 .58rem rgba(25, 135, 84, .4);
+        background: linear-gradient(135deg, rgba(25, 135, 84, .22), rgba(25, 135, 84, .1));
+        transition: transform 260ms ease, box-shadow 260ms ease, background-color 260ms ease;
+    }
+
+    .draw-item-arriving {
+        animation: drawArrive 560ms cubic-bezier(.2,.65,.2,1);
     }
 
     .draw-target-group {
-        box-shadow: 0 0 0 .24rem rgba(25, 135, 84, .46), inset 0 0 0 .08rem rgba(25, 135, 84, .26);
-        background: linear-gradient(180deg, rgba(25, 135, 84, .12), rgba(25, 135, 84, .03));
-        animation: drawTargetPulse 980ms ease-in-out infinite;
-        transition: box-shadow 286ms ease, background-color 286ms ease;
+        box-shadow: 0 0 0 .18rem rgba(25, 135, 84, .32), inset 0 0 0 .06rem rgba(25, 135, 84, .2);
+        background: linear-gradient(180deg, rgba(25, 135, 84, .09), rgba(25, 135, 84, .03));
+        animation: drawTargetPulse 1400ms ease-in-out infinite;
+        transition: box-shadow 260ms ease, background-color 260ms ease;
     }
 
     @@keyframes drawTargetPulse {
         0% {
-            box-shadow: 0 0 0 .16rem rgba(25, 135, 84, .28), inset 0 0 0 .06rem rgba(25, 135, 84, .18);
+            box-shadow: 0 0 0 .14rem rgba(25, 135, 84, .24), inset 0 0 0 .05rem rgba(25, 135, 84, .14);
         }
-        55% {
-            box-shadow: 0 0 0 .34rem rgba(25, 135, 84, .48), inset 0 0 0 .1rem rgba(25, 135, 84, .32);
+        50% {
+            box-shadow: 0 0 0 .22rem rgba(25, 135, 84, .34), inset 0 0 0 .07rem rgba(25, 135, 84, .2);
         }
         100% {
-            box-shadow: 0 0 0 .16rem rgba(25, 135, 84, .28), inset 0 0 0 .06rem rgba(25, 135, 84, .18);
+            box-shadow: 0 0 0 .14rem rgba(25, 135, 84, .24), inset 0 0 0 .05rem rgba(25, 135, 84, .14);
+        }
+    }
+
+    @@keyframes drawArrive {
+        0% {
+            transform: translate3d(-26px, 0, 0) scale(0.92);
+            opacity: .4;
+        }
+        55% {
+            transform: translate3d(3px, 0, 0) scale(1.04);
+            opacity: .95;
+        }
+        100% {
+            transform: translate3d(0, 0, 0) scale(1);
+            opacity: 1;
         }
     }
 

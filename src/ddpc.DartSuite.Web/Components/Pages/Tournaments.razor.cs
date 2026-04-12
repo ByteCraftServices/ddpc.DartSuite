@@ -1022,8 +1022,10 @@ public partial class Tournaments : IAsyncDisposable
     // ─── Draw Animation ───
     private string drawAnimationMode = "Off"; // Off | Exciting | Moderate
     private bool isDrawAnimating;
+    private bool keepDrawViewportStable;
     private Guid? drawCandidateParticipantId;
     private Guid? drawWinnerParticipantId;
+    private Guid? drawArrivingParticipantId;
     private int? drawHighlightedGroupNumber;
     private int? drawSourcePotNumber;
     private int? drawHighlightedKoMatchNumber;
@@ -1241,6 +1243,18 @@ public partial class Tournaments : IAsyncDisposable
                 await JS.InvokeVoidAsync("dartSuiteUi.initDetailsStorage", "detailSection-allgemein", "detailMatchSection_allgemein");
             }
             catch { /* ignore JS interop errors during prerender */ }
+        }
+
+        if (keepDrawViewportStable)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("dartSuiteUi.restoreScrollY");
+            }
+            catch
+            {
+                // ignore JS interop errors during prerender
+            }
         }
     }
 
@@ -5790,6 +5804,7 @@ public partial class Tournaments : IAsyncDisposable
             return;
         }
 
+        await BeginViewportLockAsync();
         try
         {
             isWorking = true;
@@ -5887,15 +5902,17 @@ public partial class Tournaments : IAsyncDisposable
                 RecomputeTeamDraftNameIfAuto(nextTeamIndex);
 
                 drawWinnerParticipantId = participant.Id;
+                drawArrivingParticipantId = participant.Id;
                 drawCandidateParticipantId = null;
                 await InvokeAsync(StateHasChanged);
 
                 if (drawAnimationMode == "Moderate")
                     await Task.Delay(420);
                 else if (drawAnimationMode == "Exciting")
-                    await Task.Delay(360);
+                    await Task.Delay(520);
 
                 drawWinnerParticipantId = null;
+                drawArrivingParticipantId = null;
                 assignedDuringRun.Add(participant.Id);
                 nextEditableIndex = (nextEditableIndex + 1) % editableTeamIndices.Count;
             }
@@ -5907,9 +5924,11 @@ public partial class Tournaments : IAsyncDisposable
             isDrawAnimating = false;
             drawCandidateParticipantId = null;
             drawWinnerParticipantId = null;
+            drawArrivingParticipantId = null;
             drawHighlightedTeamIndex = null;
             await InvokeAsync(StateHasChanged);
             isWorking = false;
+            await EndViewportLockAsync();
         }
 
         await SaveTeamDraftAsync();
@@ -6286,9 +6305,16 @@ public partial class Tournaments : IAsyncDisposable
 
     private string DrawParticipantAnimationCss(Guid participantId)
     {
-        if (drawWinnerParticipantId == participantId) return "draw-item-winner";
-        if (drawCandidateParticipantId == participantId) return "draw-item-candidate";
-        return string.Empty;
+        if (drawCandidateParticipantId == participantId)
+            return "draw-item-candidate";
+
+        var classes = new List<string>(2);
+        if (drawWinnerParticipantId == participantId)
+            classes.Add("draw-item-winner");
+        if (drawArrivingParticipantId == participantId)
+            classes.Add("draw-item-arriving");
+
+        return classes.Count > 0 ? string.Join(" ", classes) : string.Empty;
     }
 
     private string DrawGroupAnimationCss(int groupNumber)
@@ -6665,9 +6691,11 @@ public partial class Tournaments : IAsyncDisposable
 
                     AssignKnockoutCardSlot(step.MatchNumber, step.IsHomeSlot, step.ParticipantId);
                     drawWinnerParticipantId = step.ParticipantId;
+                    drawArrivingParticipantId = step.ParticipantId;
                     await InvokeAsync(StateHasChanged);
-                    await Task.Delay(1300);
+                    await Task.Delay(980);
                     drawWinnerParticipantId = null;
+                    drawArrivingParticipantId = null;
                 }
                 else if (drawAnimationMode == "Exciting")
                 {
@@ -6699,9 +6727,11 @@ public partial class Tournaments : IAsyncDisposable
                     await Task.Delay(860);
 
                     AssignKnockoutCardSlot(step.MatchNumber, step.IsHomeSlot, step.ParticipantId);
+                    drawArrivingParticipantId = step.ParticipantId;
                     await InvokeAsync(StateHasChanged);
-                    await Task.Delay(360);
+                    await Task.Delay(520);
                     drawWinnerParticipantId = null;
+                    drawArrivingParticipantId = null;
                 }
                 else
                 {
@@ -6720,6 +6750,7 @@ public partial class Tournaments : IAsyncDisposable
             isDrawAnimating = false;
             drawCandidateParticipantId = null;
             drawWinnerParticipantId = null;
+            drawArrivingParticipantId = null;
             drawHighlightedKoMatchNumber = null;
             drawHighlightedKoHomeSlot = null;
             HideKoDrawToken();
@@ -6815,6 +6846,33 @@ public partial class Tournaments : IAsyncDisposable
         return Math.Clamp(candidateCount * 2, 8, 18);
     }
 
+    private async Task BeginViewportLockAsync()
+    {
+        keepDrawViewportStable = true;
+        try
+        {
+            await JS.InvokeVoidAsync("dartSuiteUi.saveScrollY");
+        }
+        catch
+        {
+            // ignore JS interop errors during prerender
+        }
+    }
+
+    private async Task EndViewportLockAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("dartSuiteUi.restoreScrollY");
+        }
+        catch
+        {
+            // ignore JS interop errors during prerender
+        }
+
+        keepDrawViewportStable = false;
+    }
+
     private async Task ApplyDrawStepAsync(DrawStep step)
     {
         if (selectedTournament is null) return;
@@ -6851,9 +6909,11 @@ public partial class Tournaments : IAsyncDisposable
                     await ApplyDrawStepAsync(step);
 
                     drawWinnerParticipantId = step.ParticipantId;
+                    drawArrivingParticipantId = step.ParticipantId;
                     await InvokeAsync(StateHasChanged);
-                    await Task.Delay(1300);
+                    await Task.Delay(980);
                     drawWinnerParticipantId = null;
+                    drawArrivingParticipantId = null;
                 }
                 else if (drawAnimationMode == "Exciting")
                 {
@@ -6881,9 +6941,11 @@ public partial class Tournaments : IAsyncDisposable
                     await Task.Delay(860);
 
                     await ApplyDrawStepAsync(step);
+                    drawArrivingParticipantId = step.ParticipantId;
                     await InvokeAsync(StateHasChanged);
-                    await Task.Delay(360);
+                    await Task.Delay(520);
                     drawWinnerParticipantId = null;
+                    drawArrivingParticipantId = null;
                 }
                 else
                 {
@@ -6900,6 +6962,7 @@ public partial class Tournaments : IAsyncDisposable
             isDrawAnimating = false;
             drawCandidateParticipantId = null;
             drawWinnerParticipantId = null;
+            drawArrivingParticipantId = null;
             drawHighlightedGroupNumber = null;
             drawSourcePotNumber = null;
             await InvokeAsync(StateHasChanged);
@@ -6950,6 +7013,7 @@ public partial class Tournaments : IAsyncDisposable
 
         if (selectedTournament.Mode == "Knockout")
         {
+            await BeginViewportLockAsync();
             try
             {
                 isWorking = true;
@@ -6960,10 +7024,12 @@ public partial class Tournaments : IAsyncDisposable
             {
                 isWorking = false;
                 await InvokeAsync(StateHasChanged);
+                await EndViewportLockAsync();
             }
             return;
         }
 
+        await BeginViewportLockAsync();
         try
         {
             isWorking = true;
@@ -6999,6 +7065,7 @@ public partial class Tournaments : IAsyncDisposable
         {
             isWorking = false;
             await InvokeAsync(StateHasChanged);
+            await EndViewportLockAsync();
         }
     }
 
