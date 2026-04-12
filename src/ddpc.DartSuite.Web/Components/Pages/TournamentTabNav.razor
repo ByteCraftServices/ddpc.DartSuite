@@ -1,6 +1,6 @@
 @inject IJSRuntime JS
 
-<ul class="nav nav-tabs mb-3 tournament-tabs-nowrap">
+<ul id="tournament-tabs-nav" class="nav nav-tabs mb-3 tournament-tabs-nowrap">
     <li class="nav-item">
         <button class="nav-link text-nowrap @(ActiveTab == "general" ? "active" : "")" @onclick='() => SelectAsync("general")'>Allgemein</button>
     </li>
@@ -71,7 +71,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        try { await JS.InvokeVoidAsync("dartSuiteUi.scrollActiveTabIntoView", ".tournament-tabs-nowrap"); }
+            try { await JS.InvokeVoidAsync("dartSuiteUi.scrollActiveTabIntoView", "#tournament-tabs-nav"); }
         catch { /* silently ignore if JS unavailable */ }
     }
 }
