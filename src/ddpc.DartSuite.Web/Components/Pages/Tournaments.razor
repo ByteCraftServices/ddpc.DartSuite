@@ -1855,7 +1855,7 @@
 {
     <div class="tournament-tab-footer-nav">
         <button class="@PreviousTabButtonCssClass" @onclick="GoToPreviousTabAsync" disabled="@(isWorking || !CanGoToPreviousTab)">← @PreviousTabDisplayName</button>
-        <span class="small text-muted px-2">@ActiveTabDisplayName</span>
+        <span class="small text-muted px-2">@(ShowSpecialGroupScheduleFlowHint ? SpecialGroupScheduleFlowHint : ActiveTabDisplayName)</span>
         <button class="@NextTabButtonCssClass" @onclick="GoToNextTabAsync" disabled="@(isWorking || !CanGoToNextTab)">@NextTabDisplayName →</button>
     </div>
 }

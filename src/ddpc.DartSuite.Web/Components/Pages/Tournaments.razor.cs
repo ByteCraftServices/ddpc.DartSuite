@@ -1437,6 +1437,19 @@ public partial class Tournaments : IAsyncDisposable
 
     private string ActiveTabDisplayName => TabDisplayName(activeTab);
 
+    private bool ShowSpecialGroupScheduleFlowHint
+        => string.Equals(selectedTournament?.Mode, "GroupAndKnockout", StringComparison.Ordinal)
+           && activeTab is "groups" or "schedule" or "knockout";
+
+    private string SpecialGroupScheduleFlowHint
+        => activeTab switch
+        {
+            "groups" => "Spezial-Flow: Gruppenphase -> Spielplan",
+            "schedule" => "Spezial-Flow: Gruppenphase <-> Spielplan <-> K.O.-Phase",
+            "knockout" => "Spezial-Flow: Spielplan -> K.O.-Phase",
+            _ => ActiveTabDisplayName
+        };
+
     private string PreviousTabDisplayName
         => CanGoToPreviousTab ? TabDisplayName(VisibleTabSequence[ActiveTabSequenceIndex - 1]) : "Vorheriger Tab";
 
