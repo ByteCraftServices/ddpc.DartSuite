@@ -111,6 +111,10 @@
             {
                 AppState.SetAutodartsProfileSilent(status.Profile, true);
             }
+
+            // Load admin status
+            var isAdmin = await Api.CheckIsAdminAsync();
+            AppState.SetIsAdminSilent(isAdmin);
         }
         catch { /* API not reachable */ }
 

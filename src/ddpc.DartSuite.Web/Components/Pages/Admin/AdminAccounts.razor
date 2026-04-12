@@ -1,0 +1,233 @@
+@page "/admin/accounts"
+@using ddpc.DartSuite.Application.Contracts.Admins
+@inject DartSuiteApiService Api
+@inject AppStateService AppState
+@inject NavigationManager Navigation
+
+<PageTitle>Admin – Accounts</PageTitle>
+
+<h1 class="mb-3">Admin – Accounts</h1>
+
+@if (!AppState.IsAutodartsConnected)
+{
+    <div class="alert alert-warning">
+        Bitte melde dich mit einem Autodarts-Account an, um diese Seite zu nutzen.
+        <a href="login" class="alert-link">Zum Login</a>
+    </div>
+}
+else if (!AppState.IsAdmin)
+{
+    <div class="alert alert-danger">Zugriff verweigert. Administrator-Berechtigung erforderlich.</div>
+}
+else
+{
+    <div class="card shadow-sm mb-3">
+        <div class="card-header fw-semibold">
+            @(editingAdmin is not null ? "Eintrag bearbeiten" : "Neuen Admin-Account anlegen")
+        </div>
+        <div class="card-body">
+            <EditForm Model="formModel" OnValidSubmit="SaveAsync" FormName="admin-account-form">
+                <DataAnnotationsValidator />
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-4">
+                        <label class="form-label mb-1">Autodarts Accountname</label>
+                        <InputText @bind-Value="formModel.AccountName" class="form-control" placeholder="z.B. doc" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label mb-1">Gültig ab</label>
+                        <InputDate @bind-Value="formModel.ValidFromDate" class="form-control" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label mb-1">Gültig bis</label>
+                        <InputDate @bind-Value="formModel.ValidToDate" class="form-control" />
+                    </div>
+                    <div class="col-md-2 d-flex gap-2">
+                        <button class="btn btn-primary flex-grow-1" type="submit" disabled="@isWorking">
+                            @(editingAdmin is not null ? "Speichern" : "Hinzufügen")
+                        </button>
+                        @if (editingAdmin is not null)
+                        {
+                            <button class="btn btn-outline-secondary" type="button" @onclick="CancelEdit" disabled="@isWorking">✕</button>
+                        }
+                    </div>
+                </div>
+            </EditForm>
+
+            @if (formError is not null)
+            {
+                <div class="alert alert-danger py-2 mt-2 d-flex justify-content-between align-items-center">
+                    <span>@formError</span>
+                    <button type="button" class="btn-close" @onclick="() => formError = null"></button>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-striped table-hover align-middle mt-2">
+            <thead>
+                <tr>
+                    <th>Accountname</th>
+                    <th>Gültig ab</th>
+                    <th>Gültig bis</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var admin in admins)
+                {
+                    var today = DateOnly.FromDateTime(DateTime.UtcNow);
+                    var isActive = admin.ValidFromDate <= today && admin.ValidToDate >= today;
+                    <tr>
+                        <td class="fw-semibold">@admin.AccountName</td>
+                        <td>@admin.ValidFromDate.ToString("dd.MM.yyyy")</td>
+                        <td>@(admin.ValidToDate == DateOnly.MaxValue ? "unbegrenzt" : admin.ValidToDate.ToString("dd.MM.yyyy"))</td>
+                        <td>
+                            @if (isActive)
+                            {
+                                <span class="badge bg-success">Aktiv</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">Inaktiv</span>
+                            }
+                        </td>
+                        <td class="text-end">
+                            <div class="d-flex gap-1 justify-content-end">
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => StartEdit(admin)" disabled="@isWorking">✏️</button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(admin)" disabled="@isWorking">✕</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+                @if (!admins.Any())
+                {
+                    <tr>
+                        <td colspan="5" class="text-muted text-center">Keine Admin-Accounts vorhanden.</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private sealed class AdminFormModel
+    {
+        public string AccountName { get; set; } = string.Empty;
+        public DateOnly ValidFromDate { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
+        public DateOnly ValidToDate { get; set; } = DateOnly.MaxValue;
+    }
+
+    private List<AdminDto> admins = [];
+    private AdminDto? editingAdmin;
+    private AdminFormModel formModel = new();
+    private string? formError;
+    private bool isWorking;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!AppState.IsAutodartsConnected || !AppState.IsAdmin)
+            return;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            admins = (await Api.GetAdminsAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            formError = ex.Message;
+        }
+    }
+
+    private void StartEdit(AdminDto admin)
+    {
+        editingAdmin = admin;
+        formModel = new AdminFormModel
+        {
+            AccountName = admin.AccountName,
+            ValidFromDate = admin.ValidFromDate,
+            ValidToDate = admin.ValidToDate
+        };
+        formError = null;
+    }
+
+    private void CancelEdit()
+    {
+        editingAdmin = null;
+        formModel = new AdminFormModel();
+        formError = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(formModel.AccountName))
+        {
+            formError = "Accountname darf nicht leer sein.";
+            return;
+        }
+
+        isWorking = true;
+        formError = null;
+        try
+        {
+            if (editingAdmin is not null)
+            {
+                var updated = await Api.UpdateAdminAsync(new UpdateAdminRequest(
+                    editingAdmin.Id,
+                    formModel.AccountName.Trim(),
+                    formModel.ValidFromDate,
+                    formModel.ValidToDate));
+
+                var idx = admins.FindIndex(a => a.Id == updated.Id);
+                if (idx >= 0) admins[idx] = updated;
+                editingAdmin = null;
+            }
+            else
+            {
+                var created = await Api.CreateAdminAsync(new CreateAdminRequest(
+                    formModel.AccountName.Trim(),
+                    formModel.ValidFromDate,
+                    formModel.ValidToDate));
+                admins.Add(created);
+            }
+
+            admins = [.. admins.OrderBy(a => a.AccountName)];
+            formModel = new AdminFormModel();
+        }
+        catch (Exception ex)
+        {
+            formError = ex.Message;
+        }
+        finally
+        {
+            isWorking = false;
+        }
+    }
+
+    private async Task DeleteAsync(AdminDto admin)
+    {
+        isWorking = true;
+        formError = null;
+        try
+        {
+            await Api.DeleteAdminAsync(admin.Id);
+            admins.RemoveAll(a => a.Id == admin.Id);
+            if (editingAdmin?.Id == admin.Id) CancelEdit();
+        }
+        catch (Exception ex)
+        {
+            formError = ex.Message;
+        }
+        finally
+        {
+            isWorking = false;
+        }
+    }
+}

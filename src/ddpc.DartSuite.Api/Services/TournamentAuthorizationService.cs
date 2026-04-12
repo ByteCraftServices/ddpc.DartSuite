@@ -125,6 +125,29 @@ public sealed class TournamentAuthorizationService(
             : AccessCheckResult.Allow("authenticated");
     }
 
+    public async Task<AccessCheckResult> EnsureAdminAsync(HttpContext context, CancellationToken cancellationToken = default)
+    {
+        if (IsIntegrationRequest(context))
+            return AccessCheckResult.Allow("integration");
+
+        var actorName = GetActiveActorName();
+        if (string.IsNullOrWhiteSpace(actorName))
+            return AccessCheckResult.Unauthorized("Autodarts-Login erforderlich.");
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var isAdmin = await dbContext.Admins
+            .AsNoTracking()
+            .AnyAsync(a =>
+                a.AccountName.ToLower() == actorName.Trim().ToLower()
+                && a.ValidFromDate <= today
+                && a.ValidToDate >= today,
+                cancellationToken);
+
+        return isAdmin
+            ? AccessCheckResult.Allow("admin")
+            : AccessCheckResult.Forbidden("Administrator-Berechtigung erforderlich.");
+    }
+
     public bool IsIntegrationRequest(HttpContext context)
     {
         if (string.IsNullOrWhiteSpace(_integrationApiKey))
