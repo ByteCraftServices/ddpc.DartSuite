@@ -1,0 +1,140 @@
+@page "/profile"
+@using System.Text.Json
+@inject AppStateService AppState
+@inject DartSuiteApiService Api
+@inject IUiHelpService UiHelp
+
+<PageTitle>Profil</PageTitle>
+
+<h1 class="mb-3">Benutzerprofil <UiHelpIcon HelpKey="page.profile" /></h1>
+
+@if (AppState.AutodartsProfile is null)
+{
+    <div class="alert alert-warning">
+        Kein aktiver Autodarts-Login erkannt. Bitte zuerst einloggen.
+    </div>
+}
+else
+{
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <h5 class="card-title mb-3">Account</h5>
+            <div class="row g-2 small">
+                <div class="col-md-6"><strong>Display Name:</strong> @AppState.AutodartsProfile.DisplayName</div>
+                <div class="col-md-6"><strong>E-Mail:</strong> @AppState.AutodartsProfile.Email</div>
+                <div class="col-md-6"><strong>Land:</strong> @AppState.AutodartsProfile.Country</div>
+                <div class="col-md-6"><strong>Autodarts-ID:</strong> @AppState.AutodartsProfile.Id</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h5 class="card-title mb-3">Benachrichtigungen</h5>
+            <p class="text-muted small">Diese Einstellungen werden pro Benutzer gespeichert.</p>
+
+            <div class="form-check mb-2">
+                  <input id="prefOwn" class="form-check-input" type="checkbox" @bind="preferences.OwnMatches" disabled="@isSaving"
+                      title="@UiHelp.GetTooltip("profile.pref.own")" />
+                <label class="form-check-label" for="prefOwn">Eigene Matches</label>
+            </div>
+            <div class="form-check mb-2">
+                  <input id="prefFollowed" class="form-check-input" type="checkbox" @bind="preferences.FollowedMatches" disabled="@isSaving"
+                      title="@UiHelp.GetTooltip("profile.pref.followed")" />
+                <label class="form-check-label" for="prefFollowed">Gefolgte Matches</label>
+            </div>
+            <div class="form-check mb-3">
+                  <input id="prefAll" class="form-check-input" type="checkbox" @bind="preferences.AllMatches" disabled="@isSaving"
+                      title="@UiHelp.GetTooltip("profile.pref.all")" />
+                <label class="form-check-label" for="prefAll">Alle Matches</label>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary btn-sm" @onclick="SaveAsync" disabled="@isSaving"
+                    title="@UiHelp.GetTooltip("profile.save")">Speichern</button>
+                @if (isSaving)
+                {
+                    <span class="text-muted small">Speichere ...</span>
+                }
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(message))
+            {
+                <div class="alert @(isError ? "alert-danger" : "alert-success") py-2 mt-3 mb-0">@message</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private const string PreferenceContext = "NotificationPreferences";
+
+    private NotificationPreferences preferences = new();
+    private bool isSaving;
+    private bool isError;
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        message = null;
+
+        var account = AppState.AutodartsProfile?.DisplayName;
+        if (string.IsNullOrWhiteSpace(account))
+            return;
+
+        try
+        {
+            var existing = await Api.GetViewPreferenceAsync(account, PreferenceContext);
+            if (existing is null || string.IsNullOrWhiteSpace(existing.SettingsJson))
+                return;
+
+            var parsed = JsonSerializer.Deserialize<NotificationPreferences>(existing.SettingsJson);
+            if (parsed is not null)
+                preferences = parsed;
+        }
+        catch
+        {
+            // Optional profile section: ignore transient load errors.
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        var account = AppState.AutodartsProfile?.DisplayName;
+        if (string.IsNullOrWhiteSpace(account))
+            return;
+
+        try
+        {
+            isSaving = true;
+            isError = false;
+            message = null;
+
+            var payload = JsonSerializer.Serialize(preferences);
+            await Api.SaveViewPreferenceAsync(account, PreferenceContext, payload);
+
+            message = "Benachrichtigungseinstellungen gespeichert.";
+        }
+        catch (Exception ex)
+        {
+            isError = true;
+            message = ex.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private sealed class NotificationPreferences
+    {
+        public bool OwnMatches { get; set; } = true;
+        public bool FollowedMatches { get; set; } = true;
+        public bool AllMatches { get; set; }
+    }
+}

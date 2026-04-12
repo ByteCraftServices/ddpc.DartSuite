@@ -86,19 +86,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Release API workflow
-        uses: peter-evans/workflow-dispatch@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          workflow: release-api.yml
+        run: gh workflow run release-api.yml --repo ${{ github.repository }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   trigger-publish-web:
     needs: create-release
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Release Web workflow
-        uses: peter-evans/workflow-dispatch@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          workflow: release-web.yml
+        run: gh workflow run release-web.yml --repo ${{ github.repository }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,480 @@
+@page "/dashboard"
+@using ddpc.DartSuite.Application.Contracts.Boards
+@using ddpc.DartSuite.Application.Contracts.Matches
+@using ddpc.DartSuite.Application.Contracts.Tournaments
+@using ddpc.DartSuite.Web.Services
+@inject DartSuiteApiService Api
+@inject BoardHubService BoardHubService
+@inject TournamentHubService TournamentHubService
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<PageTitle>DartSuite Infowall</PageTitle>
+
+<div class="dartsuite-dashboard @(isFullscreen ? "dartsuite-dashboard--fullscreen" : "")">
+    @* ─── Top toolbar ─── *@
+    <div class="dartsuite-dashboard__toolbar d-flex align-items-center gap-2 px-3 py-2 border-bottom bg-dark text-white">
+        <span class="fw-bold me-2 text-white">🎯 DartSuite Infowall</span>
+        <select class="form-select form-select-sm w-auto" value="@selectedTournamentId" @onchange="OnTournamentChanged">
+            <option value="">-- Turnier auswählen --</option>
+            @foreach (var t in tournaments.Where(t => t.Status != "Beendet" && t.Status != "Abgebrochen"))
+            {
+                <option value="@t.Id">@t.Name</option>
+            }
+        </select>
+        <div class="ms-auto d-flex align-items-center gap-2">
+            <label class="form-label mb-0 text-white small">Rotation (s):</label>
+            <input type="number" class="form-control form-control-sm" style="width:70px" @bind="rotateSecs" min="5" max="120" />
+            <button class="btn btn-sm @(autoRotate ? "btn-warning" : "btn-outline-light")" @onclick="ToggleAutoRotate" title="@(autoRotate ? "Auto-Rotation stoppen" : "Auto-Rotation starten")">
+                ⟳
+            </button>
+            <button class="btn btn-sm btn-outline-light" @onclick="ToggleFullscreenAsync" title="Vollbild">
+                @(isFullscreen ? "⤓" : "⤢")
+            </button>
+            @if (!realtimeConnected)
+            {
+                <span class="badge bg-warning text-dark">Offline</span>
+            }
+        </div>
+    </div>
+
+    @* ─── Tab nav ─── *@
+    <div class="dartsuite-dashboard__tabs d-flex border-bottom bg-secondary bg-opacity-10">
+        @foreach (var tab in Tabs)
+        {
+            <button class="dartsuite-dashboard__tab px-4 py-2 border-0 @(activeTab == tab.Key ? "bg-primary text-white fw-bold" : "bg-transparent")"
+                    @onclick="() => SetTab(tab.Key)">
+                @tab.Label
+                @if (tab.Key == "problems" && ProblemBoards.Any())
+                {
+                    <span class="badge bg-danger ms-1">@ProblemBoards.Count()</span>
+                }
+            </button>
+        }
+    </div>
+
+    @* ─── Content area ─── *@
+    <div class="dartsuite-dashboard__content flex-grow-1 overflow-auto p-3">
+        @if (selectedTournament is null)
+        {
+            <div class="text-center text-muted mt-5">Bitte ein Turnier auswählen.</div>
+        }
+        else if (activeTab == "running")
+        {
+            @* Running matches *@
+            var running = matches.Where(m => m.Status == "Aktiv").ToList();
+            @if (running.Count == 0)
+            {
+                <div class="text-center text-muted mt-5 fs-4">Keine laufenden Matches.</div>
+            }
+            else
+            {
+                <div class="row g-3">
+                    @foreach (var m in running)
+                    {
+                        var board = boards.FirstOrDefault(b => b.Id == m.BoardId);
+                        <div class="col-xl-4 col-lg-6 col-md-12">
+                            <div class="card border-success shadow">
+                                <div class="card-header bg-success text-white d-flex justify-content-between align-items-center py-1">
+                                    <span class="badge bg-light text-success fw-bold">▶ LIVE</span>
+                                    @if (board is not null)
+                                    {
+                                        <span class="small"><BoardStatusIndicator Board="@board" ShowLabel="false" /> @board.Name</span>
+                                    }
+                                </div>
+                                <div class="card-body py-2 px-3 text-center">
+                                    <div class="d-flex justify-content-around align-items-center">
+                                        <div class="text-center">
+                                            <div class="fs-5 fw-bold">@ParticipantName(m.HomeParticipantId)</div>
+                                            <div class="display-4 fw-bold text-success">@m.HomeLegs</div>
+                                            @if (m.HomeSets > 0) { <small class="text-muted">@m.HomeSets Sets</small> }
+                                        </div>
+                                        <div class="fs-2 text-muted px-2">vs</div>
+                                        <div class="text-center">
+                                            <div class="fs-5 fw-bold">@ParticipantName(m.AwayParticipantId)</div>
+                                            <div class="display-4 fw-bold text-success">@m.AwayLegs</div>
+                                            @if (m.AwaySets > 0) { <small class="text-muted">@m.AwaySets Sets</small> }
+                                        </div>
+                                    </div>
+                                    @if (m.StartedUtc.HasValue)
+                                    {
+                                        var el = (DateTimeOffset.UtcNow - m.StartedUtc.Value);
+                                        <small class="text-muted">⏱ @((int)el.TotalMinutes) min</small>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+        else if (activeTab == "next")
+        {
+            @* Upcoming matches (next 10) *@
+            var upcoming = matches
+                .Where(m => m.Status != "Aktiv" && m.Status != "Beendet" && m.Status != "WalkOver")
+                .OrderBy(m => m.PlannedStartUtc)
+                .Take(10)
+                .ToList();
+            @if (upcoming.Count == 0)
+            {
+                <div class="text-center text-muted mt-5 fs-4">Keine anstehenden Matches.</div>
+            }
+            else
+            {
+                <table class="table table-striped table-hover align-middle">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Zeit</th>
+                            <th>Match</th>
+                            <th>Board</th>
+                            <th>Runde</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in upcoming)
+                        {
+                            var board = boards.FirstOrDefault(b => b.Id == m.BoardId);
+                            <tr>
+                                <td class="text-nowrap">
+                                    @if (m.PlannedStartUtc.HasValue)
+                                    {
+                                        <span>@m.PlannedStartUtc.Value.ToLocalTime().ToString("HH:mm")</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    <strong>@ParticipantName(m.HomeParticipantId)</strong>
+                                    <span class="text-muted mx-1">vs</span>
+                                    <strong>@ParticipantName(m.AwayParticipantId)</strong>
+                                </td>
+                                <td>
+                                    @if (board is not null)
+                                    {
+                                        <span class="d-inline-flex align-items-center gap-1">
+                                            <BoardStatusIndicator Board="@board" ShowLabel="false" />
+                                            @board.Name
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                                <td><small>@m.Phase R@m.Round</small></td>
+                                <td><span class="badge bg-secondary">@m.Status</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        }
+        else if (activeTab == "problems")
+        {
+            @* Boards with issues *@
+            var problems = ProblemBoards.ToList();
+            @if (problems.Count == 0)
+            {
+                <div class="text-center text-success mt-5 fs-4">✓ Alle Boards im grünen Bereich.</div>
+            }
+            else
+            {
+                <div class="row g-3">
+                    @foreach (var b in problems)
+                    {
+                        <div class="col-xl-4 col-lg-6 col-md-12">
+                            <div class="card border-@(b.OverallStatus == "Error" ? "danger" : "warning") shadow-sm">
+                                <div class="card-header d-flex align-items-center gap-2 bg-@(b.OverallStatus == "Error" ? "danger" : "warning") @(b.OverallStatus == "Error" ? "text-white" : "text-dark") py-1">
+                                    <BoardStatusIndicator Board="@b" ShowLabel="false" />
+                                    <strong>@b.Name</strong>
+                                    <span class="ms-auto badge bg-white text-dark">@b.OverallStatus</span>
+                                </div>
+                                <div class="card-body py-2 small">
+                                    <div class="row g-1">
+                                        <div class="col-6"><span class="text-muted">Board:</span> @b.Status</div>
+                                        <div class="col-6"><span class="text-muted">Verbindung:</span> @b.ConnectionState</div>
+                                        <div class="col-6"><span class="text-muted">Extension:</span> @b.ExtensionStatus</div>
+                                        <div class="col-6"><span class="text-muted">Zeitplan:</span> @b.SchedulingStatus</div>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(b.CurrentMatchLabel))
+                                    {
+                                        <div class="mt-1 text-muted">Match: <code>@b.CurrentMatchLabel</code></div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+        else if (activeTab == "boards")
+        {
+            @* All boards overview *@
+            <div class="row g-3">
+                @foreach (var b in boards)
+                {
+                    var bMatches = matches.Where(m => m.BoardId == b.Id).ToList();
+                    var activeMatch = bMatches.FirstOrDefault(m => m.Status == "Aktiv");
+                    <div class="col-xl-3 col-lg-4 col-md-6">
+                        <div class="card @BoardCardBorderClass(b.OverallStatus) shadow-sm h-100">
+                            <div class="card-header d-flex align-items-center gap-2 py-2">
+                                <BoardStatusIndicator Board="@b" ShowLabel="false" />
+                                <strong class="small">@b.Name</strong>
+                                <span class="ms-auto badge @BoardStatusBadge(b.Status)">@b.Status</span>
+                            </div>
+                            <div class="card-body py-2 px-3 small">
+                                @if (activeMatch is not null)
+                                {
+                                    <div class="text-success fw-semibold">▶ @ParticipantName(activeMatch.HomeParticipantId) vs @ParticipantName(activeMatch.AwayParticipantId)</div>
+                                    <div>Score: @activeMatch.HomeLegs : @activeMatch.AwayLegs</div>
+                                }
+                                else
+                                {
+                                    <div class="text-muted fst-italic">Kein aktives Match</div>
+                                }
+                                <div class="text-muted mt-1">Extension: @b.ExtensionStatus</div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    @* ─── Ticker / Laufschrift ─── *@
+    @if (TickerItems.Any())
+    {
+        <div class="dartsuite-dashboard__ticker border-top bg-dark text-white px-0 py-1 overflow-hidden">
+            <div class="dartsuite-dashboard__ticker-inner">
+                @foreach (var item in TickerItems)
+                {
+                    <span class="me-5">@item</span>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .dartsuite-dashboard {
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 56px); /* subtract nav height */
+        position: relative;
+    }
+    .dartsuite-dashboard--fullscreen {
+        position: fixed;
+        inset: 0;
+        height: 100vh;
+        z-index: 9999;
+        background: #fff;
+    }
+    .dartsuite-dashboard__tab {
+        border-right: 1px solid #dee2e6;
+        cursor: pointer;
+        transition: background .15s;
+    }
+    .dartsuite-dashboard__ticker {
+        height: 36px;
+        white-space: nowrap;
+    }
+    .dartsuite-dashboard__ticker-inner {
+        display: inline-block;
+        animation: ticker-scroll 40s linear infinite;
+        padding-left: 100%;
+    }
+    @@keyframes ticker-scroll {
+        0%   { transform: translateX(0); }
+        100% { transform: translateX(-100%); }
+    }
+</style>
+
+@code {
+    private record TabDef(string Key, string Label);
+
+    private static readonly TabDef[] Tabs =
+    [
+        new("running", "▶ Laufend"),
+        new("next",    "⏭ Nächste Matches"),
+        new("boards",  "📋 Boards"),
+        new("problems","⚠ Probleme"),
+    ];
+
+    private List<TournamentDto> tournaments = [];
+    private List<BoardDto> boards = [];
+    private List<MatchDto> matches = [];
+    private List<ParticipantDto> participants = [];
+
+    private string selectedTournamentId = "";
+    private string activeTab = "running";
+    private bool autoRotate;
+    private int rotateSecs = 15;
+    private bool isFullscreen;
+    private bool realtimeConnected;
+    private Timer? _rotateTimer;
+    private int _tabIndex;
+
+    private TournamentDto? selectedTournament => string.IsNullOrEmpty(selectedTournamentId)
+        ? null
+        : tournaments.FirstOrDefault(t => t.Id.ToString() == selectedTournamentId);
+
+    private IEnumerable<BoardDto> ProblemBoards => boards.Where(b => b.OverallStatus is "Warning" or "Error");
+
+    private IEnumerable<string> TickerItems
+    {
+        get
+        {
+            foreach (var m in matches.Where(m => m.Status == "Aktiv"))
+                yield return $"▶ {ParticipantName(m.HomeParticipantId)} {m.HomeLegs}:{m.AwayLegs} {ParticipantName(m.AwayParticipantId)}";
+            foreach (var b in ProblemBoards)
+                yield return $"⚠ {b.Name}: {b.OverallStatus}";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            tournaments = (await Api.GetTournamentsAsync()).ToList();
+            boards = (await Api.GetBoardsAsync()).ToList();
+            var active = tournaments.FirstOrDefault(t => t.Status == "Gestartet") ?? tournaments.FirstOrDefault();
+            if (active is not null)
+            {
+                selectedTournamentId = active.Id.ToString();
+                await LoadTournamentDataAsync();
+            }
+        }
+        catch { /* API offline — degrade gracefully */ }
+
+        await ConnectHubsAsync();
+    }
+
+    private async Task LoadTournamentDataAsync()
+    {
+        if (selectedTournament is null) return;
+        try
+        {
+            matches = (await Api.GetMatchesAsync(selectedTournament.Id)).ToList();
+            participants = (await Api.GetParticipantsAsync(selectedTournament.Id)).ToList();
+        }
+        catch { /* ignore */ }
+    }
+
+    private async Task ConnectHubsAsync()
+    {
+        BoardHubService.OnConnectionChanged += OnBoardHubConnectionChanged;
+        BoardHubService.OnBoardStatusChanged += OnBoardUpdated;
+        BoardHubService.OnBoardConnectionChanged += OnBoardUpdated;
+        BoardHubService.OnBoardExtensionStatusChanged += OnBoardUpdated;
+        BoardHubService.OnBoardCurrentMatchChanged += OnBoardUpdated;
+        BoardHubService.OnBoardAdded += OnBoardUpdated;
+        BoardHubService.OnBoardRemoved += OnBoardRemoved;
+        TournamentHubService.OnMatchUpdated += OnMatchOrScheduleUpdated;
+        TournamentHubService.OnScheduleUpdated += OnMatchOrScheduleUpdated;
+        try { await BoardHubService.StartAsync(); } catch { }
+        try { await TournamentHubService.StartAsync(); } catch { }
+    }
+
+    private async Task OnBoardHubConnectionChanged(bool connected)
+    {
+        realtimeConnected = connected;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnBoardUpdated(BoardDto dto)
+    {
+        var idx = boards.FindIndex(b => b.Id == dto.Id);
+        if (idx >= 0) boards[idx] = dto;
+        else boards.Add(dto);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnBoardRemoved(Guid id)
+    {
+        boards.RemoveAll(b => b.Id == id);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnMatchOrScheduleUpdated(string tournamentId)
+    {
+        if (selectedTournament?.Id.ToString() == tournamentId)
+        {
+            await LoadTournamentDataAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnTournamentChanged(ChangeEventArgs e)
+    {
+        selectedTournamentId = e.Value?.ToString() ?? "";
+        await LoadTournamentDataAsync();
+    }
+
+    private void SetTab(string key)
+    {
+        activeTab = key;
+        _tabIndex = Array.FindIndex(Tabs, t => t.Key == key);
+    }
+
+    private void ToggleAutoRotate()
+    {
+        autoRotate = !autoRotate;
+        _rotateTimer?.Dispose();
+        if (autoRotate)
+        {
+            _rotateTimer = new Timer(_ =>
+            {
+                _tabIndex = (_tabIndex + 1) % Tabs.Length;
+                activeTab = Tabs[_tabIndex].Key;
+                InvokeAsync(StateHasChanged);
+            }, null, TimeSpan.FromSeconds(rotateSecs), TimeSpan.FromSeconds(rotateSecs));
+        }
+    }
+
+    private async Task ToggleFullscreenAsync()
+    {
+        isFullscreen = !isFullscreen;
+        await JS.InvokeVoidAsync("document.body.classList.toggle", "overflow-hidden", isFullscreen);
+    }
+
+    private string ParticipantName(Guid id)
+    {
+        if (id == Guid.Empty) return "Freilos";
+        return participants.FirstOrDefault(p => p.Id == id)?.DisplayName ?? "TBD";
+    }
+
+    private static string BoardCardBorderClass(string? overallStatus) => overallStatus switch
+    {
+        "Error" => "border-danger border-2",
+        "Warning" => "border-warning border-2",
+        _ => ""
+    };
+
+    private static string BoardStatusBadge(string? status) => status switch
+    {
+        "Running" => "bg-success",
+        "Online" => "bg-success",
+        "Starting" => "bg-warning text-dark",
+        "Error" => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        _rotateTimer?.Dispose();
+        BoardHubService.OnConnectionChanged -= OnBoardHubConnectionChanged;
+        BoardHubService.OnBoardStatusChanged -= OnBoardUpdated;
+        BoardHubService.OnBoardConnectionChanged -= OnBoardUpdated;
+        BoardHubService.OnBoardExtensionStatusChanged -= OnBoardUpdated;
+        BoardHubService.OnBoardCurrentMatchChanged -= OnBoardUpdated;
+        BoardHubService.OnBoardAdded -= OnBoardUpdated;
+        BoardHubService.OnBoardRemoved -= OnBoardRemoved;
+        TournamentHubService.OnMatchUpdated -= OnMatchOrScheduleUpdated;
+        TournamentHubService.OnScheduleUpdated -= OnMatchOrScheduleUpdated;
+        await Task.CompletedTask;
+    }
+}

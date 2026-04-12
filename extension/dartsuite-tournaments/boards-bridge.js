@@ -4,13 +4,16 @@
 // Runs in MAIN world so it shares the page's cookies/credentials.
 
 (function () {
-    const BOARDS_API = "https://api.autodarts.io/bs/v0/boards/";
+    const BOARDS_API = "https://api.autodarts.io/bs/v0/boards";
     const FRIENDS_API = "https://api.autodarts.io/as/v0/users/me/friends";
     const BOARDS_PATTERN = /\/bs\/v0\/boards/;
     const FRIENDS_PATTERN = /\/as\/v0\/(friends|users\/me\/friends)/;
     const AUTODARTS_API = /api\.autodarts\.io/;
     const BOARDS_MSG_TYPE = "dartsuite-boards-response";
+    const BOARDS_ERROR_MSG_TYPE = "dartsuite-boards-error";
     const FRIENDS_MSG_TYPE = "dartsuite-friends-response";
+    const AUTH_TOKEN_MSG_TYPE = "dartsuite-auth-token-response";
+    const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
     let boardsAlreadySent = false;
     let friendsAlreadySent = false;
     let capturedToken = null;
@@ -33,7 +36,8 @@
     }
 
     function onTokenCaptured(token, source) {
-        if (!token || capturedToken) return;
+        if (!token) return;
+        if (capturedToken === token) return;
         capturedToken = token;
         console.log("[DartSuite Bridge] Captured Bearer token via " + source);
         // If we're on /boards and haven't sent boards yet, try fetching now
@@ -43,7 +47,7 @@
     }
 
     function onBoardsIntercepted(data) {
-        if (!Array.isArray(data) || data.length === 0 || boardsAlreadySent) return;
+        if (!Array.isArray(data) || boardsAlreadySent) return;
         boardsAlreadySent = true;
         console.log("[DartSuite Bridge] Captured", data.length, "boards from intercepted request");
         window.postMessage({ type: BOARDS_MSG_TYPE, boards: data }, "*");
@@ -55,6 +59,53 @@
         console.log("[DartSuite Bridge] Captured", data.length, "friends from intercepted request");
         if (data.length > 0) console.log("[DartSuite Bridge] Friend sample keys:", Object.keys(data[0]));
         window.postMessage({ type: FRIENDS_MSG_TYPE, friends: data }, "*");
+    }
+
+    function extractErrorMessage(rawBody) {
+        if (!rawBody) return "";
+        try {
+            const parsed = JSON.parse(rawBody);
+            return parsed?.error?.message
+                || parsed?.message
+                || parsed?.error_description
+                || parsed?.detail
+                || "";
+        } catch {
+            return rawBody;
+        }
+    }
+
+    function normalizeBoardsError(status, rawBody, fallbackMessage) {
+        let message = extractErrorMessage(rawBody) || fallbackMessage || "Autodarts Boards API Fehler.";
+        if (/token has invalid claims|token is expired/i.test(message)) {
+            message = "Autodarts Token ist abgelaufen. Bitte in Autodarts neu anmelden.";
+        }
+
+        return {
+            status,
+            message,
+            raw: rawBody ? String(rawBody).slice(0, 500) : null
+        };
+    }
+
+    function postBoardsError(error) {
+        window.postMessage({ type: BOARDS_ERROR_MSG_TYPE, error }, "*");
+    }
+
+    function postAuthTokenResponse(token) {
+        window.postMessage({ type: AUTH_TOKEN_MSG_TYPE, token: token || null }, "*");
+    }
+
+    function isRedirectStatus(status) {
+        return REDIRECT_STATUSES.has(status);
+    }
+
+    async function readTextSafe(response) {
+        try {
+            return await response.text();
+        } catch {
+            return "";
+        }
     }
 
     // ── Strategy 1a: Hook window.fetch ──
@@ -76,10 +127,22 @@
 
         try {
             const url = typeof args[0] === "string" ? args[0] : args[0]?.url;
-            if (url && BOARDS_PATTERN.test(url) && response.ok) {
+            if (url && BOARDS_PATTERN.test(url)) {
                 const clone = response.clone();
-                const data = await clone.json();
-                onBoardsIntercepted(data);
+                if (response.ok) {
+                    const data = await clone.json();
+                    onBoardsIntercepted(data);
+                } else if (response.status === 304 || isRedirectStatus(response.status)) {
+                    // 3xx/304 can occur transiently and are often followed by a successful request.
+                    // Do not surface these as hard errors in the popup.
+                } else {
+                    const raw = await clone.text();
+                    postBoardsError(normalizeBoardsError(
+                        response.status,
+                        raw,
+                        `Autodarts Boards API Fehler (${response.status})`
+                    ));
+                }
             }
             if (url && FRIENDS_PATTERN.test(url) && response.ok) {
                 const clone = response.clone();
@@ -118,6 +181,14 @@
                     if (this.status >= 200 && this.status < 300) {
                         const data = JSON.parse(this.responseText);
                         onBoardsIntercepted(data);
+                    } else if (this.status === 304 || isRedirectStatus(this.status)) {
+                        // Ignore redirect/cached statuses for popup error display.
+                    } else {
+                        postBoardsError(normalizeBoardsError(
+                            this.status,
+                            this.responseText,
+                            `Autodarts Boards API Fehler (${this.status})`
+                        ));
                     }
                 } catch { /* ignore */ }
             });
@@ -217,28 +288,54 @@
         const token = findAccessToken();
         if (!token) {
             console.warn("[DartSuite Bridge] No access token available yet — waiting for app to make an API call");
+            postBoardsError(normalizeBoardsError(401, "", "Kein Autodarts Token gefunden. Bitte in Autodarts einloggen."));
             return;
         }
 
         try {
-            const response = await originalFetch(BOARDS_API, {
-                method: "GET",
-                headers: {
-                    "Accept": "application/json",
-                    "Authorization": "Bearer " + token
-                }
-            });
+            const candidateUrls = [BOARDS_API, `${BOARDS_API}/`];
+            let lastNonRedirectFailure = null;
 
-            if (!response.ok) {
-                console.warn("[DartSuite Bridge] Direct boards fetch failed:", response.status);
-                if (response.status === 401) capturedToken = null; // Token expired, clear it
-                return;
+            for (const url of candidateUrls) {
+                const response = await originalFetch(url, {
+                    method: "GET",
+                    cache: "no-store",
+                    redirect: "follow",
+                    headers: {
+                        "Accept": "application/json",
+                        "Authorization": "Bearer " + token
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    onBoardsIntercepted(data);
+                    return;
+                }
+
+                if (response.status === 304 || isRedirectStatus(response.status)) {
+                    console.info("[DartSuite Bridge] Direct boards fetch returned redirect/cache status", response.status, "for", url);
+                    continue;
+                }
+
+                lastNonRedirectFailure = response;
+                if (response.status === 401) {
+                    capturedToken = null; // Token expired, clear it
+                }
             }
 
-            const data = await response.json();
-            onBoardsIntercepted(data);
+            if (lastNonRedirectFailure) {
+                console.warn("[DartSuite Bridge] Direct boards fetch failed:", lastNonRedirectFailure.status);
+                const rawBody = await readTextSafe(lastNonRedirectFailure);
+                postBoardsError(normalizeBoardsError(
+                    lastNonRedirectFailure.status,
+                    rawBody,
+                    `Autodarts Boards API Fehler (${lastNonRedirectFailure.status})`
+                ));
+            }
         } catch (e) {
             console.warn("[DartSuite Bridge] Direct fetch error:", e.message);
+            postBoardsError(normalizeBoardsError(0, String(e?.message || ""), "Autodarts Boards API nicht erreichbar."));
         }
     }
 
@@ -312,6 +409,9 @@
         if (event.data?.type === "dartsuite-request-friends") {
             friendsAlreadySent = false;
             fetchFriendsDirectly();
+        }
+        if (event.data?.type === "dartsuite-request-auth-token") {
+            postAuthTokenResponse(findAccessToken());
         }
     });
 })();

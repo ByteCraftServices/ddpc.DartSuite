@@ -1,0 +1,134 @@
+@page "/my-tournaments"
+@using ddpc.DartSuite.Application.Contracts.Tournaments
+@inject DartSuiteApiService Api
+@inject AppStateService AppState
+@inject NavigationManager Navigation
+@inject IUiHelpService UiHelp
+
+<PageTitle>Meine Turniere</PageTitle>
+
+<h1 class="mb-3">Meine Turniere <UiHelpIcon HelpKey="page.my-tournaments" /></h1>
+
+<div class="btn-group mb-3" role="group">
+        <button class="btn @(filter == "overview" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetFilter("overview")'
+            title="@UiHelp.GetTooltip("my-tournaments.filter.overview")">Uebersicht</button>
+        <button class="btn @(filter == "running" ? "btn-primary" : "btn-outline-primary")" @onclick='() => SetFilter("running")'
+            title="@UiHelp.GetTooltip("my-tournaments.filter.running")">Laufende</button>
+</div>
+
+@if (isLoading)
+{
+    <div class="text-muted">Turniere werden geladen ...</div>
+}
+else if (filtered.Count == 0)
+{
+    <div class="alert alert-info">Keine Turniere fuer den aktuellen Benutzer gefunden.</div>
+}
+else
+{
+    <div class="list-group">
+        @foreach (var tournament in filtered)
+        {
+            <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+               href="/tournaments?tournamentId=@tournament.Id">
+                <span>@tournament.Name</span>
+                <span class="badge bg-secondary">@tournament.Status</span>
+            </a>
+        }
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "filter")]
+    public string? QueryFilter { get; set; }
+
+    private readonly List<TournamentDto> all = [];
+    private readonly HashSet<Guid> memberTournamentIds = [];
+    private List<TournamentDto> filtered = [];
+    private string filter = "overview";
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        filter = NormalizeFilter(QueryFilter);
+
+        try
+        {
+            all.Clear();
+            all.AddRange(await Api.GetTournamentsAsync());
+            await LoadMembershipAsync();
+            ApplyFilter();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        var normalized = NormalizeFilter(QueryFilter);
+        if (string.Equals(filter, normalized, StringComparison.Ordinal))
+            return;
+
+        filter = normalized;
+        if (!isLoading)
+            ApplyFilter();
+    }
+
+    private void SetFilter(string next)
+    {
+        var normalized = NormalizeFilter(next);
+        filter = normalized;
+        ApplyFilter();
+        Navigation.NavigateTo($"my-tournaments?filter={normalized}", replace: false);
+    }
+
+    private static string NormalizeFilter(string? value)
+        => string.Equals(value, "running", StringComparison.OrdinalIgnoreCase) ? "running" : "overview";
+
+    private void ApplyFilter()
+    {
+        var actor = AppState.AutodartsProfile?.DisplayName;
+        var own = string.IsNullOrWhiteSpace(actor)
+            ? []
+            : all.Where(t =>
+                    string.Equals(t.OrganizerAccount, actor, StringComparison.OrdinalIgnoreCase)
+                    || memberTournamentIds.Contains(t.Id))
+                .ToList();
+
+        filtered = filter == "running"
+            ? own.Where(t => t.Status == "Gestartet").ToList()
+            : own;
+    }
+
+    private async Task LoadMembershipAsync()
+    {
+        memberTournamentIds.Clear();
+        var actor = AppState.AutodartsProfile?.DisplayName;
+        if (string.IsNullOrWhiteSpace(actor) || all.Count == 0)
+            return;
+
+        var membershipChecks = all.Select(async tournament =>
+        {
+            try
+            {
+                var participants = await Api.GetParticipantsAsync(tournament.Id);
+                var isMember = participants.Any(p =>
+                    string.Equals(p.AccountName, actor, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(p.DisplayName, actor, StringComparison.OrdinalIgnoreCase));
+
+                return (TournamentId: tournament.Id, IsMember: isMember);
+            }
+            catch
+            {
+                // Ignore per-tournament participant loading errors in this overview.
+                return (TournamentId: tournament.Id, IsMember: false);
+            }
+        });
+
+        var results = await Task.WhenAll(membershipChecks);
+        foreach (var result in results.Where(x => x.IsMember))
+            memberTournamentIds.Add(result.TournamentId);
+    }
+}

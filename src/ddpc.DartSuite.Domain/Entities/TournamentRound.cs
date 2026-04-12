@@ -21,7 +21,7 @@ public sealed class TournamentRound
     public string BullOffMode { get; set; } = "Normal";
 
     // Scheduling
-    public int MatchDurationMinutes { get; set; }
+    public int LegDurationSeconds { get; set; }
     public int PauseBetweenMatchesMinutes { get; set; }
     public int MinPlayerPauseMinutes { get; set; }
 

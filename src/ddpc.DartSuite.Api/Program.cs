@@ -21,6 +21,8 @@ builder.Services.AddDartSuiteInfrastructure(builder.Configuration);
 builder.Services.AddDartSuiteApiClient(builder.Configuration);
 builder.Services.AddSingleton<AutodartsSessionStore>();
 builder.Services.AddSingleton<AutodartsMatchListenerService>();
+builder.Services.AddSingleton<BoardExtensionSyncRequestStore>();
+builder.Services.AddScoped<TournamentAuthorizationService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<AutodartsMatchListenerService>());
 
 var app = builder.Build();
@@ -34,80 +36,12 @@ if (app.Environment.IsDevelopment() && builder.Configuration.GetValue<bool>("Ena
 app.UseCors("Default");
 app.MapControllers();
 app.MapHub<BoardStatusHub>("/hubs/boards");
+app.MapHub<TournamentHub>("/hubs/tournaments");
 
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<DartSuiteDbContext>();
-    await dbContext.Database.EnsureCreatedAsync();
-
-    // Add HomeSets/AwaySets columns if missing (EnsureCreated doesn't alter existing tables)
-    var conn = dbContext.Database.GetDbConnection();
-    await conn.OpenAsync();
-    await using var cmd = conn.CreateCommand();
-    cmd.CommandText = "PRAGMA table_info(Matches)";
-    var columns = new HashSet<string>();
-    await using (var reader = await cmd.ExecuteReaderAsync())
-    {
-        while (await reader.ReadAsync())
-            columns.Add(reader.GetString(1));
-    }
-    if (!columns.Contains("HomeSets"))
-    {
-        await using var alter = conn.CreateCommand();
-        alter.CommandText = "ALTER TABLE Matches ADD COLUMN HomeSets INTEGER NOT NULL DEFAULT 0";
-        await alter.ExecuteNonQueryAsync();
-    }
-    if (!columns.Contains("AwaySets"))
-    {
-        await using var alter = conn.CreateCommand();
-        alter.CommandText = "ALTER TABLE Matches ADD COLUMN AwaySets INTEGER NOT NULL DEFAULT 0";
-        await alter.ExecuteNonQueryAsync();
-    }
-
-    // Add Status column to Tournaments if missing
-    await using var cmdTournaments = conn.CreateCommand();
-    cmdTournaments.CommandText = "PRAGMA table_info(Tournaments)";
-    var tournamentColumns = new HashSet<string>();
-    await using (var reader = await cmdTournaments.ExecuteReaderAsync())
-    {
-        while (await reader.ReadAsync())
-            tournamentColumns.Add(reader.GetString(1));
-    }
-    if (!tournamentColumns.Contains("Status"))
-    {
-        await using var alter = conn.CreateCommand();
-        alter.CommandText = "ALTER TABLE Tournaments ADD COLUMN Status INTEGER NOT NULL DEFAULT 0";
-        await alter.ExecuteNonQueryAsync();
-    }
-
-    // Add Status column to Matches if missing
-    if (!columns.Contains("Status"))
-    {
-        await using var alter = conn.CreateCommand();
-        alter.CommandText = "ALTER TABLE Matches ADD COLUMN Status INTEGER NOT NULL DEFAULT 0";
-        await alter.ExecuteNonQueryAsync();
-    }
-
-    // Add Registration columns to Tournaments if missing
-    if (!tournamentColumns.Contains("IsRegistrationOpen"))
-    {
-        await using var alter = conn.CreateCommand();
-        alter.CommandText = "ALTER TABLE Tournaments ADD COLUMN IsRegistrationOpen INTEGER NOT NULL DEFAULT 0";
-        await alter.ExecuteNonQueryAsync();
-    }
-    if (!tournamentColumns.Contains("RegistrationStartUtc"))
-    {
-        await using var alter = conn.CreateCommand();
-        alter.CommandText = "ALTER TABLE Tournaments ADD COLUMN RegistrationStartUtc TEXT";
-        await alter.ExecuteNonQueryAsync();
-    }
-    if (!tournamentColumns.Contains("RegistrationEndUtc"))
-    {
-        await using var alter = conn.CreateCommand();
-        alter.CommandText = "ALTER TABLE Tournaments ADD COLUMN RegistrationEndUtc TEXT";
-        await alter.ExecuteNonQueryAsync();
-    }
-
+    await dbContext.Database.MigrateAsync();
     await DartSuiteSeeder.SeedAsync(dbContext);
 }
 

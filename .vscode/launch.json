@@ -10,6 +10,17 @@
             "preLaunchTask": "build"
         },
         {
+            "name": "DartSuite API (DevOnProdDB)",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/ddpc.DartSuite.Api/bin/Debug/net10.0/ddpc.DartSuite.Api.dll",
+            "cwd": "${workspaceFolder}/src/ddpc.DartSuite.Api",
+            "preLaunchTask": "build",
+            "env": {
+                "ASPNETCORE_ENVIRONMENT": "DevOnProdDB"
+            }
+        },
+        {
             "name": "DartSuite Web",
             "type": "coreclr",
             "request": "launch",

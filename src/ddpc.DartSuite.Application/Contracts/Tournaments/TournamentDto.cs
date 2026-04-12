@@ -29,4 +29,8 @@ public sealed record TournamentDto(
     int LegFactor,
     bool IsRegistrationOpen = false,
     DateTimeOffset? RegistrationStartUtc = null,
-    DateTimeOffset? RegistrationEndUtc = null);
+    DateTimeOffset? RegistrationEndUtc = null,
+    string? DiscordWebhookUrl = null,
+    string? DiscordWebhookDisplayText = null,
+    bool SeedingEnabled = false,
+    int SeedTopCount = 0);

@@ -1,0 +1,77 @@
+@inject IJSRuntime JS
+
+<ul id="tournament-tabs-nav" class="nav nav-tabs mb-3 tournament-tabs-nowrap">
+    <li class="nav-item">
+        <button class="nav-link text-nowrap @(ActiveTab == "general" ? "active" : "")" @onclick='() => SelectAsync("general")'>Allgemein</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link text-nowrap @(ActiveTab == "boards-participants" ? "active" : "")" @onclick='() => SelectAsync("boards-participants")'>Boards &amp; Teilnehmer</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link text-nowrap @(ActiveTab == "draw" ? "active" : "")" @onclick='() => SelectAsync("draw")'>
+            Auslosung
+            <span class="badge @DrawStatusBadgeCss ms-1" title="@DrawStatusTitle" aria-label="@DrawStatusTitle">
+                <i class="bi @DrawStatusIconCss"></i>
+            </span>
+            <span class="badge text-bg-secondary ms-1" title="@DrawProgressTitle" aria-label="@DrawProgressTitle">@DrawProgressText</span>
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link text-nowrap @(ActiveTab == "rounds" ? "active" : "")" @onclick='() => SelectAsync("rounds")'>
+            Spielmodus
+            @if (HasMissingRoundConfig)
+            {
+                <span class="badge text-bg-danger ms-1">@MissingRoundConfigCount ⚠</span>
+            }
+        </button>
+    </li>
+    @if (ShowGroupsTab)
+    {
+        <li class="nav-item">
+            <button class="nav-link text-nowrap @(ActiveTab == "groups" ? "active" : "")" @onclick='() => SelectAsync("groups")'>
+                Gruppenphase
+                <span class="badge @GroupPhaseBadgeCss ms-1">@GroupPhaseBadgeText</span>
+            </button>
+        </li>
+    }
+    <li class="nav-item">
+        <button class="nav-link text-nowrap @(ActiveTab == "knockout" ? "active" : "")" @onclick='() => SelectAsync("knockout")'>
+            K.O.-Phase
+            <span class="badge @KnockoutPhaseBadgeCss ms-1">@KnockoutPhaseBadgeText</span>
+        </button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link text-nowrap @(ActiveTab == "schedule" ? "active" : "")" @onclick='() => SelectAsync("schedule")'>
+            Spielplan
+            <span class="badge @ScheduleBadgeCss ms-1">@ScheduleBadgeText</span>
+        </button>
+    </li>
+</ul>
+
+@code {
+    [Parameter] public string ActiveTab { get; set; } = "general";
+    [Parameter] public bool ShowGroupsTab { get; set; }
+    [Parameter] public bool HasMissingRoundConfig { get; set; }
+    [Parameter] public int MissingRoundConfigCount { get; set; }
+    [Parameter] public string GroupPhaseBadgeCss { get; set; } = "text-bg-secondary";
+    [Parameter] public string GroupPhaseBadgeText { get; set; } = "0";
+    [Parameter] public string KnockoutPhaseBadgeCss { get; set; } = "text-bg-secondary";
+    [Parameter] public string KnockoutPhaseBadgeText { get; set; } = "0";
+    [Parameter] public string ScheduleBadgeCss { get; set; } = "text-bg-secondary";
+    [Parameter] public string ScheduleBadgeText { get; set; } = "0";
+    [Parameter] public string DrawStatusBadgeCss { get; set; } = "text-bg-danger";
+    [Parameter] public string DrawStatusIconCss { get; set; } = "bi-hand-index-thumb-fill";
+    [Parameter] public string DrawStatusTitle { get; set; } = "Auslosung wurde noch nicht ausgeführt!";
+    [Parameter] public string DrawProgressText { get; set; } = "0%";
+    [Parameter] public string DrawProgressTitle { get; set; } = "Auslosungsfortschritt: 0%.";
+    [Parameter] public EventCallback<string> OnTabSelected { get; set; }
+
+    private Task SelectAsync(string tab)
+        => OnTabSelected.InvokeAsync(tab);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+            try { await JS.InvokeVoidAsync("dartSuiteUi.scrollActiveTabIntoView", "#tournament-tabs-nav"); }
+        catch { /* silently ignore if JS unavailable */ }
+    }
+}

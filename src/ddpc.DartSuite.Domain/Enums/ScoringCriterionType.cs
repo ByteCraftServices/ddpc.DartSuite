@@ -8,5 +8,9 @@ public enum ScoringCriterionType
     LegDifference = 3,
     Average = 4,
     HighestAverage = 5,
-    Breaks = 6
+    Breaks = 6,
+    HighestCheckout = 7,
+    AverageDartsPerLeg = 8,
+    CheckoutPercentage = 9,
+    LotDraw = 10
 }

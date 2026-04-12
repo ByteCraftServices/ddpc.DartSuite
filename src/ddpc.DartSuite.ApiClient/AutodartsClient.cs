@@ -1,6 +1,9 @@
 using ddpc.DartSuite.ApiClient.Contracts;
 using Microsoft.Extensions.Options;
 using System.Net.Http.Headers;
+using System.Net.WebSockets;
+using System.Runtime.CompilerServices;
+using System.Text;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -213,9 +216,51 @@ public sealed class AutodartsClient(HttpClient httpClient, IOptions<AutodartsOpt
         return friends;
     }
 
-    public async Task<AutodartsMatchDetail?> GetMatchAsync(string accessToken, string matchId, CancellationToken cancellationToken = default)
+    public async Task<AutodartsMatchDetail?> GetMatchAsync(string accessToken, string matchId, bool allowLobbyFallback = true, CancellationToken cancellationToken = default)
     {
-        var matchUrl = new Uri(new Uri(_options.ApiBaseUrl), $"gs/v0/matches/{Uri.EscapeDataString(matchId)}");
+        if (string.IsNullOrWhiteSpace(matchId))
+            return null;
+
+        var encodedMatchId = Uri.EscapeDataString(matchId);
+        var candidatePaths = new[]
+        {
+            $"gs/v0/matches/{encodedMatchId}/state",
+            $"gs/v0/matches/{encodedMatchId}"
+        };
+
+        foreach (var path in candidatePaths)
+        {
+            var detail = await RequestMatchDetailAsync(accessToken, path, matchId, cancellationToken);
+            if (detail is not null)
+                return detail;
+        }
+
+        if (!allowLobbyFallback)
+            return null;
+
+        // Some extension flows may temporarily provide a lobby id.
+        // Try to resolve a linked match id from the lobby payload.
+        var lobby = await GetLobbyAsync(accessToken, matchId, cancellationToken);
+        var resolvedMatchId = lobby is not null
+            ? TryExtractMatchIdFromLobby(lobby.RawJson)
+            : null;
+
+        if (!string.IsNullOrWhiteSpace(resolvedMatchId)
+            && !string.Equals(resolvedMatchId, matchId, StringComparison.OrdinalIgnoreCase))
+        {
+            return await GetMatchAsync(accessToken, resolvedMatchId, allowLobbyFallback, cancellationToken);
+        }
+
+        return null;
+    }
+
+    private async Task<AutodartsMatchDetail?> RequestMatchDetailAsync(
+        string accessToken,
+        string relativePath,
+        string fallbackMatchId,
+        CancellationToken cancellationToken)
+    {
+        var matchUrl = new Uri(new Uri(_options.ApiBaseUrl), relativePath);
         using var request = new HttpRequestMessage(HttpMethod.Get, matchUrl);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
@@ -224,10 +269,10 @@ public sealed class AutodartsClient(HttpClient httpClient, IOptions<AutodartsOpt
         {
             throw new HttpRequestException("Autodarts API returned 401 Unauthorized", null, System.Net.HttpStatusCode.Unauthorized);
         }
+
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-        {
             return null;
-        }
+
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -242,10 +287,10 @@ public sealed class AutodartsClient(HttpClient httpClient, IOptions<AutodartsOpt
         var root = doc.RootElement;
 
         return new AutodartsMatchDetail(
-            GetString(root, "id") ?? matchId,
+            GetString(root, "id") ?? fallbackMatchId,
             GetString(root, "variant"),
             GetString(root, "gameMode"),
-            root.TryGetProperty("finished", out var fin) && fin.GetBoolean(),
+            root.TryGetProperty("finished", out var fin) && fin.ValueKind == JsonValueKind.True,
             GetElementOrNull(root, "players"),
             GetElementOrNull(root, "turns"),
             GetElementOrNull(root, "legs"),
@@ -279,14 +324,54 @@ public sealed class AutodartsClient(HttpClient httpClient, IOptions<AutodartsOpt
     }
 
     public async IAsyncEnumerable<AutodartsEvent> ReadEventsAsync(
+        string accessToken,
         string boardExternalId,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(boardExternalId))
+            yield break;
+
+        var websocketEndpoints = BuildWebSocketEndpoints().ToArray();
+        if (websocketEndpoints.Length == 0)
+            yield break;
+
+        var reconnectDelay = TimeSpan.FromMilliseconds(Math.Clamp(_options.WebSocketReconnectDelayMilliseconds, 250, 5000));
+        var endpointIndex = 0;
+
         while (!cancellationToken.IsCancellationRequested)
         {
-            var payload = $"{{\"board\":\"{boardExternalId}\",\"status\":\"running\",\"message\":\"simulated-event\"}}";
-            yield return new AutodartsEvent("board-status", boardExternalId, payload, DateTimeOffset.UtcNow);
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            var endpoint = websocketEndpoints[endpointIndex % websocketEndpoints.Length];
+
+            await using var eventEnumerator = ReadEventsFromEndpointAsync(endpoint, accessToken, boardExternalId, cancellationToken)
+                .GetAsyncEnumerator(cancellationToken);
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                bool hasNext;
+
+                try
+                {
+                    hasNext = await eventEnumerator.MoveNextAsync();
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    yield break;
+                }
+                catch (Exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                if (!hasNext)
+                    break;
+
+                yield return eventEnumerator.Current;
+            }
+
+            endpointIndex++;
+
+            if (!cancellationToken.IsCancellationRequested)
+                await Task.Delay(reconnectDelay, cancellationToken);
         }
     }
 
@@ -302,6 +387,174 @@ public sealed class AutodartsClient(HttpClient httpClient, IOptions<AutodartsOpt
     }
 
     public IEnumerable<string> GetAudienceCandidates() => BuildAudienceCandidates();
+
+    private async IAsyncEnumerable<AutodartsEvent> ReadEventsFromEndpointAsync(
+        Uri endpoint,
+        string accessToken,
+        string boardExternalId,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        using var webSocket = new ClientWebSocket();
+        webSocket.Options.SetRequestHeader("Authorization", $"Bearer {accessToken}");
+
+        await webSocket.ConnectAsync(endpoint, cancellationToken);
+        await SendSubscriptionMessageAsync(webSocket, "autodarts.boards", "subscribe", $"{boardExternalId}.matches", cancellationToken);
+
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested && webSocket.State == WebSocketState.Open)
+            {
+                var message = await ReceiveTextMessageAsync(webSocket, cancellationToken);
+                if (message is null)
+                    break;
+
+                if (string.IsNullOrWhiteSpace(message))
+                    continue;
+
+                if (TryParseRealtimeEvent(message, boardExternalId, out var realtimeEvent))
+                    yield return realtimeEvent;
+            }
+        }
+        finally
+        {
+            if (webSocket.State == WebSocketState.Open)
+            {
+                try
+                {
+                    await SendSubscriptionMessageAsync(webSocket, "autodarts.boards", "unsubscribe", $"{boardExternalId}.matches", CancellationToken.None);
+                }
+                catch
+                {
+                    // Best effort cleanup.
+                }
+
+                try
+                {
+                    await webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "listener-closing", CancellationToken.None);
+                }
+                catch
+                {
+                    // Best effort cleanup.
+                }
+            }
+        }
+    }
+
+    private static async Task SendSubscriptionMessageAsync(
+        ClientWebSocket webSocket,
+        string channel,
+        string type,
+        string topic,
+        CancellationToken cancellationToken)
+    {
+        var payloadJson = JsonSerializer.Serialize(new
+        {
+            channel,
+            type,
+            topic
+        });
+
+        var payloadBytes = Encoding.UTF8.GetBytes(payloadJson);
+        await webSocket.SendAsync(payloadBytes, WebSocketMessageType.Text, true, cancellationToken);
+    }
+
+    private static async Task<string?> ReceiveTextMessageAsync(ClientWebSocket webSocket, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[8192];
+        using var stream = new MemoryStream();
+
+        while (!cancellationToken.IsCancellationRequested && webSocket.State == WebSocketState.Open)
+        {
+            var result = await webSocket.ReceiveAsync(buffer, cancellationToken);
+
+            if (result.MessageType == WebSocketMessageType.Close)
+                return null;
+
+            if (result.MessageType == WebSocketMessageType.Text && result.Count > 0)
+                stream.Write(buffer, 0, result.Count);
+
+            if (result.EndOfMessage)
+                break;
+        }
+
+        if (stream.Length == 0)
+            return string.Empty;
+
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    private static bool TryParseRealtimeEvent(string message, string boardExternalId, out AutodartsEvent realtimeEvent)
+    {
+        realtimeEvent = default!;
+
+        using var document = JsonDocument.Parse(message);
+        var root = document.RootElement;
+
+        if (root.ValueKind != JsonValueKind.Object)
+            return false;
+
+        var channel = GetString(root, "channel");
+        var topic = GetString(root, "topic");
+
+        if (!root.TryGetProperty("data", out var dataElement) || dataElement.ValueKind != JsonValueKind.Object)
+            return false;
+
+        var eventTimestamp = ResolveEventTimestamp(dataElement, DateTimeOffset.UtcNow);
+
+        if (string.Equals(channel, "autodarts.matches", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(topic)
+            && topic.EndsWith(".state", StringComparison.OrdinalIgnoreCase))
+        {
+            realtimeEvent = new AutodartsEvent("match-state", boardExternalId, dataElement.GetRawText(), eventTimestamp);
+            return true;
+        }
+
+        if (string.Equals(channel, "autodarts.boards", StringComparison.OrdinalIgnoreCase))
+        {
+            var eventType = GetString(dataElement, "event") ?? "board-event";
+            realtimeEvent = new AutodartsEvent($"board-{eventType}", boardExternalId, dataElement.GetRawText(), eventTimestamp);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static DateTimeOffset ResolveEventTimestamp(JsonElement dataElement, DateTimeOffset fallbackUtc)
+    {
+        foreach (var propertyName in new[] { "updatedAt", "timestamp", "createdAt" })
+        {
+            if (!dataElement.TryGetProperty(propertyName, out var value) || value.ValueKind != JsonValueKind.String)
+                continue;
+
+            if (DateTimeOffset.TryParse(value.GetString(), out var parsed))
+                return parsed.ToUniversalTime();
+        }
+
+        return fallbackUtc.ToUniversalTime();
+    }
+
+    private IEnumerable<Uri> BuildWebSocketEndpoints()
+    {
+        var candidates = new List<string?>
+        {
+            _options.WebSocketUrl
+        };
+
+        if (_options.WebSocketFallbackUrls.Length > 0)
+            candidates.AddRange(_options.WebSocketFallbackUrls);
+
+        foreach (var candidate in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(candidate))
+                continue;
+
+            if (Uri.TryCreate(candidate, UriKind.Absolute, out var endpoint)
+                && string.Equals(endpoint.Scheme, "wss", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return endpoint;
+            }
+        }
+    }
 
     private async Task<AutodartsToken> RequestTokenAsync(AutodartsAuthRequest request, string? audienceOverride, CancellationToken cancellationToken)
     {
@@ -545,6 +798,73 @@ public sealed class AutodartsClient(HttpClient httpClient, IOptions<AutodartsOpt
         if (element.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null && value.ValueKind != JsonValueKind.Undefined)
         {
             return value.Clone();
+        }
+
+        return null;
+    }
+
+    private static string? TryExtractMatchIdFromLobby(JsonElement lobbyRaw)
+    {
+        if (lobbyRaw.ValueKind != JsonValueKind.Object)
+            return null;
+
+        var direct = GetString(lobbyRaw, "matchId", "currentMatchId", "gameId");
+        if (!string.IsNullOrWhiteSpace(direct))
+            return direct;
+
+        if (lobbyRaw.TryGetProperty("match", out var matchElement))
+        {
+            var id = TryExtractAnyId(matchElement);
+            if (!string.IsNullOrWhiteSpace(id))
+                return id;
+        }
+
+        if (lobbyRaw.TryGetProperty("game", out var gameElement))
+        {
+            var id = TryExtractAnyId(gameElement);
+            if (!string.IsNullOrWhiteSpace(id))
+                return id;
+        }
+
+        if (lobbyRaw.TryGetProperty("matches", out var matchesElement))
+        {
+            var id = TryExtractAnyId(matchesElement);
+            if (!string.IsNullOrWhiteSpace(id))
+                return id;
+        }
+
+        return null;
+    }
+
+    private static string? TryExtractAnyId(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.String)
+            return element.GetString();
+
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            var direct = GetString(element, "id", "matchId", "currentMatchId", "gameId");
+            if (!string.IsNullOrWhiteSpace(direct))
+                return direct;
+
+            foreach (var property in element.EnumerateObject())
+            {
+                var nested = TryExtractAnyId(property.Value);
+                if (!string.IsNullOrWhiteSpace(nested))
+                    return nested;
+            }
+
+            return null;
+        }
+
+        if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                var nested = TryExtractAnyId(item);
+                if (!string.IsNullOrWhiteSpace(nested))
+                    return nested;
+            }
         }
 
         return null;

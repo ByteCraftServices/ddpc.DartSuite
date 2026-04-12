@@ -1,25 +1,38 @@
 @page "/boards"
 @using ddpc.DartSuite.Application.Contracts.Tournaments
+@using ddpc.DartSuite.Web.Services
 @inject DartSuiteApiService Api
 @inject AppStateService AppState
+@inject BoardHubService BoardHubService
+@inject IUiHelpService UiHelp
 @implements IDisposable
 
 <PageTitle>Boards</PageTitle>
 
-<h1>Boards</h1>
+<h1>Boards <UiHelpIcon HelpKey="page.boards" /></h1>
+@if (isRealtimeConnected)
+{
+    <div class="alert alert-success py-2">Echtzeit aktiv: Board-Updates werden direkt ueber SignalR empfangen.</div>
+}
+else
+{
+    <div class="alert alert-warning py-2">Echtzeit getrennt: Daten werden bei Aktionen/Navigation aktualisiert.</div>
+}
 
 <div class="card mt-3 shadow-sm">
     <div class="card-body">
         <EditForm Model="this" OnValidSubmit="CreateBoardAsync" FormName="create-board">
             <div class="row g-2">
                 <div class="col-md-4">
-                    <InputText @bind-Value="newBoardExternalId" class="form-control" placeholder="Board ID" />
+                    <InputText @bind-Value="newBoardExternalId" class="form-control" placeholder="Board ID"
+                               title="@UiHelp.GetTooltip("boards.external-id")" />
                 </div>
                 <div class="col-md-4">
-                    <InputText @bind-Value="newBoardName" class="form-control" placeholder="Board Name" />
+                    <InputText @bind-Value="newBoardName" class="form-control" placeholder="Board Name"
+                               title="@UiHelp.GetTooltip("boards.name")" />
                 </div>
                 <div class="col-md-4">
-                    <button class="btn btn-primary w-100" type="submit">Add Board</button>
+                    <button class="btn btn-primary w-100" type="submit" title="@UiHelp.GetTooltip("boards.create")">Add Board</button>
                 </div>
             </div>
         </EditForm>
@@ -37,11 +50,14 @@
 <table class="table table-striped mt-3">
     <thead>
         <tr>
+            <th></th>
             <th>Name</th>
             <th class="d-none d-md-table-cell">External ID</th>
             <th>Status</th>
+            <th class="d-none d-sm-table-cell">Verbindung</th>
             <th>Aktuelles Match</th>
             <th class="d-none d-md-table-cell">Extension</th>
+            <th class="d-none d-md-table-cell">Zeitplan</th>
             <th class="d-none d-lg-table-cell">IP</th>
         </tr>
     </thead>
@@ -49,9 +65,17 @@
         @foreach (var board in boards)
         {
             <tr>
-                <td>@board.Name</td>
-                <td class="d-none d-md-table-cell">@board.ExternalBoardId</td>
+                <td><BoardStatusIndicator Board="@board" ShowLabel="true" /></td>
+                <td>
+                    <a href="/tournaments?boardId=@board.Id"
+                       class="text-primary fw-semibold"
+                       style="text-decoration:underline dotted">@board.Name</a>
+                </td>
+                <td class="d-none d-md-table-cell"><code class="small">@board.ExternalBoardId</code></td>
                 <td><span class="badge @StatusBadge(board.Status)">@board.Status</span></td>
+                <td class="d-none d-sm-table-cell">
+                    <span class="badge @ConnectionBadge(board.ConnectionState)">@board.ConnectionState</span>
+                </td>
                 <td>
                     @if (!string.IsNullOrEmpty(board.CurrentMatchLabel))
                     {
@@ -81,6 +105,9 @@
                         <span class="badge bg-secondary">Getrennt</span>
                     }
                 </td>
+                <td class="d-none d-md-table-cell">
+                    <span class="badge @SchedulingBadge(board.SchedulingStatus)">@board.SchedulingStatus</span>
+                </td>
                 <td class="d-none d-lg-table-cell">@board.LocalIpAddress</td>
             </tr>
         }
@@ -93,18 +120,73 @@
     private string newBoardExternalId = string.Empty;
     private string newBoardName = string.Empty;
     private string? boardError;
+    private bool isRealtimeConnected;
 
     protected override async Task OnInitializedAsync()
     {
         AppState.OnChange += OnAppStateChanged;
-        boards = (await Api.GetBoardsAsync()).ToList();
+        await LoadBoardsForCurrentScopeAsync();
+
+        try
+        {
+            BoardHubService.OnConnectionChanged += OnBoardHubConnectionChanged;
+            BoardHubService.OnBoardAdded += OnBoardChanged;
+            BoardHubService.OnBoardStatusChanged += OnBoardChanged;
+            BoardHubService.OnBoardConnectionChanged += OnBoardChanged;
+            BoardHubService.OnBoardExtensionStatusChanged += OnBoardChanged;
+            BoardHubService.OnBoardCurrentMatchChanged += OnBoardChanged;
+            BoardHubService.OnBoardManagedModeChanged += OnBoardChanged;
+            BoardHubService.OnBoardRemoved += OnBoardRemoved;
+
+            await BoardHubService.StartAsync();
+        }
+        catch
+        {
+            isRealtimeConnected = false;
+        }
+    }
+
+    private async Task OnBoardHubConnectionChanged(bool connected)
+    {
+        isRealtimeConnected = connected;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnBoardChanged(BoardDto board)
+    {
+        await InvokeAsync(() =>
+        {
+            if (!IsBoardInCurrentScope(board))
+            {
+                boards.RemoveAll(b => b.Id == board.Id);
+                StateHasChanged();
+                return;
+            }
+
+            var index = boards.FindIndex(b => b.Id == board.Id);
+            if (index >= 0)
+                boards[index] = board;
+            else
+                boards.Add(board);
+
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnBoardRemoved(Guid boardId)
+    {
+        await InvokeAsync(() =>
+        {
+            boards.RemoveAll(b => b.Id == boardId);
+            StateHasChanged();
+        });
     }
 
     private async void OnAppStateChanged()
     {
         await InvokeAsync(async () =>
         {
-            boards = (await Api.GetBoardsAsync()).ToList();
+            await LoadBoardsForCurrentScopeAsync();
             StateHasChanged();
         });
     }
@@ -120,7 +202,7 @@
             await Api.AddBoardAsync(new CreateBoardRequest(newBoardExternalId, newBoardName, null, null));
             newBoardExternalId = string.Empty;
             newBoardName = string.Empty;
-            boards = (await Api.GetBoardsAsync()).ToList();
+            await LoadBoardsForCurrentScopeAsync();
         }
         catch (InvalidOperationException ex)
         {
@@ -132,6 +214,27 @@
         }
     }
 
+    private async Task LoadBoardsForCurrentScopeAsync()
+    {
+        if (AppState.SelectedTournament is not null)
+        {
+            boards = (await Api.GetBoardsByTournamentAsync(AppState.SelectedTournament.Id)).ToList();
+            return;
+        }
+
+        boards = (await Api.GetBoardsAsync())
+            .Where(b => !b.TournamentId.HasValue)
+            .ToList();
+    }
+
+    private bool IsBoardInCurrentScope(BoardDto board)
+    {
+        if (AppState.SelectedTournament is null)
+            return !board.TournamentId.HasValue;
+
+        return !board.TournamentId.HasValue || board.TournamentId == AppState.SelectedTournament.Id;
+    }
+
     private static string StatusBadge(string status) => status switch
     {
         "Running" => "bg-success",
@@ -141,8 +244,31 @@
         _ => "bg-secondary"
     };
 
+    private static string ConnectionBadge(string state) => state switch
+    {
+        "Online" => "bg-success",
+        "Offline" => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private static string SchedulingBadge(string status) => status switch
+    {
+        "InTime" => "bg-success",
+        "Ahead" => "bg-info text-dark",
+        "Delayed" => "bg-danger",
+        _ => "bg-secondary"
+    };
+
     public void Dispose()
     {
         AppState.OnChange -= OnAppStateChanged;
+        BoardHubService.OnConnectionChanged -= OnBoardHubConnectionChanged;
+        BoardHubService.OnBoardAdded -= OnBoardChanged;
+        BoardHubService.OnBoardStatusChanged -= OnBoardChanged;
+        BoardHubService.OnBoardConnectionChanged -= OnBoardChanged;
+        BoardHubService.OnBoardExtensionStatusChanged -= OnBoardChanged;
+        BoardHubService.OnBoardCurrentMatchChanged -= OnBoardChanged;
+        BoardHubService.OnBoardManagedModeChanged -= OnBoardChanged;
+        BoardHubService.OnBoardRemoved -= OnBoardRemoved;
     }
 }

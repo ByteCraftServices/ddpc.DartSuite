@@ -7,5 +7,8 @@ public sealed record ParticipantDto(
     bool IsAutodartsAccount,
     bool IsManager,
     int Seed,
+    int SeedPot = 0,
     int? GroupNumber = null,
-    Guid? TeamId = null);
+    Guid? TeamId = null,
+    string NotificationPreference = "OwnMatches",
+    string Type = "Spieler");

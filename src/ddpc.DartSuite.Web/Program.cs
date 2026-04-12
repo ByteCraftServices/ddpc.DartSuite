@@ -5,6 +5,8 @@ using System.Globalization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var httpsRedirectPort = ResolveHttpsRedirectPort(builder.Configuration, builder.Environment);
+
 Console.WriteLine("Api:BaseUrl: " + builder.Configuration["Api:BaseUrl"]);
 Console.WriteLine("ENVIRONMENT: " + builder.Environment.EnvironmentName);
 
@@ -12,10 +14,21 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddLocalization();
 builder.Services.AddScoped<AppStateService>();
+builder.Services.AddScoped<BoardHubService>();
+builder.Services.AddScoped<TournamentHubService>();
+builder.Services.AddSingleton<IUiHelpService, UiHelpService>();
 builder.Services.AddHttpClient<DartSuiteApiService>(client =>
 {
      client.BaseAddress = new Uri(builder?.Configuration["Api:BaseUrl"] ?? throw new NullReferenceException("Api:BaseUrl configuration is missing"));
 });
+
+if (httpsRedirectPort.HasValue)
+{
+    builder.Services.AddHttpsRedirection(options =>
+    {
+        options.HttpsPort = httpsRedirectPort.Value;
+    });
+}
 
 var supportedCultures = new[] { "de", "en-US" };
 builder.Services.Configure<RequestLocalizationOptions>(options =>
@@ -38,7 +51,10 @@ var localization = app.Services.GetRequiredService<Microsoft.Extensions.Options.
 app.UseRequestLocalization(localization.Value);
 
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
+if (httpsRedirectPort.HasValue)
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAntiforgery();
 
@@ -47,3 +63,21 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+static int? ResolveHttpsRedirectPort(IConfiguration configuration, IWebHostEnvironment environment)
+{
+    var configuredPort = configuration.GetValue<int?>("HttpsRedirection:HttpsPort")
+        ?? configuration.GetValue<int?>("ASPNETCORE_HTTPS_PORT")
+        ?? configuration.GetValue<int?>("HTTPS_PORT");
+
+    if (configuredPort.HasValue)
+        return configuredPort;
+
+    // Development profiles expose multiple HTTPS endpoints; force localhost endpoint to avoid ambiguity.
+    if (environment.IsDevelopment() || environment.IsEnvironment("Test"))
+        return 7144;
+
+    return null;
+}
+
+

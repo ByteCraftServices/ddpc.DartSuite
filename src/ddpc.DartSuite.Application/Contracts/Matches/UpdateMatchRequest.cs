@@ -10,4 +10,9 @@ public sealed record UpdateMatchRequest(
     string Status,
     bool IsStartTimeLocked,
     bool IsBoardLocked,
-    Guid? WinnerParticipantId);
+    Guid? WinnerParticipantId,
+    DateTimeOffset? PlannedStartUtc = null,
+    DateTimeOffset? PlannedEndUtc = null,
+    string? HomeSlotOrigin = null,
+    string? AwaySlotOrigin = null,
+    string? NextMatchInfo = null);

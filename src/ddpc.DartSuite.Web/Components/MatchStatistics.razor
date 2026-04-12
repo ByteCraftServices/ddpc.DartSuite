@@ -1,0 +1,52 @@
+@using ddpc.DartSuite.Application.Contracts.Matches
+
+<div class="match-statistics-panel">
+    @if (Statistics is null || Statistics.Count == 0)
+    {
+        <p class="text-muted fst-italic">Keine Statistiken verfügbar.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Spieler</th>
+                        <th class="text-end">Avg</th>
+                        <th class="text-end">1st9</th>
+                        <th class="text-end">Legs</th>
+                        <th class="text-end">CO%</th>
+                        <th class="text-end">HCO</th>
+                        <th class="text-end">180s</th>
+                        <th class="text-end">140+</th>
+                        <th class="text-end">100+</th>
+                        <th class="text-end">Darts/Leg</th>
+                        <th class="text-end">Breaks</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var stat in Statistics)
+                    {
+                        <tr>
+                            <td class="fw-semibold">@stat.ParticipantName</td>
+                            <td class="text-end">@stat.Average.ToString("F1")</td>
+                            <td class="text-end">@stat.First9Average.ToString("F1")</td>
+                            <td class="text-end">@stat.LegsWon:@stat.LegsLost</td>
+                            <td class="text-end">@stat.CheckoutPercent.ToString("F1")%</td>
+                            <td class="text-end">@stat.HighestCheckout</td>
+                            <td class="text-end">@stat.Plus180</td>
+                            <td class="text-end">@stat.Plus140</td>
+                            <td class="text-end">@stat.Plus100</td>
+                            <td class="text-end">@stat.AverageDartsPerLeg.ToString("F1")</td>
+                            <td class="text-end">@stat.Breaks</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<MatchPlayerStatisticDto>? Statistics { get; set; }
+}

@@ -12,12 +12,16 @@ public sealed class DartSuiteDbContext(DbContextOptions<DartSuiteDbContext> opti
     public DbSet<TournamentRound> TournamentRounds => Set<TournamentRound>();
     public DbSet<Team> Teams => Set<Team>();
     public DbSet<ScoringCriterion> ScoringCriteria => Set<ScoringCriterion>();
+    public DbSet<MatchPlayerStatistic> MatchPlayerStatistics => Set<MatchPlayerStatistic>();
+    public DbSet<NotificationSubscription> NotificationSubscriptions => Set<NotificationSubscription>();
+    public DbSet<MatchFollower> MatchFollowers => Set<MatchFollower>();
+    public DbSet<UserViewPreference> UserViewPreferences => Set<UserViewPreference>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Board>(entity =>
         {
-            entity.HasIndex(x => x.ExternalBoardId).IsUnique();
+            //entity.HasIndex(x => x.ExternalBoardId).IsUnique();
             entity.Property(x => x.Name).HasMaxLength(128);
             entity.Property(x => x.CurrentMatchLabel).HasMaxLength(256);
         });
@@ -26,7 +30,16 @@ public sealed class DartSuiteDbContext(DbContextOptions<DartSuiteDbContext> opti
         {
             entity.Property(x => x.Name).HasMaxLength(128);
             entity.Property(x => x.JoinCode).HasMaxLength(3);
-            entity.HasIndex(x => x.JoinCode).IsUnique().HasFilter("[JoinCode] IS NOT NULL");
+            // Provider-aware index filter for JoinCode
+            var provider = Database.ProviderName;
+            if (provider != null && provider.ToLower().Contains("npgsql"))
+            {
+                entity.HasIndex(x => x.JoinCode).IsUnique().HasFilter("\"JoinCode\" IS NOT NULL");
+            }
+            else
+            {
+                entity.HasIndex(x => x.JoinCode).IsUnique().HasFilter("[JoinCode] IS NOT NULL");
+            }
             entity.Ignore(x => x.Participants);
         });
 
@@ -60,6 +73,33 @@ public sealed class DartSuiteDbContext(DbContextOptions<DartSuiteDbContext> opti
         modelBuilder.Entity<ScoringCriterion>(entity =>
         {
             entity.HasIndex(x => new { x.TournamentId, x.Type }).IsUnique();
+        });
+
+        modelBuilder.Entity<MatchPlayerStatistic>(entity =>
+        {
+            entity.HasIndex(x => new { x.MatchId, x.ParticipantId }).IsUnique();
+        });
+
+        modelBuilder.Entity<NotificationSubscription>(entity =>
+        {
+            entity.HasIndex(x => new { x.TournamentId, x.UserAccountName, x.Endpoint }).IsUnique();
+            entity.Property(x => x.UserAccountName).HasMaxLength(128);
+            entity.Property(x => x.Endpoint).HasMaxLength(512);
+            entity.Property(x => x.P256dh).HasMaxLength(256);
+            entity.Property(x => x.Auth).HasMaxLength(256);
+        });
+
+        modelBuilder.Entity<MatchFollower>(entity =>
+        {
+            entity.HasIndex(x => new { x.MatchId, x.UserAccountName }).IsUnique();
+            entity.Property(x => x.UserAccountName).HasMaxLength(128);
+        });
+
+        modelBuilder.Entity<UserViewPreference>(entity =>
+        {
+            entity.HasIndex(x => new { x.UserAccountName, x.ViewContext }).IsUnique();
+            entity.Property(x => x.UserAccountName).HasMaxLength(128);
+            entity.Property(x => x.ViewContext).HasMaxLength(128);
         });
     }
 }

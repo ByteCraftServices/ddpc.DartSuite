@@ -7,4 +7,7 @@ public sealed record UpdateParticipantRequest(
     string AccountName,
     bool IsAutodartsAccount,
     bool IsManager,
-    int Seed);
+    int Seed,
+    int SeedPot = 0,
+    int? GroupNumber = null,
+    string? Type = null);

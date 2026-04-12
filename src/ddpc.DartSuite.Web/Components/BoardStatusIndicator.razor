@@ -1,0 +1,56 @@
+@using ddpc.DartSuite.Application.Contracts.Boards
+
+<div class="board-status-indicator d-inline-flex align-items-center gap-1" title="@TooltipText">
+    <span class="status-dot @DotClass"></span>
+    @if (ShowLabel)
+    {
+        <small class="text-muted">@LabelText</small>
+    }
+</div>
+
+@code {
+    [Parameter] public BoardDto? Board { get; set; }
+    [Parameter] public bool ShowLabel { get; set; } = true;
+
+    private string DotClass => Board?.OverallStatus switch
+    {
+        "Ok" => "bg-success",
+        "Warning" => "bg-warning",
+        "Error" => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private string LabelText => Board?.OverallStatus switch
+    {
+        "Ok" => "Bereit",
+        "Warning" => "Warnung",
+        "Error" => "Fehler",
+        _ => "Unbekannt"
+    };
+
+    private string TooltipText
+    {
+        get
+        {
+            if (Board is null) return "Kein Board";
+            var parts = new List<string>
+            {
+                $"Board: {Board.Status}",
+                $"Verbindung: {Board.ConnectionState}",
+                $"Extension: {Board.ExtensionStatus}",
+                $"Zeitplan: {Board.SchedulingStatus}"
+            };
+            return string.Join(" | ", parts);
+        }
+    }
+}
+
+<style>
+    .status-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        flex-shrink: 0;
+    }
+</style>

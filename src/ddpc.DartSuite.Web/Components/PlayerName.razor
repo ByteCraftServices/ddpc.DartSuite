@@ -1,0 +1,39 @@
+<span class="@CssClass">
+    @if (OnClick.HasDelegate)
+    {
+        <button type="button"
+                class="btn btn-link p-0 player-name-link @(HighlightWinner ? "fw-bold text-success" : string.Empty)"
+                title="@ResolvedTooltip"
+                @onclick="HandleClickAsync"
+                @onclick:stopPropagation="true">
+            @ResolvedName
+        </button>
+    }
+    else
+    {
+        <span class="@(HighlightWinner ? "fw-bold text-success" : string.Empty)">@ResolvedName</span>
+    }
+
+    @if (ShowAverage && Average is not null)
+    {
+        <span class="text-muted small ms-1">(@Average.Value.ToString("0.0"))</span>
+    }
+</span>
+
+@code {
+    [Parameter] public string? Name { get; set; }
+    [Parameter] public bool HighlightWinner { get; set; }
+    [Parameter] public bool ShowAverage { get; set; }
+    [Parameter] public double? Average { get; set; }
+    [Parameter] public string CssClass { get; set; } = "match-player-name";
+    [Parameter] public string? Tooltip { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    private string ResolvedName => string.IsNullOrWhiteSpace(Name) ? "?" : Name!;
+    private string? ResolvedTooltip => string.IsNullOrWhiteSpace(Tooltip)
+        ? (OnClick.HasDelegate ? "Spielerdetails anzeigen" : null)
+        : Tooltip;
+
+    private Task HandleClickAsync()
+        => OnClick.HasDelegate ? OnClick.InvokeAsync() : Task.CompletedTask;
+}

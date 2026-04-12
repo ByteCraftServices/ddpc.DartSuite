@@ -4,8 +4,9 @@ public enum MatchStatus
 {
     Erstellt = 0,
     Geplant = 1,
-    Aktiv = 2,
-    Beendet = 3,
-    WalkOver = 4,
-    Inaktiv = 5
+    Warten = 2,
+    Aktiv = 3,
+    Beendet = 4,
+    WalkOver = 5,
+    Inaktiv = 6
 }

@@ -1,0 +1,81 @@
+@using ddpc.DartSuite.Application.Contracts.Tournaments
+
+<div class="group-table-component">
+    @if (Standings is null || Standings.Count == 0)
+    {
+        <p class="text-muted fst-italic">Keine Tabellendaten.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Spieler</th>
+                        <th>Sp.</th>
+                        <th>S</th>
+                        <th>N</th>
+                        <th>Pkt.</th>
+                        <th>Legs +/-</th>
+                        @if (ShowExtendedStats)
+                        {
+                            <th class="d-none d-md-table-cell">Avg</th>
+                            <th class="d-none d-md-table-cell">HCO</th>
+                            <th class="d-none d-lg-table-cell">CO%</th>
+                            <th class="d-none d-lg-table-cell">D/Leg</th>
+                            <th class="d-none d-lg-table-cell">Breaks</th>
+                        }
+                        @if (ShowTiebreaker)
+                        {
+                            <th class="d-none d-md-table-cell">Tiebreaker</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @{ var rank = 1; }
+                    @foreach (var s in Standings)
+                    {
+                        var isQualified = rank <= QualificationSlots;
+                        <tr class="@(isQualified ? "table-success" : "")">
+                            <td>
+                                @(s.Rank > 0 ? s.Rank : rank)
+                                @if (isQualified) { <span class="text-success ms-1">▲</span> }
+                            </td>
+                            <td class="fw-semibold">@s.ParticipantName.ToUpperInvariant()</td>
+                            <td>@s.Played</td>
+                            <td>@s.Won</td>
+                            <td>@s.Lost</td>
+                            <td><strong>@s.Points</strong></td>
+                            <td>@s.LegsWon:@s.LegsLost (@(s.LegDifference >= 0 ? "+" : "")@s.LegDifference)</td>
+                            @if (ShowExtendedStats)
+                            {
+                                <td class="d-none d-md-table-cell">@s.Average.ToString("F1")</td>
+                                <td class="d-none d-md-table-cell">@s.HighestCheckout</td>
+                                <td class="d-none d-lg-table-cell">@s.CheckoutPercent.ToString("F1")%</td>
+                                <td class="d-none d-lg-table-cell">@s.AverageDartsPerLeg.ToString("F1")</td>
+                                <td class="d-none d-lg-table-cell">@s.Breaks</td>
+                            }
+                            @if (ShowTiebreaker && !string.IsNullOrEmpty(s.TiebreakerApplied))
+                            {
+                                <td class="d-none d-md-table-cell small text-muted">@s.TiebreakerApplied</td>
+                            }
+                            else if (ShowTiebreaker)
+                            {
+                                <td class="d-none d-md-table-cell"></td>
+                            }
+                        </tr>
+                        rank++;
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<GroupStandingDto> Standings { get; set; } = [];
+    [Parameter] public int QualificationSlots { get; set; } = 2;
+    [Parameter] public bool ShowExtendedStats { get; set; }
+    [Parameter] public bool ShowTiebreaker { get; set; }
+}

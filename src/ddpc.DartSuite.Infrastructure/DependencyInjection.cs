@@ -26,6 +26,12 @@ public static class DependencyInjection
             {
                 dbOptions.UseSqlite(options.ConnectionString);
             }
+            else if (string.Equals(options.Provider, "Postgre", StringComparison.OrdinalIgnoreCase)
+                  || string.Equals(options.Provider, "Postgres", StringComparison.OrdinalIgnoreCase)
+                  || string.Equals(options.Provider, "PostgreSQL", StringComparison.OrdinalIgnoreCase))
+            {
+                dbOptions.UseNpgsql(options.ConnectionString);
+            }
             else
             {
                 dbOptions.UseInMemoryDatabase("DartSuiteDb");
@@ -36,6 +42,18 @@ public static class DependencyInjection
         services.AddScoped<IBoardManagementService, BoardManagementService>();
         services.AddScoped<ITournamentManagementService, TournamentManagementService>();
         services.AddScoped<IMatchManagementService, MatchManagementService>();
+        services.AddScoped<IDiscordWebhookService, DiscordWebhookService>();
+        services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<ISchedulingService, SchedulingService>();
+        services.AddScoped<IStatisticsService, StatisticsService>();
+
+        services.Configure<VapidOptions>(configuration.GetSection(VapidOptions.SectionName));
+
+        var webhookTimeoutSeconds = configuration.GetValue<int?>("DiscordWebhook:TimeoutSeconds") ?? 10;
+        services.AddHttpClient("DiscordWebhook", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(Math.Max(1, webhookTimeoutSeconds));
+        });
 
         return services;
     }

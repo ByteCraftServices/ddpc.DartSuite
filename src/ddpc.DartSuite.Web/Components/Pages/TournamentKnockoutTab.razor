@@ -1,0 +1,213 @@
+@using System.Linq
+@using ddpc.DartSuite.Application.Contracts.Boards
+@using ddpc.DartSuite.Application.Contracts.Matches
+@using ddpc.DartSuite.Application.Contracts.Tournaments
+
+@{
+    var koMatches = Matches.Where(m => m.Phase == "Knockout").ToList();
+    var koMaxRound = koMatches.Select(m => m.Round).DefaultIfEmpty(1).Max();
+}
+
+@if (SelectedTournamentVariantIsOnSite && Boards.Any() && Matches.Any())
+{
+    <div class="p-2 border rounded mb-3 bg-light">
+        <div class="small fw-semibold text-muted mb-2">Verfügbare Boards — auf Match ziehen zum Zuweisen
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            @foreach (var board in Boards)
+            {
+                <div class="badge bg-dark p-2 user-select-none" draggable="true"
+                     @ondragstart="() => OnBoardDragStart.InvokeAsync(board.Id)" style="cursor:grab; font-size:.85em">
+                    📋 @board.Name
+                    <span class="badge @BoardStatusBadge(board.Status) ms-1"
+                          style="font-size:.75em">@board.Status</span>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@if (koMatches.Any())
+{
+    <div id="section-tournaments-knockout" class="d-flex gap-2 mb-3">
+        <button class="btn btn-sm @(KoViewMode == "tree" ? "btn-primary" : "btn-outline-primary")" @onclick='() => HandleKoViewModeChangedAsync("tree")'>🌳 Bracket</button>
+        <button class="btn btn-sm @(KoViewMode == "round" ? "btn-primary" : "btn-outline-primary")" @onclick='() => HandleKoViewModeChangedAsync("round")'>📋 Rundenliste</button>
+        <button class="btn btn-sm btn-outline-secondary"
+                title="MatchCard-Einstellungen fuer K.O.-Phase"
+                @onclick="HandleOpenMatchCardScopeEditorAsync"
+                @onclick:stopPropagation>⚙</button>
+    </div>
+
+    @if (KoViewMode == "tree")
+    {
+        <BracketView Matches="@koMatches"
+                     ResolvePlayerName="id => ParticipantName(id)"
+                     OnMatchClick="HandleOpenMatchDetailAsync"
+                     OnBoardClick="OnOpenBoardDetailFromMatch" />
+    }
+    else
+    {
+        var koRounds = koMatches.Select(m => m.Round).Distinct().OrderBy(r => r).ToList();
+        @foreach (var round in koRounds)
+        {
+            <div class="small fw-semibold text-muted mb-1 mt-2">@KoRoundLabel(round, koMaxRound)</div>
+            <ul class="list-group mb-2">
+                @foreach (var match in koMatches.Where(m => m.Round == round).OrderBy(m => m.MatchNumber))
+                {
+                    var assignedBoard = Boards.FirstOrDefault(b => b.Id == match.BoardId);
+                    var isTarget = DropTargetMatchId == match.Id;
+                    var isActive = match.WinnerParticipantId is null && match.FinishedUtc is null && match.BoardId is not null;
+                    var isBye = match.Status == "WalkOver";
+                    var roundListCardSettings = GetMatchCardSettings("knockout");
+                    <li class="list-group-item @(isTarget ? "border-primary border-2" : "") @(isActive ? "border-start border-success border-3" : "") @(isBye ? "list-group-item-light" : "")"
+                        style="cursor:pointer; @(isTarget ? "background:rgba(13,110,253,.08)" : "")"
+                        @ondragover:preventDefault @ondragover="() => HandleMatchDropTargetAsync(match.Id)"
+                        @ondragleave="() => HandleMatchDropLeaveAsync(match.Id)"
+                        @ondrop="() => OnAssignBoardToMatch.InvokeAsync(match.Id)" @onclick="() => HandleOpenMatchDetailAsync(match)">
+                        <MatchCard Match="@match"
+                                   ViewSettings="@roundListCardSettings"
+                                   Layout="@roundListCardSettings.Layout"
+                                   Label="@KoMatchLabel(match)"
+                                   ShowRuntimeBadge="@roundListCardSettings.ShowRuntimeBadge"
+                                   ShowMonitoringStatus="@ShowMatchCardMonitoring(roundListCardSettings)"
+                                   MonitoringStatusText="@GetMonitoringBadgeText(match)"
+                                   MonitoringStatusCssClass="@GetMonitoringBadgeCss(match)"
+                                   EnablePlayerLinks="@roundListCardSettings.EnablePlayerLinks"
+                                   EnableBoardLink="@roundListCardSettings.EnableBoardLink"
+                                   HomeName="@(match.HomeParticipantId == Guid.Empty && match.WinnerParticipantId is null ? KoParticipantLabel(match.HomeParticipantId, match, true) : ParticipantName(match.HomeParticipantId))"
+                                   AwayName="@(match.AwayParticipantId == Guid.Empty && match.WinnerParticipantId is null ? KoParticipantLabel(match.AwayParticipantId, match, false) : ParticipantName(match.AwayParticipantId))"
+                                   BoardName="@assignedBoard?.Name"
+                                   SlotOrigin="@BuildSlotOrigin(match)"
+                                   SetModeActive="@IsSetMode(match)"
+                                   LiveScoreEnabled="@roundListCardSettings.LiveScoreEnabled"
+                                   ShowMatchStatus="@roundListCardSettings.ShowMatchStatus"
+                                   ShowSchedulingStatus="@roundListCardSettings.ShowSchedulingStatus"
+                                   ShowAverage="@roundListCardSettings.ShowAverage"
+                                   ShowHighestPpr="@roundListCardSettings.ShowHighestPpr"
+                                   ShowHighestCheckout="@roundListCardSettings.ShowHighestCheckout"
+                                   ShowAverageDartsPerLeg="@roundListCardSettings.ShowAverageDartsPerLeg"
+                                   ShowMinimalDartsPerLeg="@roundListCardSettings.ShowMinimalDartsPerLeg"
+                                   OnHomePlayerClick="@BuildPlayerDetailCallback(match.HomeParticipantId)"
+                                   OnAwayPlayerClick="@BuildPlayerDetailCallback(match.AwayParticipantId)"
+                                   OnBoardClick="@BuildMatchBoardDetailCallback(match)"
+                                   EnableDetailPanel="true"
+                                   DetailsExpandedByDefault="@MatchCardDetailsExpandedByDefault(roundListCardSettings)"
+                                   ForceDetailsExpanded="@ForceDetailsExpanded"
+                                   EnableRealtimeConsumer="@(match.StartedUtc is not null && match.FinishedUtc is null)"
+                                   OnClick="() => HandleOpenMatchDetailAsync(match)" />
+
+                        <div class="d-flex align-items-center gap-1 mt-2">
+                            @if (assignedBoard is not null)
+                            {
+                                <a href="https://play.autodarts.io/boards/@(assignedBoard.ExternalBoardId)/follow"
+                                   target="_blank" rel="noopener" class="badge text-bg-success text-decoration-none"
+                                   @onclick:stopPropagation>📋 @assignedBoard.Name</a>
+                            }
+                            else if (SelectedTournamentVariantIsOnSite)
+                            {
+                                <span class="badge text-bg-light text-muted border" style="font-size:.75em">Board zuweisen</span>
+                            }
+
+                            @if (match.IsBoardLocked)
+                            {
+                                <span class="badge text-bg-primary">🔒 Board</span>
+                            }
+
+                            @if (match.WinnerParticipantId.HasValue)
+                            {
+                                <span class="badge text-bg-warning">🏆 @ParticipantName(match.WinnerParticipantId)</span>
+                            }
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+    }
+}
+else
+{
+    <p class="text-muted">Noch keine K.O.-Matches vorhanden.</p>
+}
+
+<div class="mt-3 d-flex flex-wrap align-items-center gap-2">
+    @if (CanShowDrawCreatePlanButton)
+    {
+        @if (string.IsNullOrWhiteSpace(DrawCreatePlanDisabledReason))
+        {
+            <button class="btn btn-success btn-sm" @onclick="OnCreateTournamentPlan" disabled="@IsWorking">✓ Turnierplan erstellen</button>
+        }
+        else
+        {
+            <button type="button" class="btn btn-success btn-sm btn-inactive-action" title="@DrawCreatePlanDisabledReason" @onclick='() => ShowInactiveActionInfo(DrawCreatePlanDisabledReason, "Turnierplan erstellen nicht möglich")'>✓ Turnierplan erstellen</button>
+        }
+    }
+    else if (CanShowDrawDeletePlanButton)
+    {
+        @if (CanEditTournamentStructure)
+        {
+            <button class="btn btn-outline-danger btn-sm" @onclick="OnDeleteTournamentPlan" disabled="@IsWorking">🗑 Turnierplan löschen</button>
+        }
+        else
+        {
+            <button type="button" class="btn btn-outline-danger btn-sm btn-inactive-action" title="@CannotEditStructureReason" @onclick='() => ShowInactiveActionInfo(CannotEditStructureReason, "Turnierplan löschen nicht möglich")'>🗑 Turnierplan löschen</button>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<MatchDto> Matches { get; set; } = [];
+    [Parameter] public IReadOnlyList<BoardDto> Boards { get; set; } = [];
+    [Parameter] public bool SelectedTournamentVariantIsOnSite { get; set; }
+    [Parameter] public bool IsWorking { get; set; }
+
+    [Parameter] public string KoViewMode { get; set; } = "round";
+    [Parameter] public EventCallback<string> OnSetKoViewMode { get; set; }
+    [Parameter] public Guid? DropTargetMatchId { get; set; }
+    [Parameter] public EventCallback<Guid?> OnDropTargetMatchIdChanged { get; set; }
+    [Parameter] public EventCallback<Guid> OnAssignBoardToMatch { get; set; }
+    [Parameter] public EventCallback<Guid> OnBoardDragStart { get; set; }
+    [Parameter] public EventCallback<string> OnOpenMatchCardScopeEditor { get; set; }
+    [Parameter] public EventCallback<MatchDto> OnOpenMatchDetail { get; set; }
+    [Parameter] public EventCallback<MatchDto> OnOpenBoardDetailFromMatch { get; set; }
+    [Parameter] public EventCallback OnCreateTournamentPlan { get; set; }
+    [Parameter] public EventCallback OnDeleteTournamentPlan { get; set; }
+
+    [Parameter] public bool CanEditTournamentStructure { get; set; }
+    [Parameter] public bool CanProceedWithTeamDraw { get; set; }
+    [Parameter] public bool CanShowDrawCreatePlanButton { get; set; }
+    [Parameter] public bool CanShowDrawDeletePlanButton { get; set; }
+    [Parameter] public string DrawCreatePlanDisabledReason { get; set; } = string.Empty;
+    [Parameter] public string CannotEditStructureReason { get; set; } = string.Empty;
+    [Parameter] public Func<string, string?, Task> ShowInactiveActionInfo { get; set; } = (_, _) => Task.CompletedTask;
+
+    [Parameter] public Func<string, string> BoardStatusBadge { get; set; } = _ => string.Empty;
+    [Parameter] public Func<string, MatchCardViewSettings> GetMatchCardSettings { get; set; } = _ => new MatchCardViewSettings();
+    [Parameter] public Func<MatchCardViewSettings, bool> ShowMatchCardMonitoring { get; set; } = _ => false;
+    [Parameter] public Func<MatchDto, string> KoMatchLabel { get; set; } = _ => string.Empty;
+    [Parameter] public Func<int, int, string> KoRoundLabel { get; set; } = (r, max) => string.Empty;
+    [Parameter] public Func<Guid, MatchDto, bool, string> KoParticipantLabel { get; set; } = (id, match, isHome) => string.Empty;
+    [Parameter] public Func<MatchDto, string> GetMonitoringBadgeText { get; set; } = _ => string.Empty;
+    [Parameter] public Func<MatchDto, string> GetMonitoringBadgeCss { get; set; } = _ => string.Empty;
+    [Parameter] public Func<Guid?, string> ParticipantName { get; set; } = _ => string.Empty;
+    [Parameter] public Func<MatchDto, string?> BuildSlotOrigin { get; set; } = _ => null;
+    [Parameter] public Func<MatchDto, bool> IsSetMode { get; set; } = _ => false;
+    [Parameter] public Func<Guid?, EventCallback> BuildPlayerDetailCallback { get; set; } = _ => default;
+    [Parameter] public Func<MatchDto, EventCallback> BuildMatchBoardDetailCallback { get; set; } = _ => default;
+    [Parameter] public Func<MatchCardViewSettings, bool> MatchCardDetailsExpandedByDefault { get; set; } = _ => false;
+    [Parameter] public bool? ForceDetailsExpanded { get; set; }
+
+    private Task HandleKoViewModeChangedAsync(string mode) => OnSetKoViewMode.InvokeAsync(mode);
+
+    private Task HandleOpenMatchCardScopeEditorAsync() => OnOpenMatchCardScopeEditor.InvokeAsync("tournaments::knockout");
+
+    private Task HandleOpenMatchDetailAsync(MatchDto match) => OnOpenMatchDetail.InvokeAsync(match);
+
+    private Task HandleMatchDropTargetAsync(Guid matchId) => OnDropTargetMatchIdChanged.InvokeAsync(matchId);
+
+    private Task HandleMatchDropLeaveAsync(Guid matchId)
+    {
+        if (DropTargetMatchId == matchId)
+            return OnDropTargetMatchIdChanged.InvokeAsync(null);
+        return Task.CompletedTask;
+    }
+}

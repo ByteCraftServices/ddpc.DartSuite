@@ -2,17 +2,37 @@
 @using ddpc.DartSuite.Application.Contracts.Boards
 @using ddpc.DartSuite.Application.Contracts.Matches
 @using ddpc.DartSuite.Application.Contracts.Tournaments
+@using ddpc.DartSuite.Web.Services
 @inject DartSuiteApiService Api
 @inject AppStateService AppState
+@inject BoardHubService BoardHubService
+@inject IUiHelpService UiHelp
 @implements IDisposable
 
 <PageTitle>DartSuite Dashboard</PageTitle>
 
-<h1 class="mb-3">Dashboard</h1>
+<h1 class="mb-3">Dashboard <UiHelpIcon HelpKey="page.dashboard" /></h1>
+
+@if (!string.IsNullOrWhiteSpace(apiConnectionError))
+{
+    <div class="alert alert-danger py-2 mb-3">
+        API derzeit nicht erreichbar. Dashboard läuft im eingeschränkten Modus. (@apiConnectionError)
+    </div>
+}
+
+@if (isRealtimeConnected)
+{
+    <div class="alert alert-success py-2 mb-3">Echtzeit aktiv: Board- und Match-Updates laufen ueber SignalR.</div>
+}
+else
+{
+    <div class="alert alert-warning py-2 mb-3">Echtzeit getrennt: 10s-Fallback-Polling ist aktiv.</div>
+}
 
 @* ─── Tournament selector ─── *@
 <div class="d-flex align-items-center gap-3 mb-4">
-    <select class="form-select w-auto" value="@selectedTournamentId" @onchange="OnTournamentChanged">
+        <select class="form-select w-auto" value="@selectedTournamentId" @onchange="OnTournamentChanged"
+            title="@UiHelp.GetTooltip("dashboard.tournament.select")">
         <option value="">-- Turnier auswählen --</option>
         @foreach (var t in filteredTournaments)
         {
@@ -20,7 +40,8 @@
         }
     </select>
     <div class="form-check">
-        <input type="checkbox" class="form-check-input" id="showFinished" @bind="showFinished" />
+         <input type="checkbox" class="form-check-input" id="showFinished" @bind="showFinished"
+             title="@UiHelp.GetTooltip("dashboard.toggle.finished")" />
         <label class="form-check-label" for="showFinished">Beendete Turniere anzeigen</label>
     </div>
 </div>
@@ -44,6 +65,20 @@
         }
 else
         {
+            @if (ProblemBoards.Any())
+            {
+                <div class="alert @(ProblemBoards.Any(b => b.OverallStatus == "Error") ? "alert-danger" : "alert-warning") py-2 mb-3 d-flex flex-wrap align-items-center gap-2">
+                    <strong><i class="bi bi-exclamation-triangle-fill me-1"></i>Board-Probleme:</strong>
+                    @foreach (var pb in ProblemBoards)
+                    {
+                        <span class="d-inline-flex align-items-center gap-1 border rounded px-2 py-1 bg-white">
+                            <BoardStatusIndicator Board="@pb" ShowLabel="false" />
+                            <span>@pb.Name</span>
+                            <span class="badge @(pb.OverallStatus == "Error" ? "bg-danger" : "bg-warning text-dark")">@pb.OverallStatus</span>
+                        </span>
+                    }
+                </div>
+            }
             <div class="row g-3">
                 @foreach (var board in boards)
                 {
@@ -54,9 +89,12 @@ else
                     var delay = CalculateBoardDelay(board.Id);
 
                     <div class="col-md-6 col-lg-4">
-                        <div class="card shadow-sm h-100">
+                        <div class="card shadow-sm h-100 @BoardCardBorderClass(board.OverallStatus)">
                             <div class="card-header d-flex justify-content-between align-items-center">
-                                <strong>@board.Name</strong>
+                                <div class="d-flex align-items-center gap-2">
+                                    <BoardStatusIndicator Board="@board" ShowLabel="false" />
+                                    <strong>@board.Name</strong>
+                                </div>
                                 @if (delay.HasValue)
                                 {
                                     @if (delay.Value == 0)
@@ -166,6 +204,8 @@ else
     private bool showFinished;
     private string selectedTournamentId = "";
     private Timer? _autoRefreshTimer;
+    private bool isRealtimeConnected;
+    private string? apiConnectionError;
 
     private IReadOnlyList<TournamentDto> filteredTournaments => showFinished
     ? tournaments
@@ -178,8 +218,30 @@ else
     protected override async Task OnInitializedAsync()
     {
         AppState.OnChange += OnAppStateChanged;
-        tournaments = (await Api.GetTournamentsAsync()).ToList();
-        boards = (await Api.GetBoardsAsync()).ToList();
+        await LoadInitialDashboardStateAsync();
+
+        await ConnectBoardHubAsync();
+        UpdateAutoRefreshFallbackState();
+    }
+
+    private async Task LoadInitialDashboardStateAsync()
+    {
+        try
+        {
+            tournaments = (await Api.GetTournamentsAsync()).ToList();
+            boards = [];
+            apiConnectionError = null;
+        }
+        catch (Exception ex)
+        {
+            apiConnectionError = ex.Message;
+            tournaments = [];
+            boards = [];
+            matchesForTournament = [];
+            participants = [];
+            rounds = [];
+            return;
+        }
 
         // Use AppState selection if available, otherwise auto-select
         if (AppState.SelectedTournament is not null && tournaments.Any(t => t.Id == AppState.SelectedTournament.Id))
@@ -199,16 +261,116 @@ else
 
         if (selectedTournament is not null)
             await LoadTournamentDataAsync();
+    }
 
-        _autoRefreshTimer = new Timer(OnAutoRefresh, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+    private async Task ConnectBoardHubAsync()
+    {
+        try
+        {
+            BoardHubService.OnConnectionChanged += OnBoardHubConnectionChanged;
+            BoardHubService.OnBoardAdded += OnBoardChanged;
+            BoardHubService.OnBoardStatusChanged += OnBoardChanged;
+            BoardHubService.OnBoardConnectionChanged += OnBoardChanged;
+            BoardHubService.OnBoardExtensionStatusChanged += OnBoardChanged;
+            BoardHubService.OnBoardCurrentMatchChanged += OnBoardChanged;
+            BoardHubService.OnBoardManagedModeChanged += OnBoardChanged;
+            BoardHubService.OnBoardRemoved += OnBoardRemoved;
+            BoardHubService.OnMatchUpdated += OnMatchUpdated;
+
+            await BoardHubService.StartAsync();
+        }
+        catch
+        {
+            isRealtimeConnected = false;
+        }
+    }
+
+    private async Task OnBoardHubConnectionChanged(bool connected)
+    {
+        isRealtimeConnected = connected;
+        UpdateAutoRefreshFallbackState();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnBoardChanged(BoardDto board)
+    {
+        await InvokeAsync(() =>
+        {
+            if (selectedTournament is null && board.TournamentId.HasValue)
+            {
+                boards.RemoveAll(b => b.Id == board.Id);
+                StateHasChanged();
+                return;
+            }
+
+            if (selectedTournament is not null
+                && board.TournamentId.HasValue
+                && board.TournamentId.Value != selectedTournament.Id)
+            {
+                boards.RemoveAll(b => b.Id == board.Id);
+                StateHasChanged();
+                return;
+            }
+
+            var index = boards.FindIndex(b => b.Id == board.Id);
+            if (index >= 0)
+                boards[index] = board;
+            else
+                boards.Add(board);
+
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnBoardRemoved(Guid boardId)
+    {
+        await InvokeAsync(() =>
+        {
+            boards.RemoveAll(b => b.Id == boardId);
+            StateHasChanged();
+        });
+    }
+
+    private async Task OnMatchUpdated(MatchDto match)
+    {
+        if (selectedTournament is null || match.TournamentId != selectedTournament.Id)
+            return;
+
+        await InvokeAsync(() =>
+        {
+            var index = matchesForTournament.FindIndex(m => m.Id == match.Id);
+            if (index >= 0)
+                matchesForTournament[index] = match;
+            else
+                matchesForTournament.Add(match);
+
+            StateHasChanged();
+        });
+    }
+
+    private void UpdateAutoRefreshFallbackState()
+    {
+        if (isRealtimeConnected)
+        {
+            _autoRefreshTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            return;
+        }
+
+        _autoRefreshTimer ??= new Timer(OnAutoRefresh, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+        _autoRefreshTimer.Change(TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
     }
 
     private async void OnAutoRefresh(object? _)
     {
-        if (selectedTournament is null) return;
+        if (isRealtimeConnected) return;
+
         try
         {
-            matchesForTournament = (await Api.GetMatchesAsync(selectedTournament.Id)).ToList();
+            if (selectedTournament is not null)
+            {
+                boards = (await Api.GetBoardsByTournamentAsync(selectedTournament.Id)).ToList();
+                matchesForTournament = (await Api.GetMatchesAsync(selectedTournament.Id)).ToList();
+            }
             await InvokeAsync(StateHasChanged);
         }
         catch { /* ignore refresh errors */ }
@@ -248,9 +410,23 @@ else
     {
         if (selectedTournament is null) return;
         var id = selectedTournament.Id;
-        matchesForTournament = (await Api.GetMatchesAsync(id)).ToList();
-        participants = (await Api.GetParticipantsAsync(id)).ToList();
-        rounds = (await Api.GetRoundsAsync(id)).ToList();
+
+        try
+        {
+            boards = (await Api.GetBoardsByTournamentAsync(id)).ToList();
+            matchesForTournament = (await Api.GetMatchesAsync(id)).ToList();
+            participants = (await Api.GetParticipantsAsync(id)).ToList();
+            rounds = (await Api.GetRoundsAsync(id)).ToList();
+            apiConnectionError = null;
+        }
+        catch (Exception ex)
+        {
+            apiConnectionError = ex.Message;
+            boards = [];
+            matchesForTournament = [];
+            participants = [];
+            rounds = [];
+        }
     }
 
     private List<MatchDto> GetBoardMatches(Guid boardId)
@@ -300,7 +476,8 @@ else
 
         // Behind — estimate delay from round settings
         var matchRound = rounds.FirstOrDefault(r => r.Phase == nextMatch.Phase && r.RoundNumber == nextMatch.Round);
-        var avgDuration = matchRound?.MatchDurationMinutes ?? 10;
+        var legSecs = matchRound?.LegDurationSeconds > 0 ? matchRound.LegDurationSeconds : 300;
+        var avgDuration = (matchRound?.Sets ?? 1) * (matchRound?.Legs ?? 3) * legSecs / 60;
         var pause = matchRound?.PauseBetweenMatchesMinutes ?? 2;
         return behindCount * (avgDuration + pause);
     }
@@ -318,6 +495,15 @@ else
         return $"{m.HomeLegs}:{m.AwayLegs}";
     }
 
+    private IEnumerable<BoardDto> ProblemBoards => boards.Where(b => b.OverallStatus is "Warning" or "Error");
+
+    private static string BoardCardBorderClass(string? overallStatus) => overallStatus switch
+    {
+        "Error" => "border-danger border-2",
+        "Warning" => "border-warning border-2",
+        _ => ""
+    };
+
     private static string StatusBadgeClass(string status) => status switch
     {
         "Erstellt" => "bg-secondary",
@@ -332,5 +518,14 @@ else
     {
         _autoRefreshTimer?.Dispose();
         AppState.OnChange -= OnAppStateChanged;
+        BoardHubService.OnConnectionChanged -= OnBoardHubConnectionChanged;
+        BoardHubService.OnBoardAdded -= OnBoardChanged;
+        BoardHubService.OnBoardStatusChanged -= OnBoardChanged;
+        BoardHubService.OnBoardConnectionChanged -= OnBoardChanged;
+        BoardHubService.OnBoardExtensionStatusChanged -= OnBoardChanged;
+        BoardHubService.OnBoardCurrentMatchChanged -= OnBoardChanged;
+        BoardHubService.OnBoardManagedModeChanged -= OnBoardChanged;
+        BoardHubService.OnBoardRemoved -= OnBoardRemoved;
+        BoardHubService.OnMatchUpdated -= OnMatchUpdated;
     }
 }

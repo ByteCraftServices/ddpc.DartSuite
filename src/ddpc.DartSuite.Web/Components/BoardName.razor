@@ -1,0 +1,42 @@
+@if (!string.IsNullOrWhiteSpace(Name))
+{
+    @if (OnClick.HasDelegate)
+    {
+        <button type="button"
+                class="badge border-0 board-name-button @BadgeCssClass"
+                title="@ResolvedTooltip"
+                @onclick="HandleClickAsync"
+                @onclick:stopPropagation="true">
+            @Name
+        </button>
+    }
+    else
+    {
+        <span class="badge @BadgeCssClass" title="@ResolvedTooltip">@Name</span>
+    }
+}
+
+@code {
+    [Parameter] public string? Name { get; set; }
+    [Parameter] public string BadgeCssClass { get; set; } = "text-bg-dark";
+    [Parameter] public string? Status { get; set; }
+    [Parameter] public string? Tooltip { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    private string? ResolvedTooltip
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(Tooltip))
+                return Tooltip;
+
+            if (!string.IsNullOrWhiteSpace(Status))
+                return $"Board-Status: {Status}";
+
+            return OnClick.HasDelegate ? "Boarddetails anzeigen" : null;
+        }
+    }
+
+    private Task HandleClickAsync()
+        => OnClick.HasDelegate ? OnClick.InvokeAsync() : Task.CompletedTask;
+}

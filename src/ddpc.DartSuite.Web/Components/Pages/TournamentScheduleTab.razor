@@ -1,0 +1,603 @@
+﻿@using System.Linq
+@using ddpc.DartSuite.Application.Contracts.Boards
+@using ddpc.DartSuite.Application.Contracts.Matches
+@using ddpc.DartSuite.Web.Components
+@using Microsoft.AspNetCore.Components
+
+<div id="section-tournaments-schedule" class="d-flex justify-content-between align-items-center mb-3">
+    <h6 class="fw-semibold mb-0">Spielplan — Chronologische Übersicht</h6>
+</div>
+
+<details class="card mb-3" open="@filtersPanelExpanded">
+    <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
+        <span>
+            Anzeige &amp; Filter
+            <span class="badge text-bg-light border ms-2">Warteschlange: @QueueLimitSummary</span>
+            <span class="badge text-bg-light border ms-2">Status: @StatusFilterSummary</span>
+        </span>
+        <span class="d-flex gap-2">
+            @if (Matches.Any() && !SelectedTournamentIsLocked && IsCurrentUserManager && HasTournamentStartTime)
+            {
+                <button class="btn btn-primary btn-sm"
+                        @onclick="HandleGenerateScheduleAsync"
+                        @onclick:stopPropagation
+                        disabled="@IsWorking">⏰ Spielplan generieren</button>
+            }
+            <button class="btn btn-sm btn-outline-secondary"
+                    title="MatchCard-Einstellungen fuer Spielplan"
+                    @onclick='() => OpenMatchCardScopeEditor.InvokeAsync("tournaments::schedule")'
+                    @onclick:stopPropagation>⚙</button>
+        </span>
+    </summary>
+    <div class="card-body">
+        <div class="d-flex flex-wrap gap-3 align-items-end small filter-bar">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="schedHideFinished" checked="@ScheduleHideFinished" @onchange="HandleScheduleHideFinishedChangedAsync" />
+                <label class="form-check-label" for="schedHideFinished">Beendete ausblenden</label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="schedNoBoard" checked="@ScheduleShowNoBoard" @onchange="HandleScheduleShowNoBoardChangedAsync" />
+                <label class="form-check-label" for="schedNoBoard">Nur ohne Board</label>
+            </div>
+            <div>
+                <label class="form-label form-label-sm mb-1" for="schedStatusFilter">Status</label>
+                <select id="schedStatusFilter" class="form-select form-select-sm" style="width:auto;min-width:12rem" value="@ScheduleStatusFilter" @onchange="HandleScheduleStatusFilterChangedAsync">
+                    <option value="all">Alle Status</option>
+                    <option value="running">Laufende Spiele</option>
+                    <option value="upcoming">Anstehende Spiele</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label form-label-sm mb-1" for="schedQueueLimit">Anzahl der Matches pro Warteschlange</label>
+                <select id="schedQueueLimit" class="form-select form-select-sm" style="width:auto;min-width:12rem" value="@queueDisplayLimit" @onchange="HandleQueueDisplayLimitChangedAsync">
+                    <option value="none">Keine Warteschlange</option>
+                    <option value="1">1</option>
+                    <option value="3">3 (Standard)</option>
+                    <option value="5">5</option>
+                    <option value="10">10</option>
+                    <option value="all">Alle</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</details>
+
+@if (ShouldShowQueues)
+{
+    <details class="card mb-3" open="@queuePanelExpanded">
+        <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
+            <span>Boards &amp; Warteschlangen</span>
+            <button class="btn btn-sm btn-outline-secondary"
+                    title="MatchCard-Einstellungen fuer Boards & anstehende Matches"
+                    @onclick='() => OpenMatchCardScopeEditor.InvokeAsync("tournaments::schedule-boards-upcoming")'
+                    @onclick:stopPropagation>⚙</button>
+        </summary>
+        <div class="card-body">
+            <div class="row g-2">
+                @foreach (var board in Boards)
+                {
+                    var queue = BoardQueues.TryGetValue(board.Id, out var matchesOnBoard) ? matchesOnBoard : [];
+                    <div class="col-12 col-md-6 col-xl-4">
+                        <div class="card h-100 schedule-board-queue-card">
+                               <div class="@BuildScheduleBoardHeaderCss(board.Id)"
+                                 @ondragover:preventDefault
+                                 @ondragover="() => MarkScheduleDropTargetBoard.InvokeAsync(board.Id)"
+                                 @ondragleave="() => ClearScheduleDropTargetBoard.InvokeAsync(board.Id)"
+                                 @ondrop="() => DropOnBoardHeader.InvokeAsync(board.Id)">
+                                <div class="d-flex align-items-center gap-2 min-w-0">
+                                    <span class="badge bg-dark p-2 user-select-none @(DraggedBoardId == board.Id ? "schedule-mobile-source-active" : string.Empty)"
+                                          draggable="@(CanManageScheduleInteractions && !IsCompactViewport ? "true" : "false")"
+                                          @ondragstart="() => HandleBoardDragStartAsync(board.Id)"
+                                          @ondragend="HandleBoardDragEndAsync"
+                                          style="cursor:@(CanManageScheduleInteractions && !IsCompactViewport ? "grab" : "default"); font-size:.85em">
+                                        📋 @board.Name
+                                        <span class="badge @BoardStatusBadge(board.Status) ms-1" style="font-size:.75em">@board.Status</span>
+                                    </span>
+                                    @if (IsCompactViewport && CanManageScheduleInteractions)
+                                    {
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-secondary schedule-mobile-move-handle @(DraggedBoardId == board.Id ? "active" : string.Empty)"
+                                                title="Board fuer Zuordnung auswaehlen"
+                                                @onclick="() => ToggleMobileBoardMoveAsync(board.Id)"
+                                                @onclick:stopPropagation>⇅</button>
+                                    }
+                                </div>
+                                <span class="badge text-bg-light border">@queue.Count</span>
+                            </div>
+                            <div class="card-body p-2 schedule-board-queue-body @ScheduleBoardDropZoneCss(board.Id)" style="@BuildQueueBodyStyle()"
+                                 @ondragover:preventDefault>
+                                @if (DragIsMatch)
+                                {
+                                    @BuildInsertMarker(null, queue.FirstOrDefault()?.Id, board.Id)
+                                }
+
+                                @if (queue.Any())
+                                {
+                                    <div class="d-flex flex-column gap-2">
+                                        @for (var index = 0; index < queue.Count; index++)
+                                        {
+                                            var queuedMatch = queue[index];
+                                            var nextQueuedMatchId = index + 1 < queue.Count ? queue[index + 1].Id : (Guid?)null;
+
+                                            <div class="schedule-queue-item-shell">
+                                                @if (IsCompactViewport && CanDragScheduleMatch(queuedMatch))
+                                                {
+                                                    <div class="d-flex justify-content-end mb-1">
+                                                        <button type="button"
+                                                                class="btn btn-sm btn-outline-secondary schedule-mobile-move-handle @(DraggedScheduleMatchId == queuedMatch.Id ? "active" : string.Empty)"
+                                                                title="Match fuer Verschieben auswaehlen"
+                                                                @onclick="() => ToggleMobileMatchMoveAsync(queuedMatch)"
+                                                                @onclick:stopPropagation>⇅</button>
+                                                    </div>
+                                                }
+                                                <div class="@BuildScheduleMatchCardCss(queuedMatch)"
+                                                     draggable="@(CanDragScheduleMatch(queuedMatch) && !IsCompactViewport ? "true" : "false")"
+                                                     @ondragstart="() => StartScheduleMatchDrag.InvokeAsync(queuedMatch.Id)"
+                                                     @ondragend="HandleEndScheduleMatchDragAsync">
+                                                    <MatchCard Match="@queuedMatch"
+                                                               ViewSettings="@BoardQueueCardSettings"
+                                                               Layout="@BoardQueueCardSettings.Layout"
+                                                               Label="@MatchLabel(queuedMatch)"
+                                                               ShowRuntimeBadge="@BoardQueueCardSettings.ShowRuntimeBadge"
+                                                               ShowMonitoringStatus="@ShowMatchCardMonitoring(BoardQueueCardSettings)"
+                                                               MonitoringStatusText="@GetMonitoringBadgeText(queuedMatch)"
+                                                               MonitoringStatusCssClass="@GetMonitoringBadgeCss(queuedMatch)"
+                                                               EnablePlayerLinks="@BoardQueueCardSettings.EnablePlayerLinks"
+                                                               EnableBoardLink="@BoardQueueCardSettings.EnableBoardLink"
+                                                               HomeName="@ResolveScheduleHomeName(queuedMatch)"
+                                                               AwayName="@ResolveScheduleAwayName(queuedMatch)"
+                                                               BoardName="@board.Name"
+                                                               SlotOrigin="@BuildSlotOrigin(queuedMatch)"
+                                                               SetModeActive="@IsSetMode(queuedMatch)"
+                                                               LiveScoreEnabled="@BoardQueueCardSettings.LiveScoreEnabled"
+                                                               ShowMatchStatus="@BoardQueueCardSettings.ShowMatchStatus"
+                                                               ShowSchedulingStatus="@BoardQueueCardSettings.ShowSchedulingStatus"
+                                                               ShowAverage="@BoardQueueCardSettings.ShowAverage"
+                                                               ShowHighestPpr="@BoardQueueCardSettings.ShowHighestPpr"
+                                                               ShowHighestCheckout="@BoardQueueCardSettings.ShowHighestCheckout"
+                                                               ShowAverageDartsPerLeg="@BoardQueueCardSettings.ShowAverageDartsPerLeg"
+                                                               ShowMinimalDartsPerLeg="@BoardQueueCardSettings.ShowMinimalDartsPerLeg"
+                                                               OnHomePlayerClick="BuildPlayerDetailCallback(queuedMatch.HomeParticipantId)"
+                                                               OnAwayPlayerClick="BuildPlayerDetailCallback(queuedMatch.AwayParticipantId)"
+                                                               OnBoardClick="BuildMatchBoardDetailCallback(queuedMatch)"
+                                                               EnableDetailPanel="false"
+                                                               EnableRealtimeConsumer="@(queuedMatch.StartedUtc is not null && queuedMatch.FinishedUtc is null)"
+                                                               OnClick="() => OpenMatchDetail.InvokeAsync(queuedMatch)" />
+                                                </div>
+                                                @if (ShowScheduleLockedMarker(queuedMatch))
+                                                {
+                                                    <div class="small text-muted px-1 pb-1">🔒 Gesperrt für Drag &amp; Drop</div>
+                                                }
+                                            </div>
+
+                                            @if (DragIsMatch)
+                                            {
+                                                @BuildInsertMarker(queuedMatch.Id, nextQueuedMatchId, board.Id)
+                                            }
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="small text-muted">Keine anstehenden Matches</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </details>
+}
+
+@if (UnassignedUpcoming.Any())
+{
+    <div class="alert alert-warning py-2 small mb-3">
+        ⚠ <strong>@UnassignedUpcoming.Count</strong> anstehende Matches ohne Board-Zuweisung:
+        @foreach (var match in UnassignedUpcoming.Take(10))
+        {
+            <span class="badge text-bg-warning me-1" style="cursor:pointer" @onclick="() => OpenMatchDetail.InvokeAsync(match)">@MatchLabel(match)</span>
+        }
+        @if (UnassignedUpcoming.Count > 10)
+        {
+            <span class="text-muted">… und @(UnassignedUpcoming.Count - 10) weitere</span>
+        }
+    </div>
+}
+
+@if (Boards.Any())
+{
+    <div class="schedule-board-headers-sticky mb-2">
+        <div class="row g-2">
+            @foreach (var board in Boards)
+            {
+                var queueCount = BoardQueues.TryGetValue(board.Id, out var matchesOnBoard) ? matchesOnBoard.Count : 0;
+                <div class="col-12 col-md-6 col-xl-4">
+                    <div class="card-header py-1 d-flex justify-content-between align-items-center schedule-board-sticky-proxy @ScheduleBoardDropZoneCss(board.Id) @(DraggedBoardId == board.Id ? "schedule-mobile-source-active" : string.Empty)"
+                         draggable="@(CanManageScheduleInteractions && !IsCompactViewport ? "true" : "false")"
+                         @ondragstart="() => HandleBoardDragStartAsync(board.Id)"
+                         @ondragend="HandleBoardDragEndAsync"
+                        @ondragover:preventDefault
+                        @ondragover="() => MarkScheduleDropTargetBoard.InvokeAsync(board.Id)"
+                        @ondragleave="() => ClearScheduleDropTargetBoard.InvokeAsync(board.Id)"
+                        @ondrop="() => DropOnBoardHeader.InvokeAsync(board.Id)"
+                         style="cursor:@(CanManageScheduleInteractions && !IsCompactViewport ? "grab" : "default")">
+                        <div class="d-flex align-items-center gap-2 min-w-0">
+                            <span class="badge bg-dark p-2 user-select-none @(DraggedBoardId == board.Id ? "schedule-mobile-source-active" : string.Empty)"
+                                  draggable="@(CanManageScheduleInteractions && !IsCompactViewport ? "true" : "false")"
+                                  @ondragstart="() => HandleBoardDragStartAsync(board.Id)"
+                                  @ondragend="HandleBoardDragEndAsync"
+                                  style="cursor:@(CanManageScheduleInteractions && !IsCompactViewport ? "grab" : "default"); font-size:.85em">
+                                📋 @board.Name
+                                <span class="badge @BoardStatusBadge(board.Status) ms-1" style="font-size:.75em">@board.Status</span>
+                            </span>
+                            @if (IsCompactViewport && CanManageScheduleInteractions)
+                            {
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-secondary schedule-mobile-move-handle @(DraggedBoardId == board.Id ? "active" : string.Empty)"
+                                        title="Board fuer Zuordnung auswaehlen"
+                                        @onclick="() => ToggleMobileBoardMoveAsync(board.Id)"
+                                        @onclick:stopPropagation>⇅</button>
+                            }
+                        </div>
+                        <span class="badge text-bg-light border">@queueCount</span>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@if (ScheduledMatches.Any())
+{
+    <div id="section-tournaments-schedule-zeitplan" class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="fw-semibold text-muted small mb-0">Zeitplan</h6>
+        <button class="btn btn-sm btn-outline-secondary"
+                title="MatchCard-Einstellungen fuer Zeitplan"
+                @onclick='() => OpenMatchCardScopeEditor.InvokeAsync("tournaments::schedule-zeitplan")'
+                @onclick:stopPropagation>⚙</button>
+    </div>
+    <div class="d-flex flex-column gap-1">
+        @if (DragIsMatch)
+        {
+            @BuildInsertMarker(null, ScheduledMatches.FirstOrDefault()?.Id, null)
+        }
+
+        @for (var index = 0; index < ScheduledMatches.Count; index++)
+        {
+            var match = ScheduledMatches[index];
+            var assignedBoard = Boards.FirstOrDefault(b => b.Id == match.BoardId);
+            var isDone = match.FinishedUtc is not null;
+            var nextTimelineMatchId = index + 1 < ScheduledMatches.Count ? ScheduledMatches[index + 1].Id : (Guid?)null;
+
+            <div class="schedule-timeline-item-shell">
+                @if (IsCompactViewport && CanDragScheduleMatch(match))
+                {
+                    <div class="d-flex justify-content-end mb-1">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary schedule-mobile-move-handle @(DraggedScheduleMatchId == match.Id ? "active" : string.Empty)"
+                                title="Match fuer Verschieben auswaehlen"
+                                @onclick="() => ToggleMobileMatchMoveAsync(match)"
+                                @onclick:stopPropagation>⇅</button>
+                    </div>
+                }
+                <div class="@BuildScheduleMatchCardCss(match)"
+                     draggable="@(CanDragScheduleMatch(match) && !IsCompactViewport ? "true" : "false")"
+                     @ondragstart="() => StartScheduleMatchDrag.InvokeAsync(match.Id)"
+                     @ondragend="HandleEndScheduleMatchDragAsync"
+                     @ondragover:preventDefault
+                     @ondragover="() => HandleScheduleCardDragOverAsync(match.Id)"
+                     @ondragleave="() => HandleScheduleCardDragLeaveAsync(match.Id)"
+                     @ondrop="() => HandleScheduleCardDropAsync(match.Id)">
+                    <MatchCard Match="@match"
+                               ViewSettings="@TimelineCardSettings"
+                               Layout="@TimelineCardSettings.Layout"
+                               Label="@MatchLabel(match)"
+                               ShowRuntimeBadge="@TimelineCardSettings.ShowRuntimeBadge"
+                               ShowMonitoringStatus="@ShowMatchCardMonitoring(TimelineCardSettings)"
+                               MonitoringStatusText="@GetMonitoringBadgeText(match)"
+                               MonitoringStatusCssClass="@GetMonitoringBadgeCss(match)"
+                               EnablePlayerLinks="@TimelineCardSettings.EnablePlayerLinks"
+                               EnableBoardLink="@TimelineCardSettings.EnableBoardLink"
+                               HomeName="@ResolveScheduleHomeName(match)"
+                               AwayName="@ResolveScheduleAwayName(match)"
+                               BoardName="@MatchBoardName(match)"
+                               SetModeActive="@IsSetMode(match)"
+                               LiveScoreEnabled="@TimelineCardSettings.LiveScoreEnabled"
+                               ShowMatchStatus="@TimelineCardSettings.ShowMatchStatus"
+                               ShowSchedulingStatus="@TimelineCardSettings.ShowSchedulingStatus"
+                               ShowAverage="@TimelineCardSettings.ShowAverage"
+                               ShowHighestPpr="@TimelineCardSettings.ShowHighestPpr"
+                               ShowHighestCheckout="@TimelineCardSettings.ShowHighestCheckout"
+                               ShowAverageDartsPerLeg="@TimelineCardSettings.ShowAverageDartsPerLeg"
+                               ShowMinimalDartsPerLeg="@TimelineCardSettings.ShowMinimalDartsPerLeg"
+                               OnHomePlayerClick="BuildPlayerDetailCallback(match.HomeParticipantId)"
+                               OnAwayPlayerClick="BuildPlayerDetailCallback(match.AwayParticipantId)"
+                               OnBoardClick="BuildMatchBoardDetailCallback(match)"
+                               ShowActionButtons="@IsCurrentUserManager"
+                               OnStartMatch="() => SendUpcomingMatch.InvokeAsync(match)"
+                               CanStartMatch="@(CanSendUpcomingMatch(match) && !IsWorking)"
+                               EnableDetailPanel="false"
+                               EnableRealtimeConsumer="@(match.StartedUtc is not null && match.FinishedUtc is null)"
+                               OnClick="() => OpenMatchDetail.InvokeAsync(match)" />
+                </div>
+                @if (ShowScheduleLockedMarker(match))
+                {
+                    <div class="small text-muted px-1 pb-1">🔒 Gesperrt für Drag &amp; Drop</div>
+                }
+                @if (DraggedBoardId.HasValue && IsCompactViewport && CanAssignBoardToMatch(match))
+                {
+                    <div class="d-flex justify-content-end px-2 pb-2">
+                        <button type="button"
+                                class="btn btn-sm btn-outline-primary"
+                                @onclick="() => DropOnTimelineMatch.InvokeAsync(match.Id)"
+                                @onclick:stopPropagation>📋 Board hier zuweisen</button>
+                    </div>
+                }
+                @if (IsCurrentUserManager && !SelectedTournamentIsLocked && !isDone)
+                {
+                    <div class="d-flex gap-2 align-items-center ps-2 pb-1 small flex-wrap" @onclick:stopPropagation>
+                        @if (EditingMatchTimeId == match.Id)
+                        {
+                            <div class="d-flex gap-1 align-items-center">
+                                <input type="text" class="form-control form-control-sm" style="width:5rem" placeholder="HH:mm" value="@EditMatchTimeValue" @oninput="HandleEditMatchTimeValueChangedAsync" />
+                                <button class="btn btn-sm btn-success py-0 px-1" @onclick="() => SaveMatchTime.InvokeAsync(match)" disabled="@IsWorking">✓</button>
+                                <button class="btn btn-sm btn-secondary py-0 px-1" @onclick="HandleCancelEditMatchTimeAsync">✕</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <span @onclick="() => StartEditMatchTime(match)" style="cursor:text" class="@(match.IsStartTimeLocked ? "text-primary fw-semibold" : "text-muted")">
+                                @if (match.PlannedStartUtc is not null)
+                                {
+                                    @match.PlannedStartUtc.Value.LocalDateTime.ToString("HH:mm")
+                                }
+                                else
+                                {
+                                    <span>—</span>
+                                }
+                            </span>
+                            <button class="btn btn-link btn-sm p-0 @(match.IsStartTimeLocked ? "text-primary" : "text-muted")"
+                                    @onclick="() => ToggleTimeLock.InvokeAsync(match)"
+                                    title="@(match.IsStartTimeLocked ? "Startzeit entsperren" : "Startzeit sperren")">
+                                @(match.IsStartTimeLocked ? "🔒" : "🔓")
+                            </button>
+                        }
+                        @if (assignedBoard is not null)
+                        {
+                            <button class="btn btn-link btn-sm p-0 @(match.IsBoardLocked ? "text-primary" : "text-muted")"
+                                    @onclick="() => ToggleBoardLock.InvokeAsync(match)"
+                                    title="@(match.IsBoardLocked ? "Board entsperren" : "Board sperren")">
+                                @(match.IsBoardLocked ? "🔒" : "🔓") @assignedBoard.Name
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+
+            @if (DragIsMatch)
+            {
+                @BuildInsertMarker(match.Id, nextTimelineMatchId, null)
+            }
+        }
+    </div>
+}
+else
+{
+    <p class="text-muted">Noch kein Spielplan vorhanden. Generieren Sie zuerst den Turnierplan im Tab „Auslosung" und danach den Spielplan.</p>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<MatchDto> Matches { get; set; } = [];
+    [Parameter] public IReadOnlyList<BoardDto> Boards { get; set; } = [];
+    [Parameter] public IReadOnlyList<MatchDto> ScheduledMatches { get; set; } = [];
+    [Parameter] public IReadOnlyList<MatchDto> UnassignedUpcoming { get; set; } = [];
+    [Parameter] public bool SelectedTournamentIsLocked { get; set; }
+    [Parameter] public bool HasTournamentStartTime { get; set; }
+    [Parameter] public bool IsCurrentUserManager { get; set; }
+    [Parameter] public bool CanManageScheduleInteractions { get; set; }
+    [Parameter] public bool IsWorking { get; set; }
+    [Parameter] public bool IsCompactViewport { get; set; }
+    [Parameter] public bool ScheduleHideFinished { get; set; }
+    [Parameter] public bool ScheduleShowNoBoard { get; set; }
+    [Parameter] public string ScheduleStatusFilter { get; set; } = "all";
+    [Parameter] public Guid? EditingMatchTimeId { get; set; }
+    [Parameter] public string EditMatchTimeValue { get; set; } = string.Empty;
+    [Parameter] public Guid? DropTargetMatchId { get; set; }
+    [Parameter] public bool HasDraggedBoard { get; set; }
+    [Parameter] public Guid? DraggedBoardId { get; set; }
+    [Parameter] public Guid? DraggedScheduleMatchId { get; set; }
+    [Parameter] public IReadOnlyDictionary<Guid, List<MatchDto>> BoardQueues { get; set; } = new Dictionary<Guid, List<MatchDto>>();
+    [Parameter] public MatchCardViewSettings BoardQueueCardSettings { get; set; } = new();
+    [Parameter] public MatchCardViewSettings TimelineCardSettings { get; set; } = new();
+
+    [Parameter] public EventCallback<bool> ScheduleHideFinishedChanged { get; set; }
+    [Parameter] public EventCallback<bool> ScheduleShowNoBoardChanged { get; set; }
+    [Parameter] public EventCallback<string> ScheduleStatusFilterChanged { get; set; }
+    [Parameter] public EventCallback<string> OpenMatchCardScopeEditor { get; set; }
+    [Parameter] public EventCallback GenerateSchedule { get; set; }
+    [Parameter] public Func<MatchDto, string> MatchLabel { get; set; } = _ => string.Empty;
+    [Parameter] public Func<string, string> BoardStatusBadge { get; set; } = _ => string.Empty;
+    [Parameter] public Func<Guid, string> BuildScheduleBoardHeaderCss { get; set; } = _ => string.Empty;
+    [Parameter] public Func<Guid, string> ScheduleBoardDropZoneCss { get; set; } = _ => string.Empty;
+    [Parameter] public Func<MatchCardViewSettings, bool> ShowMatchCardMonitoring { get; set; } = _ => false;
+    [Parameter] public Func<MatchDto, string> GetMonitoringBadgeText { get; set; } = _ => string.Empty;
+    [Parameter] public Func<MatchDto, string> GetMonitoringBadgeCss { get; set; } = _ => string.Empty;
+    [Parameter] public Func<Guid?, string> ParticipantName { get; set; } = _ => string.Empty;
+    [Parameter] public Func<MatchDto, string> ResolveScheduleHomeName { get; set; } = _ => string.Empty;
+    [Parameter] public Func<MatchDto, string> ResolveScheduleAwayName { get; set; } = _ => string.Empty;
+    [Parameter] public Func<MatchDto, string?> MatchBoardName { get; set; } = _ => null;
+    [Parameter] public Func<MatchDto, string?> BuildSlotOrigin { get; set; } = _ => null;
+    [Parameter] public Func<MatchDto, bool> IsSetMode { get; set; } = _ => false;
+    [Parameter] public Func<Guid?, EventCallback> BuildPlayerDetailCallback { get; set; } = _ => default;
+    [Parameter] public Func<MatchDto, EventCallback> BuildMatchBoardDetailCallback { get; set; } = _ => default;
+    [Parameter] public Func<MatchDto, string> BuildScheduleMatchCardCss { get; set; } = _ => string.Empty;
+    [Parameter] public Func<MatchDto, bool> CanDragScheduleMatch { get; set; } = _ => false;
+    [Parameter] public Func<MatchDto, bool> CanAssignBoardToMatch { get; set; } = _ => false;
+    [Parameter] public Func<Guid?, Guid?, Guid?, string> BuildScheduleInsertMarkerCss { get; set; } = (_, _, _) => string.Empty;
+    [Parameter] public Func<Guid?, string> BuildScheduleInsertMarkerLabel { get; set; } = _ => string.Empty;
+    [Parameter] public EventCallback<Guid?> SetDropTargetMatchId { get; set; }
+    [Parameter] public EventCallback<Guid> StartScheduleMatchDrag { get; set; }
+    [Parameter] public EventCallback EndScheduleMatchDrag { get; set; }
+    [Parameter] public EventCallback<Guid> OnBoardDragStart { get; set; }
+    [Parameter] public EventCallback OnBoardDragEnd { get; set; }
+    [Parameter] public EventCallback<Guid> MarkScheduleDropTargetMatch { get; set; }
+    [Parameter] public EventCallback<Guid> ClearScheduleDropTargetMatch { get; set; }
+    [Parameter] public EventCallback<Guid> MarkScheduleDropTargetBoard { get; set; }
+    [Parameter] public EventCallback<Guid> ClearScheduleDropTargetBoard { get; set; }
+    [Parameter] public EventCallback<ScheduleDropRequest> MarkScheduleInsertTarget { get; set; }
+    [Parameter] public EventCallback<ScheduleDropRequest> ClearScheduleInsertTarget { get; set; }
+    [Parameter] public EventCallback<ScheduleDropRequest> DropOnScheduleMarker { get; set; }
+    [Parameter] public EventCallback<Guid> DropOnBoardHeader { get; set; }
+    [Parameter] public EventCallback<Guid> DropOnTimelineMatch { get; set; }
+    [Parameter] public EventCallback<MatchDto> OpenMatchDetail { get; set; }
+    [Parameter] public Func<MatchDto, bool> ShowScheduleLockedMarker { get; set; } = _ => false;
+    [Parameter] public Action<MatchDto> StartEditMatchTime { get; set; } = _ => { };
+    [Parameter] public Action CancelEditMatchTime { get; set; } = () => { };
+    [Parameter] public Func<string, Task> EditMatchTimeValueChanged { get; set; } = _ => Task.CompletedTask;
+    [Parameter] public EventCallback<MatchDto> SaveMatchTime { get; set; }
+    [Parameter] public EventCallback<MatchDto> ToggleTimeLock { get; set; }
+    [Parameter] public EventCallback<MatchDto> ToggleBoardLock { get; set; }
+    [Parameter] public Func<MatchDto, bool> CanSendUpcomingMatch { get; set; } = _ => false;
+    [Parameter] public EventCallback<MatchDto> SendUpcomingMatch { get; set; }
+
+    private bool filtersPanelExpanded = true;
+    private bool queuePanelExpanded = true;
+    private string queueDisplayLimit = "3";
+
+    private bool ShouldShowQueues => !string.Equals(queueDisplayLimit, "none", StringComparison.OrdinalIgnoreCase) && Boards.Any() && Matches.Any();
+    private bool DragIsMatch => DraggedScheduleMatchId.HasValue;
+    private string QueueLimitSummary => queueDisplayLimit switch
+    {
+        "none" => "ausgeblendet",
+        "all" => "alle sichtbar",
+        _ => $"{queueDisplayLimit} sichtbar"
+    };
+    private string StatusFilterSummary => ScheduleStatusFilter switch
+    {
+        "running" => "laufend",
+        "upcoming" => "anstehend",
+        _ => "alle"
+    };
+
+    private Task HandleGenerateScheduleAsync() => GenerateSchedule.InvokeAsync();
+
+    private Task HandleScheduleHideFinishedChangedAsync(ChangeEventArgs args)
+        => ScheduleHideFinishedChanged.InvokeAsync(ParseBool(args, ScheduleHideFinished));
+
+    private Task HandleScheduleShowNoBoardChangedAsync(ChangeEventArgs args)
+        => ScheduleShowNoBoardChanged.InvokeAsync(ParseBool(args, ScheduleShowNoBoard));
+
+    private Task HandleScheduleStatusFilterChangedAsync(ChangeEventArgs args)
+        => ScheduleStatusFilterChanged.InvokeAsync(Convert.ToString(args.Value) ?? ScheduleStatusFilter);
+
+    private Task HandleQueueDisplayLimitChangedAsync(ChangeEventArgs args)
+    {
+        queueDisplayLimit = Convert.ToString(args.Value) ?? "3";
+        return Task.CompletedTask;
+    }
+
+    private Task HandleEndScheduleMatchDragAsync() => EndScheduleMatchDrag.InvokeAsync();
+
+    private Task HandleEditMatchTimeValueChangedAsync(ChangeEventArgs args)
+        => EditMatchTimeValueChanged(Convert.ToString(args.Value) ?? string.Empty);
+
+    private Task HandleBoardDragStartAsync(Guid boardId) => OnBoardDragStart.InvokeAsync(boardId);
+
+    private Task HandleBoardDragEndAsync() => OnBoardDragEnd.InvokeAsync();
+
+    private Task HandleCancelEditMatchTimeAsync()
+    {
+        CancelEditMatchTime();
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleScheduleCardDragOverAsync(Guid matchId)
+    {
+        if (DraggedBoardId.HasValue)
+            await SetDropTargetMatchId.InvokeAsync(matchId);
+    }
+
+    private async Task HandleScheduleCardDragLeaveAsync(Guid matchId)
+    {
+        if (DropTargetMatchId == matchId)
+            await SetDropTargetMatchId.InvokeAsync(null);
+    }
+
+    private Task HandleScheduleCardDropAsync(Guid matchId)
+        => DraggedBoardId.HasValue ? DropOnTimelineMatch.InvokeAsync(matchId) : Task.CompletedTask;
+
+    private Task HandleInsertMarkerDragOverAsync(Guid? previousMatchId, Guid? nextMatchId, Guid? boardId)
+        => MarkScheduleInsertTarget.InvokeAsync(new ScheduleDropRequest(previousMatchId, nextMatchId, boardId));
+
+    private Task HandleInsertMarkerDragLeaveAsync(Guid? previousMatchId, Guid? nextMatchId, Guid? boardId)
+        => ClearScheduleInsertTarget.InvokeAsync(new ScheduleDropRequest(previousMatchId, nextMatchId, boardId));
+
+    private Task HandleInsertMarkerDropAsync(Guid? previousMatchId, Guid? nextMatchId, Guid? boardId)
+        => DropOnScheduleMarker.InvokeAsync(new ScheduleDropRequest(previousMatchId, nextMatchId, boardId));
+
+    private async Task ToggleMobileMatchMoveAsync(MatchDto match)
+    {
+        if (!IsCompactViewport || !CanDragScheduleMatch(match))
+            return;
+
+        if (DraggedScheduleMatchId == match.Id)
+        {
+            await EndScheduleMatchDrag.InvokeAsync();
+            return;
+        }
+
+        await StartScheduleMatchDrag.InvokeAsync(match.Id);
+    }
+
+    private async Task ToggleMobileBoardMoveAsync(Guid boardId)
+    {
+        if (!IsCompactViewport || !CanManageScheduleInteractions)
+            return;
+
+        if (DraggedBoardId == boardId)
+        {
+            await OnBoardDragEnd.InvokeAsync();
+            return;
+        }
+
+        await OnBoardDragStart.InvokeAsync(boardId);
+    }
+
+    private string BuildQueueBodyStyle()
+        => queueDisplayLimit switch
+        {
+            "1" => "max-height: 10rem; overflow-y:auto;",
+            "3" => "max-height: 24rem; overflow-y:auto;",
+            "5" => "max-height: 38rem; overflow-y:auto;",
+            "10" => "max-height: 72rem; overflow-y:auto;",
+            _ => string.Empty
+        };
+
+    private RenderFragment BuildInsertMarker(Guid? previousMatchId, Guid? nextMatchId, Guid? boardId) => builder =>
+    {
+        var sequence = 0;
+        var css = BuildScheduleInsertMarkerCss(previousMatchId, nextMatchId, boardId);
+        var label = BuildScheduleInsertMarkerLabel(nextMatchId);
+
+        builder.OpenElement(sequence++, "div");
+        builder.AddAttribute(sequence++, "class", css);
+        builder.AddAttribute(sequence++, "ondragover", EventCallback.Factory.Create(this, () => HandleInsertMarkerDragOverAsync(previousMatchId, nextMatchId, boardId)));
+        builder.AddAttribute(sequence++, "ondragleave", EventCallback.Factory.Create(this, () => HandleInsertMarkerDragLeaveAsync(previousMatchId, nextMatchId, boardId)));
+        builder.AddAttribute(sequence++, "ondrop", EventCallback.Factory.Create(this, () => HandleInsertMarkerDropAsync(previousMatchId, nextMatchId, boardId)));
+        builder.AddEventPreventDefaultAttribute(sequence++, "ondragover", true);
+
+        builder.OpenElement(sequence++, "button");
+        builder.AddAttribute(sequence++, "type", "button");
+        builder.AddAttribute(sequence++, "class", "schedule-insert-marker-button");
+        builder.AddAttribute(sequence++, "title", $"Match hier einfuegen ({label})");
+        builder.AddAttribute(sequence++, "onclick", EventCallback.Factory.Create(this, () => HandleInsertMarkerDropAsync(previousMatchId, nextMatchId, boardId)));
+        builder.AddContent(sequence++, $"↓ {label}");
+        builder.CloseElement();
+
+        builder.CloseElement();
+    };
+
+    private static bool ParseBool(ChangeEventArgs args, bool fallback)
+        => args.Value is bool value ? value : fallback;
+}

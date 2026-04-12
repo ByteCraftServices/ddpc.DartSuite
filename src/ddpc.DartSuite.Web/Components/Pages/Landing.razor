@@ -1,0 +1,238 @@
+@page "/landing"
+@using ddpc.DartSuite.Application.Contracts.Matches
+@using ddpc.DartSuite.Application.Contracts.Tournaments
+@inject DartSuiteApiService Api
+@inject IUiHelpService UiHelp
+
+<PageTitle>Landing</PageTitle>
+
+<h1 class="mb-3">Willkommen bei DartSuite <UiHelpIcon HelpKey="page.landing" /></h1>
+<p class="text-muted">Oeffentliche Turnieransicht. Direktlink: <code>?tournamentId=GUID</code>.</p>
+
+<div class="card shadow-sm mb-3">
+    <div class="card-body">
+        <h5 class="card-title mb-2">Zugang</h5>
+        <p class="text-muted small mb-3">Autodarts-Login fuer Konto-Funktionen oder Registrierung als lokaler Spieler.</p>
+        <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-primary btn-sm" href="/login">Mit Autodarts anmelden</a>
+            @if (selectedTournament is not null)
+            {
+                <a class="btn btn-outline-primary btn-sm" href="/register?tournamentId=@selectedTournament.Id">Zum Registrieren</a>
+            }
+            else
+            {
+                <a class="btn btn-outline-primary btn-sm" href="/register">Zum Registrieren</a>
+            }
+        </div>
+    </div>
+</div>
+
+@if (isLoading)
+{
+    <div class="text-muted">Turniere werden geladen ...</div>
+}
+else
+{
+    @if (!string.IsNullOrWhiteSpace(loadError))
+    {
+        <div class="alert alert-danger">@loadError</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(queryError))
+    {
+        <div class="alert alert-warning">@queryError</div>
+    }
+
+    @if (selectedTournament is not null)
+    {
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-2">
+                    <h5 class="mb-0">@selectedTournament.Name</h5>
+                    <span class="badge bg-secondary">@selectedTournament.Status</span>
+                </div>
+                <div class="small text-muted mb-3">
+                    Zeitraum: @selectedTournament.StartDate.ToString("dd.MM.yyyy") - @selectedTournament.EndDate.ToString("dd.MM.yyyy")
+                </div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label small">Spielername (optional)</label>
+                           <input class="form-control form-control-sm" @bind="viewerName" placeholder="Eigene Matches filtern"
+                               title="@UiHelp.GetTooltip("landing.viewer-name")" />
+                    </div>
+                    <div class="col-md-8 d-flex flex-wrap align-items-end gap-3 pb-1">
+                        <div class="form-check">
+                            <input id="showAll" class="form-check-input" type="checkbox" @bind="showAllMatches"
+                                title="@UiHelp.GetTooltip("landing.show-all")" />
+                            <label class="form-check-label" for="showAll">Alle Matches anzeigen</label>
+                        </div>
+                        <div class="form-check">
+                            <input id="hideDone" class="form-check-input" type="checkbox" @bind="hideFinishedMatches"
+                                title="@UiHelp.GetTooltip("landing.hide-finished")" />
+                            <label class="form-check-label" for="hideDone">Abgeschlossene Matches ausblenden</label>
+                        </div>
+                    </div>
+                </div>
+
+                @if (VisibleMatches.Count == 0)
+                {
+                    <div class="alert alert-info py-2 mb-0">Keine oeffentlichen Matches fuer den aktuellen Filter.</div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Match</th>
+                                    <th>Status</th>
+                                    <th>Start</th>
+                                    <th>Ergebnis</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var match in VisibleMatches)
+                                {
+                                    <tr>
+                                        <td>@MatchTitle(match)</td>
+                                        <td><span class="badge bg-secondary">@match.Status</span></td>
+                                        <td>@(match.PlannedStartUtc?.LocalDateTime.ToString("dd.MM HH:mm") ?? "-")</td>
+                                        <td>@($"{match.HomeLegs}:{match.AwayLegs}")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @if (tournaments.Count == 0)
+    {
+        <div class="alert alert-info">Aktuell sind keine Turniere sichtbar.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>Turnier</th>
+                        <th>Status</th>
+                        <th>Start</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var tournament in tournaments)
+                    {
+                        <tr>
+                            <td>@tournament.Name</td>
+                            <td><span class="badge bg-secondary">@tournament.Status</span></td>
+                            <td>@tournament.StartDate.ToString("dd.MM.yyyy")</td>
+                            <td class="d-flex gap-2 justify-content-end">
+                                <a class="btn btn-outline-primary btn-sm" href="/landing?tournamentId=@tournament.Id">Oeffnen</a>
+                                <a class="btn btn-outline-secondary btn-sm" href="/register?tournamentId=@tournament.Id">Registrieren</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "tournamentId")]
+    public string? QueryTournamentId { get; set; }
+
+    private readonly List<TournamentDto> tournaments = [];
+    private readonly List<MatchDto> tournamentMatches = [];
+    private readonly Dictionary<Guid, string> participantNames = [];
+    private TournamentDto? selectedTournament;
+    private bool isLoading = true;
+    private string? queryError;
+    private string? loadError;
+    private string viewerName = string.Empty;
+    private bool showAllMatches = true;
+    private bool hideFinishedMatches;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            tournaments.Clear();
+            tournaments.AddRange(await Api.GetTournamentsAsync());
+
+            if (!string.IsNullOrWhiteSpace(QueryTournamentId))
+                await LoadTournamentFromQueryAsync(QueryTournamentId);
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private List<MatchDto> VisibleMatches
+        => tournamentMatches
+            .Where(m => !hideFinishedMatches || m.FinishedUtc is null)
+            .Where(m => showAllMatches || IsOwnMatch(m))
+            .OrderBy(m => m.FinishedUtc is not null)
+            .ThenBy(m => m.PlannedStartUtc ?? DateTimeOffset.MaxValue)
+            .ThenBy(m => m.Round)
+            .ThenBy(m => m.MatchNumber)
+            .ToList();
+
+    private bool IsOwnMatch(MatchDto match)
+    {
+        if (string.IsNullOrWhiteSpace(viewerName))
+            return false;
+
+        var normalizedViewer = viewerName.Trim();
+        var homeName = participantNames.GetValueOrDefault(match.HomeParticipantId) ?? string.Empty;
+        var awayName = participantNames.GetValueOrDefault(match.AwayParticipantId) ?? string.Empty;
+
+        return homeName.Contains(normalizedViewer, StringComparison.OrdinalIgnoreCase)
+            || awayName.Contains(normalizedViewer, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string MatchTitle(MatchDto match)
+    {
+        var home = participantNames.GetValueOrDefault(match.HomeParticipantId) ?? "TBD";
+        var away = participantNames.GetValueOrDefault(match.AwayParticipantId) ?? "TBD";
+        return $"{home} vs {away}";
+    }
+
+    private async Task LoadTournamentFromQueryAsync(string queryTournamentId)
+    {
+        queryError = null;
+        tournamentMatches.Clear();
+        participantNames.Clear();
+        selectedTournament = null;
+
+        if (!Guid.TryParse(queryTournamentId, out var parsedId))
+        {
+            queryError = "Die angegebene tournamentId ist ungueltig.";
+            return;
+        }
+
+        selectedTournament = tournaments.FirstOrDefault(t => t.Id == parsedId);
+        if (selectedTournament is null)
+        {
+            queryError = "Kein oeffentliches Turnier zu dieser tournamentId gefunden.";
+            return;
+        }
+
+        var participants = await Api.GetParticipantsAsync(selectedTournament.Id);
+        foreach (var participant in participants)
+            participantNames[participant.Id] = string.IsNullOrWhiteSpace(participant.DisplayName) ? participant.AccountName : participant.DisplayName;
+
+        tournamentMatches.AddRange(await Api.GetMatchesAsync(selectedTournament.Id));
+    }
+}

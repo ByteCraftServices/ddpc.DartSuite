@@ -26,6 +26,17 @@ public sealed class Match
     public DateTimeOffset? FinishedUtc { get; set; }
     public string? ExternalMatchId { get; set; }
 
+    // Scheduling (Issue #12)
+    public DateTimeOffset? PlannedEndUtc { get; set; }
+    public DateTimeOffset? ExpectedEndUtc { get; set; }
+    public int DelayMinutes { get; set; }
+    public Enums.SchedulingStatus SchedulingStatus { get; set; } = Enums.SchedulingStatus.None;
+
+    // Source tracking for bracket (Issue #11)
+    public string? HomeSlotOrigin { get; set; }
+    public string? AwaySlotOrigin { get; set; }
+    public string? NextMatchInfo { get; set; }
+
     /// <summary>Sentinel ID for bye slots.</summary>
     public static readonly Guid ByeParticipantId = Guid.Empty;
 
@@ -47,6 +58,8 @@ public sealed class Match
             Status = MatchStatus.Beendet;
         else if (ExternalMatchId is not null || StartedUtc is not null)
             Status = MatchStatus.Aktiv;
+        else if (Status == MatchStatus.Warten)
+            Status = MatchStatus.Warten;
         else if (PlannedStartUtc is not null)
             Status = MatchStatus.Geplant;
         else

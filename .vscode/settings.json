@@ -13,5 +13,6 @@
             "**/bin": true,
             "**/obj": true
         }
-    }
+    },
+    "workbench.editor.restoreViewState": true
 }

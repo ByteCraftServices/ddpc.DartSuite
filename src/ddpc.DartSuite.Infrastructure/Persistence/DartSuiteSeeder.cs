@@ -23,9 +23,10 @@ public static class DartSuiteSeeder
             }
         );
 
-        var tournament = new Tournament
+        // Knockout Tournament
+        var koTournament = new Tournament
         {
-            Name = "DartSuite Demo Cup",
+            Name = "DartSuite Demo Cup (KO)",
             OrganizerAccount = "manager.demo",
             StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
             EndDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)),
@@ -34,12 +35,11 @@ public static class DartSuiteSeeder
             TeamplayEnabled = false,
             JoinCode = "123"
         };
-
-        dbContext.Tournaments.Add(tournament);
+        dbContext.Tournaments.Add(koTournament);
         dbContext.Participants.AddRange(
             new Participant
             {
-                TournamentId = tournament.Id,
+                TournamentId = koTournament.Id,
                 DisplayName = "Anna",
                 AccountName = "anna",
                 IsAutodartsAccount = false,
@@ -48,12 +48,97 @@ public static class DartSuiteSeeder
             },
             new Participant
             {
-                TournamentId = tournament.Id,
+                TournamentId = koTournament.Id,
                 DisplayName = "Ben",
                 AccountName = "ben",
                 IsAutodartsAccount = false,
                 Seed = 2
-            });
+            }
+        );
+
+        // Group Tournament
+        var groupTournament = new Tournament
+        {
+            Name = "DartSuite Gruppenpokal",
+            OrganizerAccount = "manager.demo",
+            StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            EndDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)),
+            Mode = TournamentMode.GroupAndKnockout,
+            Variant = TournamentVariant.OnSite,
+            TeamplayEnabled = false,
+            JoinCode = "234",
+            GroupCount = 2
+        };
+        dbContext.Tournaments.Add(groupTournament);
+        dbContext.Participants.AddRange(
+            new Participant
+            {
+                TournamentId = groupTournament.Id,
+                DisplayName = "Clara",
+                AccountName = "clara",
+                IsAutodartsAccount = false,
+                IsManager = true,
+                Seed = 1
+            },
+            new Participant
+            {
+                TournamentId = groupTournament.Id,
+                DisplayName = "David",
+                AccountName = "david",
+                IsAutodartsAccount = false,
+                Seed = 2
+            },
+            new Participant
+            {
+                TournamentId = groupTournament.Id,
+                DisplayName = "Eva",
+                AccountName = "eva",
+                IsAutodartsAccount = false,
+                Seed = 3
+            }
+        );
+
+        // Group + KO Tournament
+        var groupKoTournament = new Tournament
+        {
+            Name = "DartSuite Masters (Gruppe + KO)",
+            OrganizerAccount = "manager.demo",
+            StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            EndDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)),
+            Mode = TournamentMode.GroupAndKnockout,
+            Variant = TournamentVariant.OnSite,
+            TeamplayEnabled = false,
+            JoinCode = "345",
+            GroupCount = 2
+        };
+        dbContext.Tournaments.Add(groupKoTournament);
+        dbContext.Participants.AddRange(
+            new Participant
+            {
+                TournamentId = groupKoTournament.Id,
+                DisplayName = "Felix",
+                AccountName = "felix",
+                IsAutodartsAccount = false,
+                IsManager = true,
+                Seed = 1
+            },
+            new Participant
+            {
+                TournamentId = groupKoTournament.Id,
+                DisplayName = "Greta",
+                AccountName = "greta",
+                IsAutodartsAccount = false,
+                Seed = 2
+            },
+            new Participant
+            {
+                TournamentId = groupKoTournament.Id,
+                DisplayName = "Hannes",
+                AccountName = "hannes",
+                IsAutodartsAccount = false,
+                Seed = 3
+            }
+        );
 
         await dbContext.SaveChangesAsync(cancellationToken);
     }
