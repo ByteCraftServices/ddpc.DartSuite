@@ -1854,9 +1854,9 @@
 @if (selectedTournament is not null)
 {
     <div class="tournament-tab-footer-nav">
-        <button class="@PreviousTabButtonCssClass" @onclick="GoToPreviousTabAsync" disabled="@(isWorking || !CanGoToPreviousTab)">← @PreviousTabDisplayName</button>
+        <button class="@PreviousTabButtonCssClass" @onclick="GoToPreviousTabAsync" title="@PreviousTabButtonTitle" disabled="@(isWorking || !CanGoToPreviousTab)">← @PreviousTabDisplayName</button>
         <span class="small text-muted px-2">@(ShowSpecialGroupScheduleFlowHint ? SpecialGroupScheduleFlowHint : ActiveTabDisplayName)</span>
-        <button class="@NextTabButtonCssClass" @onclick="GoToNextTabAsync" disabled="@(isWorking || !CanGoToNextTab)">@NextTabDisplayName →</button>
+        <button class="@NextTabButtonCssClass" @onclick="GoToNextTabAsync" title="@NextTabButtonTitle" disabled="@(isWorking || !CanGoToNextTab)">@NextTabDisplayName →</button>
     </div>
 }
 

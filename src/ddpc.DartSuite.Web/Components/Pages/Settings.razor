@@ -393,8 +393,10 @@ else
     private const string MatchCardSectionGroups = "groups";
     private const string MatchCardSectionKnockout = "knockout";
     private const string MatchCardSectionSchedule = "schedule";
-    private const string MatchCardSectionScheduleQueue = "schedule-queue";
-    private const string MatchCardSectionScheduleTimeline = "schedule-timeline";
+    private const string MatchCardSectionScheduleBoardsUpcoming = "schedule-boards-upcoming";
+    private const string MatchCardSectionScheduleZeitplan = "schedule-zeitplan";
+    private const string MatchCardSectionScheduleQueueLegacy = "schedule-queue";
+    private const string MatchCardSectionScheduleTimelineLegacy = "schedule-timeline";
     private const string MatchCardSectionBoardDetail = "board-detail";
     private const string MatchCardSectionDetail = "detail";
 
@@ -409,8 +411,8 @@ else
         new(BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardSectionGroups), "Turniere / Gruppenphase"),
         new(BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardSectionKnockout), "Turniere / K.O.-Phase"),
         new(BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardSectionSchedule), "Turniere / Spielplan (alle)"),
-        new(BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardSectionScheduleQueue), "Turniere / Spielplan Warteschlange"),
-        new(BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardSectionScheduleTimeline), "Turniere / Spielplan Zeitplan"),
+        new(BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardSectionScheduleBoardsUpcoming), "Turniere / Spielplan Boards & Anstehende Matches"),
+        new(BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardSectionScheduleZeitplan), "Turniere / Spielplan Zeitplan"),
         new(BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardSectionBoardDetail), "Turniere / Board-Detail"),
         new(BuildMatchCardScopeKey(MatchCardScopePageMatches, MatchCardScopeSectionAll), "Matches / Alle Sektionen"),
         new(BuildMatchCardScopeKey(MatchCardScopePageMatches, MatchCardSectionDetail), "Matches / Detail"),
@@ -696,8 +698,10 @@ else
             MatchCardSectionGroups => MatchCardSectionGroups,
             MatchCardSectionKnockout => MatchCardSectionKnockout,
             MatchCardSectionSchedule => MatchCardSectionSchedule,
-            MatchCardSectionScheduleQueue => MatchCardSectionScheduleQueue,
-            MatchCardSectionScheduleTimeline => MatchCardSectionScheduleTimeline,
+            MatchCardSectionScheduleBoardsUpcoming => MatchCardSectionScheduleBoardsUpcoming,
+            MatchCardSectionScheduleZeitplan => MatchCardSectionScheduleZeitplan,
+            MatchCardSectionScheduleQueueLegacy => MatchCardSectionScheduleBoardsUpcoming,
+            MatchCardSectionScheduleTimelineLegacy => MatchCardSectionScheduleZeitplan,
             MatchCardSectionBoardDetail => MatchCardSectionBoardDetail,
             MatchCardSectionDetail => MatchCardSectionDetail,
             _ => MatchCardSectionGeneral

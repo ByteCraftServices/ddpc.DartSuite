@@ -56,16 +56,35 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
 
     public async Task<IReadOnlyList<MatchDto>> GetMatchesAsync(Guid tournamentId, CancellationToken cancellationToken = default)
     {
-        return await dbContext.Matches.AsNoTracking()
+        var now = DateTimeOffset.UtcNow;
+
+        var rawMatches = await dbContext.Matches.AsNoTracking()
             .Where(x => x.TournamentId == tournamentId)
             .OrderBy(x => x.Phase).ThenBy(x => x.Round).ThenBy(x => x.MatchNumber)
-            .Select(x => new MatchDto(x.Id, x.TournamentId, x.Phase.ToString(), x.GroupNumber,
-                x.Round, x.MatchNumber, x.BoardId,
-                x.HomeParticipantId, x.AwayParticipantId,
-                x.HomeLegs, x.AwayLegs, x.HomeSets, x.AwaySets, x.WinnerParticipantId,
-                x.PlannedStartUtc, x.IsStartTimeLocked, x.IsBoardLocked,
-                x.StartedUtc, x.FinishedUtc, x.Status.ToString(), x.ExternalMatchId))
             .ToListAsync(cancellationToken);
+
+        return rawMatches
+            .Select(ToDto)
+            .Select(match => ApplyRuntimeSchedulingStatus(match, now))
+            .ToList();
+    }
+
+    private static MatchDto ApplyRuntimeSchedulingStatus(MatchDto match, DateTimeOffset now)
+    {
+        if (match.FinishedUtc is not null || match.PlannedStartUtc is null)
+            return match;
+
+        if (match.StartedUtc is null && now > match.PlannedStartUtc.Value)
+        {
+            var runtimeDelayMinutes = Math.Max(0, (int)(now - match.PlannedStartUtc.Value).TotalMinutes);
+            return match with
+            {
+                DelayMinutes = runtimeDelayMinutes,
+                SchedulingStatus = "Delayed"
+            };
+        }
+
+        return match;
     }
 
     // ─── KO bracket with byes + seeded crossing ───
@@ -346,6 +365,10 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+
+        // In GroupAndKnockout mode, keep KO phase in sync with tournament plan creation.
+        if (tournament.Mode == TournamentMode.GroupAndKnockout)
+            await GenerateKnockoutPlanAsync(tournamentId, cancellationToken);
 
         // Auto-transition: plan created → Geplant
         await AutoAdvanceTournamentStatusAsync(tournamentId, cancellationToken);
@@ -826,6 +849,9 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         // Auto-transition tournament status (Gestartet / Beendet)
         await AutoAdvanceTournamentStatusAsync(match.TournamentId, cancellationToken);
 
+        // Recalculate schedule to update SchedulingStatus and DelayMinutes
+        await RecalculateScheduleAsync(match.TournamentId, cancellationToken);
+
         return ToDto(match);
     }
 
@@ -1093,6 +1119,12 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
             if (match.AwayParticipantId != Guid.Empty) playerLastEnd[match.AwayParticipantId] = matchEnd;
         }
 
+        // Recompute match statuses so that matches with PlannedStartUtc transition from Erstellt to Geplant
+        foreach (var match in matches.Where(m => m.Status != MatchStatus.WalkOver))
+        {
+            match.RecomputeStatus();
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
         return await GetMatchesAsync(tournamentId, cancellationToken);
     }
@@ -1226,6 +1258,9 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
 
         // Auto-transition tournament status (Gestartet / Beendet)
         await AutoAdvanceTournamentStatusAsync(match.TournamentId, cancellationToken);
+
+        // Recalculate schedule to update SchedulingStatus and DelayMinutes
+        await RecalculateScheduleAsync(match.TournamentId, cancellationToken);
 
         return ToDto(match);
     }
@@ -1671,7 +1706,18 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
                 }
                 else if (match.StartedUtc == null)
                 {
-                    match.SchedulingStatus = SchedulingStatus.None;
+                    // Planned match that hasn't started yet
+                    // Check if it's delayed (planned start time has passed)
+                    if (now > match.PlannedStartUtc.Value)
+                    {
+                        match.DelayMinutes = (int)(now - match.PlannedStartUtc.Value).TotalMinutes;
+                        match.SchedulingStatus = SchedulingStatus.Delayed;
+                    }
+                    else
+                    {
+                        match.DelayMinutes = 0;
+                        match.SchedulingStatus = SchedulingStatus.None;
+                    }
                     match.ExpectedEndUtc = match.PlannedEndUtc;
                 }
             }

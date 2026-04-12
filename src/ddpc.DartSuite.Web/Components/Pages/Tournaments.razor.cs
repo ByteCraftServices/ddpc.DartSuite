@@ -1444,7 +1444,7 @@ public partial class Tournaments : IAsyncDisposable
     private string SpecialGroupScheduleFlowHint
         => activeTab switch
         {
-            "groups" => "Spezial-Flow: Gruppenphase -> Spielplan",
+            "groups" => "Gruppenphase",
             "schedule" => "Spezial-Flow: Gruppenphase <-> Spielplan <-> K.O.-Phase",
             "knockout" => "Spezial-Flow: Spielplan -> K.O.-Phase",
             _ => ActiveTabDisplayName
@@ -1460,6 +1460,12 @@ public partial class Tournaments : IAsyncDisposable
         => matches.Any(m => m.FinishedUtc is null
                             && (m.DelayMinutes > 0 || string.Equals(m.SchedulingStatus, "Delayed", StringComparison.OrdinalIgnoreCase)));
 
+    private bool HasRunningScheduleMatches
+        => matches.Any(m => m.StartedUtc is not null && m.FinishedUtc is null);
+
+    private bool HasPlannedScheduleMatches
+        => matches.Any(m => m.FinishedUtc is null);
+
     private bool PreviousTabIsSchedule
         => CanGoToPreviousTab
            && string.Equals(VisibleTabSequence[ActiveTabSequenceIndex - 1], "schedule", StringComparison.Ordinal);
@@ -1470,13 +1476,37 @@ public partial class Tournaments : IAsyncDisposable
 
     private string PreviousTabButtonCssClass
         => PreviousTabIsSchedule
-            ? (HasDelayedPlannedMatches ? "btn btn-warning btn-sm" : "btn btn-success btn-sm")
+            ? ScheduleNavButtonCssClass
             : "btn btn-outline-secondary btn-sm";
 
     private string NextTabButtonCssClass
         => NextTabIsSchedule
-            ? (HasDelayedPlannedMatches ? "btn btn-warning btn-sm" : "btn btn-success btn-sm")
+            ? ScheduleNavButtonCssClass
             : "btn btn-primary btn-sm";
+
+    private string PreviousTabButtonTitle
+        => PreviousTabIsSchedule ? ScheduleNavButtonTitle : "Zum vorherigen Tab wechseln";
+
+    private string NextTabButtonTitle
+        => NextTabIsSchedule ? ScheduleNavButtonTitle : "Zum nächsten Tab wechseln";
+
+    private string ScheduleNavButtonCssClass
+        => HasDelayedPlannedMatches
+            ? "btn btn-warning btn-sm"
+            : HasRunningScheduleMatches
+                ? "btn btn-success btn-sm"
+                : HasPlannedScheduleMatches
+                    ? "btn btn-info btn-sm"
+                    : "btn btn-outline-secondary btn-sm";
+
+    private string ScheduleNavButtonTitle
+        => HasDelayedPlannedMatches
+            ? "Spielplan enthält Verzögerungen"
+            : HasRunningScheduleMatches
+                ? "Spielplan enthält laufende Matches"
+                : HasPlannedScheduleMatches
+                    ? "Spielplan mit geplanten Matches"
+                    : "Spielplan ohne geplante Matches";
 
     private static string TabDisplayName(string tab)
         => tab switch
@@ -2347,6 +2377,7 @@ public partial class Tournaments : IAsyncDisposable
         // Keep parent modal context aligned with the scope edited in the child modal.
         activeMatchCardConfigScopeKey = normalizedScope;
         showMatchCardScopeModal = true;
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private async Task OnMatchCardScopeModalClosedAsync()
@@ -4319,6 +4350,7 @@ public partial class Tournaments : IAsyncDisposable
         _ = CheckFollowStateAsync(match.Id);
         _ = ReconcileTournamentMonitoringForViewAsync();
         _initDetailSections = true;
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private void CloseMatchDetail()
@@ -5071,6 +5103,7 @@ public partial class Tournaments : IAsyncDisposable
             _ = LoadBoardSyncDebugAsync(board.Id);
 
         _ = ReconcileBoardMonitoringForViewAsync(board.Id);
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private async Task RequestBoardSyncAsync(BoardDto board)
@@ -5179,6 +5212,7 @@ public partial class Tournaments : IAsyncDisposable
         if (!participantId.HasValue) return;
         detailParticipant = participants.FirstOrDefault(p => p.Id == participantId.Value);
         playerDetailTab = "info";
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private MatchDto? CurrentMatchOnBoard(Guid boardId) =>
@@ -5316,6 +5350,7 @@ public partial class Tournaments : IAsyncDisposable
         newRoundPlayerPause = round.MinPlayerPauseMinutes;
         newRoundBoardAssignment = round.BoardAssignment == "Fixed" && round.FixedBoardId is not null
             ? $"Fixed:{round.FixedBoardId}" : round.BoardAssignment;
+        _ = InvokeAsync(StateHasChanged);
     }
 
     private void CloseRoundDetail() => detailRound = null;
