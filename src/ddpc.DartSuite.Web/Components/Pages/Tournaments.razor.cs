@@ -944,7 +944,8 @@ public partial class Tournaments : IAsyncDisposable
         => selectedTournament is not null
            && matches.Any()
            && !selectedTournament.IsLocked
-           && IsCurrentUserManager;
+           && IsCurrentUserManager
+           && !CanShowDrawCreatePlanButton;
 
     private bool CanExecuteDrawCreatePlan
         => CanShowDrawCreatePlanButton
