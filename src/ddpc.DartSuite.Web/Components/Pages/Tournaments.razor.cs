@@ -5837,6 +5837,7 @@ public partial class Tournaments : IAsyncDisposable
             }
 
             var nextEditableIndex = 0;
+            var assignedDuringRun = new HashSet<Guid>();
 
             foreach (var participant in shuffled)
             {
@@ -5845,14 +5846,42 @@ public partial class Tournaments : IAsyncDisposable
 
                 var nextTeamIndex = editableTeamIndices[nextEditableIndex];
 
-                drawCandidateParticipantId = participant.Id;
-                drawHighlightedTeamIndex = nextTeamIndex;
-                await InvokeAsync(StateHasChanged);
+                if (drawAnimationMode == "Exciting")
+                {
+                    var suspensePool = shuffled.Where(p => !assignedDuringRun.Contains(p.Id)).ToList();
+                    var suspenseTargets = editableTeamIndices
+                        .Where(i => teamDrafts[i].MemberParticipantIds.Count < editPlayersPerTeam)
+                        .ToList();
 
-                if (drawAnimationMode == "Moderate")
-                    await Task.Delay(550);
-                else if (drawAnimationMode == "Exciting")
-                    await Task.Delay(340);
+                    var hopCount = ComputeExcitingHopCount(suspensePool.Count);
+                    var hopDelays = BuildDeceleratingHopDelays(hopCount, 70, 250);
+                    foreach (var delay in hopDelays)
+                    {
+                        suspensePool = shuffled.Where(p => !assignedDuringRun.Contains(p.Id)).ToList();
+                        if (suspensePool.Count <= 1) break;
+
+                        drawCandidateParticipantId = suspensePool[Random.Shared.Next(suspensePool.Count)].Id;
+                        if (suspenseTargets.Count > 0)
+                            drawHighlightedTeamIndex = suspenseTargets[Random.Shared.Next(suspenseTargets.Count)];
+
+                        await InvokeAsync(StateHasChanged);
+                        await Task.Delay(delay);
+                    }
+
+                    drawCandidateParticipantId = participant.Id;
+                    drawHighlightedTeamIndex = nextTeamIndex;
+                    await InvokeAsync(StateHasChanged);
+                    await Task.Delay(320);
+                }
+                else
+                {
+                    drawCandidateParticipantId = participant.Id;
+                    drawHighlightedTeamIndex = nextTeamIndex;
+                    await InvokeAsync(StateHasChanged);
+
+                    if (drawAnimationMode == "Moderate")
+                        await Task.Delay(550);
+                }
 
                 teamDrafts[nextTeamIndex].MemberParticipantIds.Add(participant.Id);
                 RecomputeTeamDraftNameIfAuto(nextTeamIndex);
@@ -5864,9 +5893,10 @@ public partial class Tournaments : IAsyncDisposable
                 if (drawAnimationMode == "Moderate")
                     await Task.Delay(420);
                 else if (drawAnimationMode == "Exciting")
-                    await Task.Delay(260);
+                    await Task.Delay(360);
 
                 drawWinnerParticipantId = null;
+                assignedDuringRun.Add(participant.Id);
                 nextEditableIndex = (nextEditableIndex + 1) % editableTeamIndices.Count;
             }
 
@@ -6645,25 +6675,32 @@ public partial class Tournaments : IAsyncDisposable
 
                     var hops = FreeKnockoutSlots();
                     hops = hops.OrderBy(_ => Random.Shared.Next()).ToList();
-                    foreach (var hop in hops.Take(Math.Min(8, hops.Count)))
+                    var selectedHops = hops.Take(Math.Min(10, hops.Count)).ToList();
+                    var hopDelays = BuildDeceleratingHopDelays(selectedHops.Count, 70, 220);
+                    for (var i = 0; i < selectedHops.Count; i++)
                     {
+                        var hop = selectedHops[i];
                         drawHighlightedKoMatchNumber = hop.MatchNumber;
                         drawHighlightedKoHomeSlot = hop.IsHomeSlot;
                         await MoveKoDrawTokenToSlotAsync(hop.MatchNumber, hop.IsHomeSlot);
                         await InvokeAsync(StateHasChanged);
-                        await Task.Delay(156);
+                        await Task.Delay(hopDelays[i]);
                     }
 
                     drawHighlightedKoMatchNumber = step.MatchNumber;
                     drawHighlightedKoHomeSlot = step.IsHomeSlot;
+                    drawCandidateParticipantId = step.ParticipantId;
+                    await InvokeAsync(StateHasChanged);
+                    await Task.Delay(280);
+
                     drawWinnerParticipantId = step.ParticipantId;
                     await MoveKoDrawTokenToSlotAsync(step.MatchNumber, step.IsHomeSlot);
                     await InvokeAsync(StateHasChanged);
-                    await Task.Delay(1170);
+                    await Task.Delay(860);
 
                     AssignKnockoutCardSlot(step.MatchNumber, step.IsHomeSlot, step.ParticipantId);
                     await InvokeAsync(StateHasChanged);
-                    await Task.Delay(420);
+                    await Task.Delay(360);
                     drawWinnerParticipantId = null;
                 }
                 else
@@ -6753,11 +6790,29 @@ public partial class Tournaments : IAsyncDisposable
         return unassigned;
     }
 
-    private static int ComputeExcitingDurationMs(int candidateCount)
+    private static List<int> BuildDeceleratingHopDelays(int hopCount, int startMs, int endMs)
     {
-        // Scale suspense with remaining candidates, max 5 seconds.
-        var scaled = Math.Max(1560, candidateCount * 286);
-        return Math.Min(5000, scaled);
+        if (hopCount <= 0)
+            return [];
+
+        var delays = new List<int>(hopCount);
+        for (var i = 0; i < hopCount; i++)
+        {
+            var t = hopCount == 1 ? 1d : (double)i / (hopCount - 1);
+            var eased = t * t;
+            var delay = (int)Math.Round(startMs + ((endMs - startMs) * eased), MidpointRounding.AwayFromZero);
+            delays.Add(Math.Max(40, delay));
+        }
+
+        return delays;
+    }
+
+    private static int ComputeExcitingHopCount(int candidateCount)
+    {
+        if (candidateCount <= 1)
+            return 1;
+
+        return Math.Clamp(candidateCount * 2, 8, 18);
     }
 
     private async Task ApplyDrawStepAsync(DrawStep step)
@@ -6803,25 +6858,31 @@ public partial class Tournaments : IAsyncDisposable
                 else if (drawAnimationMode == "Exciting")
                 {
                     var candidates = GetAnimationSourceCandidates(step.SourcePot);
-                    var durationMs = ComputeExcitingDurationMs(candidates.Count);
-                    var timer = Stopwatch.StartNew();
-                    while (timer.ElapsedMilliseconds < durationMs)
+                    var hopCount = ComputeExcitingHopCount(candidates.Count);
+                    var hopDelays = BuildDeceleratingHopDelays(hopCount, 70, 250);
+                    foreach (var delay in hopDelays)
                     {
                         candidates = GetAnimationSourceCandidates(step.SourcePot);
                         if (candidates.Count <= 1) break;
+
                         drawCandidateParticipantId = candidates[Random.Shared.Next(candidates.Count)].Id;
+                        drawHighlightedGroupNumber = Random.Shared.Next(1, editGroupCount + 1);
                         await InvokeAsync(StateHasChanged);
-                        await Task.Delay(156);
+                        await Task.Delay(delay);
                     }
 
-                    drawCandidateParticipantId = null;
+                    drawCandidateParticipantId = step.ParticipantId;
+                    drawHighlightedGroupNumber = step.TargetGroup;
+                    await InvokeAsync(StateHasChanged);
+                    await Task.Delay(320);
+
                     drawWinnerParticipantId = step.ParticipantId;
                     await InvokeAsync(StateHasChanged);
-                    await Task.Delay(1170);
+                    await Task.Delay(860);
 
                     await ApplyDrawStepAsync(step);
                     await InvokeAsync(StateHasChanged);
-                    await Task.Delay(420);
+                    await Task.Delay(360);
                     drawWinnerParticipantId = null;
                 }
                 else

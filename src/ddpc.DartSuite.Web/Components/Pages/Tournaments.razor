@@ -2870,7 +2870,7 @@
         pointer-events: none;
         transition: left 520ms cubic-bezier(.22,.61,.36,1), top 520ms cubic-bezier(.22,.61,.36,1), opacity 240ms ease, transform 360ms ease;
         font-size: 1.1rem;
-        filter: drop-shadow(0 0 8px rgba(255, 193, 7, .45));
+        filter: drop-shadow(0 0 10px rgba(25, 135, 84, .55));
     }
 
     .ko-draw-token.show {
@@ -2879,19 +2879,36 @@
     }
 
     .draw-item-candidate {
-        opacity: 0.2;
-        transition: opacity 234ms ease;
+        opacity: 0.35;
+        transform: translateY(-2px) scale(1.03);
+        box-shadow: 0 0 0 .16rem rgba(255, 193, 7, .22);
+        transition: opacity 220ms ease, transform 220ms ease, box-shadow 220ms ease;
     }
 
     .draw-item-winner {
-        transform: scale(1.14);
-        box-shadow: 0 0 0 .22rem rgba(255, 255, 255, .32);
-        transition: transform 286ms ease, box-shadow 286ms ease;
+        transform: scale(1.16);
+        box-shadow: 0 0 0 .24rem rgba(25, 135, 84, .48), 0 0 .9rem rgba(25, 135, 84, .55);
+        background: linear-gradient(135deg, rgba(25, 135, 84, .28), rgba(25, 135, 84, .12));
+        transition: transform 286ms ease, box-shadow 286ms ease, background-color 286ms ease;
     }
 
     .draw-target-group {
-        box-shadow: 0 0 0 .25rem rgba(13, 110, 253, .35);
-        transition: box-shadow 286ms ease;
+        box-shadow: 0 0 0 .24rem rgba(25, 135, 84, .46), inset 0 0 0 .08rem rgba(25, 135, 84, .26);
+        background: linear-gradient(180deg, rgba(25, 135, 84, .12), rgba(25, 135, 84, .03));
+        animation: drawTargetPulse 980ms ease-in-out infinite;
+        transition: box-shadow 286ms ease, background-color 286ms ease;
+    }
+
+    @@keyframes drawTargetPulse {
+        0% {
+            box-shadow: 0 0 0 .16rem rgba(25, 135, 84, .28), inset 0 0 0 .06rem rgba(25, 135, 84, .18);
+        }
+        55% {
+            box-shadow: 0 0 0 .34rem rgba(25, 135, 84, .48), inset 0 0 0 .1rem rgba(25, 135, 84, .32);
+        }
+        100% {
+            box-shadow: 0 0 0 .16rem rgba(25, 135, 84, .28), inset 0 0 0 .06rem rgba(25, 135, 84, .18);
+        }
     }
 
     .team-slot-full {
