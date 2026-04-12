@@ -6405,6 +6405,9 @@ public partial class Tournaments : IAsyncDisposable
         var steps = new List<DrawStep>();
         if (editGroupCount < 1) return steps;
 
+        var groupSizes = Enumerable.Range(1, editGroupCount).ToDictionary(g => g, _ => 0);
+        var assignedIds = new HashSet<Guid>();
+
         var pots = UnassignedParticipants
             .Where(p => p.SeedPot > 0)
             .GroupBy(p => p.SeedPot)
@@ -6414,22 +6417,64 @@ public partial class Tournaments : IAsyncDisposable
         foreach (var pot in pots)
         {
             var remaining = pot.OrderBy(_ => Random.Shared.Next()).ToList();
-            for (var group = 1; group <= editGroupCount && remaining.Count > 0; group++)
+
+            while (remaining.Count > 0)
             {
-                var drawIndex = Random.Shared.Next(remaining.Count);
-                var picked = remaining[drawIndex];
-                remaining.RemoveAt(drawIndex);
-                steps.Add(new DrawStep(picked.Id, group, pot.Key));
+                var groupOrder = Enumerable.Range(1, editGroupCount)
+                    .OrderBy(_ => Random.Shared.Next())
+                    .ToList();
+
+                foreach (var group in groupOrder)
+                {
+                    if (remaining.Count == 0)
+                        break;
+
+                    var drawIndex = Random.Shared.Next(remaining.Count);
+                    var picked = remaining[drawIndex];
+                    remaining.RemoveAt(drawIndex);
+
+                    steps.Add(new DrawStep(picked.Id, group, pot.Key));
+                    assignedIds.Add(picked.Id);
+                    groupSizes[group]++;
+                }
             }
+        }
+
+        // Fallback: if some participants have no pot assignment, still distribute them fairly.
+        var withoutPot = UnassignedParticipants
+            .Where(p => p.SeedPot <= 0 && !assignedIds.Contains(p.Id))
+            .OrderBy(_ => Random.Shared.Next())
+            .ToList();
+
+        foreach (var participant in withoutPot)
+        {
+            var targetGroup = groupSizes
+                .OrderBy(x => x.Value)
+                .ThenBy(_ => Random.Shared.Next())
+                .First().Key;
+
+            steps.Add(new DrawStep(participant.Id, targetGroup, 0));
+            groupSizes[targetGroup]++;
+            assignedIds.Add(participant.Id);
         }
 
         return steps;
     }
 
     private List<DrawStep> BuildDrawPlan()
-        => editGroupDrawMode == "SeededPots"
-            ? BuildSeededPotsDrawPlan()
-            : BuildRandomDrawPlan();
+    {
+        if (editGroupDrawMode == "SeededPots")
+        {
+            var seededPlan = BuildSeededPotsDrawPlan();
+            if (seededPlan.Count > 0)
+                return seededPlan;
+
+            // No pots available or no seeded result possible: fallback to random to avoid dead-end.
+            return BuildRandomDrawPlan();
+        }
+
+        return BuildRandomDrawPlan();
+    }
 
     private int KnockoutBracketSize
     {
@@ -7080,6 +7125,12 @@ public partial class Tournaments : IAsyncDisposable
             }
 
             var drawPlan = BuildDrawPlan();
+
+            if (drawPlan.Count == 0 && UnassignedParticipants.Count > 0)
+            {
+                editError = "Auslosung konnte nicht erstellt werden. Bitte Lostöpfe prüfen oder den Modus auf 'Zufällig' stellen.";
+                return;
+            }
 
             if (drawAnimationMode == "Off")
             {
