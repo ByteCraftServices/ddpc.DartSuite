@@ -1025,8 +1025,12 @@
                                                                                                         <label class="form-check-label" for="editTeamplay" title="Aktiviert Teams statt Einzelspielern. Spieler pro Team muss gesetzt werden.">Teamplay aktivieren</label>
                                                                                                     </div>
                                                                                                     <div class="mb-3">
-                                                                                                        <label class="form-label small" title="Anzahl Spieler pro Team; bei Teamplay mindestens 2 empfohlen.">Spieler/Team</label>
-                                                                                                        <input type="number" class="form-control form-control-sm @(HasTeamplayRequiredMissing() ? "border-danger" : "")" @bind="editPlayersPerTeam" @bind:after="AutoSaveSettingAsync" min="1" disabled="@(!editTeamplay)" />
+                                                                                                        <label class="form-label small" title="Anzahl Spieler pro Team; bei Teamplay mindestens 2 empfohlen.">Spieler pro Team</label>
+                                                                                                        <input type="number" class="form-control form-control-sm @(HasTeamplayRequiredMissing() ? "border-danger" : "")" @bind="editPlayersPerTeam" @bind:after="OnPlayersPerTeamChangedAsync" min="1" disabled="@(!editTeamplay)" />
+                                                                                                        @if (editTeamplay)
+                                                                                                        {
+                                                                                                            <div class="form-text">Aktuell: @EffectivePlayerCount Spieler ergeben @RequiredTeamCount Teams.</div>
+                                                                                                        }
                                                                                                     </div>
 
                                                                                                     <div class="form-check mb-2">

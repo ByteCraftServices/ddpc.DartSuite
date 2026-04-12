@@ -3349,6 +3349,18 @@ public partial class Tournaments : IAsyncDisposable
         await NormalizeSeedRanksAsync();
     }
 
+    private async Task OnPlayersPerTeamChangedAsync()
+    {
+        editPlayersPerTeam = Math.Max(1, editPlayersPerTeam);
+        await AutoSaveSettingAsync();
+
+        if (!IsTeamplayActive)
+            return;
+
+        EnsureTeamDraftSlots();
+        await InvokeAsync(StateHasChanged);
+    }
+
     private async Task ExecuteSaveTournamentAsync()
     {
         if (selectedTournament is null) return;
