@@ -512,14 +512,27 @@
                                             <span class="badge @PotBadgeCss(participant.SeedPot) me-1">Topf @participant.SeedPot</span>
                                         }
                                         <span class="draw-participant-name">@participant.DisplayName.ToUpperInvariant()</span>
-                                        <button class="btn btn-sm p-0 ms-1 text-white-50 draw-participant-remove-btn"
-                                                style="font-size:.7em; line-height:1"
-                                                @onclick="() => HandleUnassignParticipantFromGroupAsync(participant.Id)"
-                                                @onclick:stopPropagation
-                                                @onmousedown:stopPropagation
-                                                draggable="false"
-                                                disabled="@(IsDrawAnimating || !CanEditTournamentStructure)"
-                                                title="Aus Gruppe entfernen">✕</button>
+                                        @if (CanEditTournamentStructure)
+                                        {
+                                            <button class="btn btn-sm p-0 ms-1 text-white-50 draw-participant-remove-btn"
+                                                    style="font-size:.7em; line-height:1"
+                                                    @onclick="() => HandleUnassignParticipantFromGroupAsync(participant.Id)"
+                                                    @onclick:stopPropagation
+                                                    @onmousedown:stopPropagation
+                                                    draggable="false"
+                                                    disabled="@IsDrawAnimating"
+                                                    title="Aus Gruppe entfernen">✕</button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="btn btn-sm p-0 ms-1 text-white-50 draw-participant-remove-btn btn-inactive-action"
+                                                    style="font-size:.7em; line-height:1"
+                                                    @onclick='() => HandleShowInactiveActionInfoAsync(CannotEditStructureReason, "Entfernen nicht möglich")'
+                                                    @onclick:stopPropagation
+                                                    @onmousedown:stopPropagation
+                                                    draggable="false"
+                                                    title="@CannotEditStructureReason">✕</button>
+                                        }
                                     </div>
                                 }
                                 @if (!groupParts.Any())
@@ -712,7 +725,14 @@
                                         {
                                             <span class="badge bg-dark draw-participant-badge @DrawParticipantAnimationCss(home.Id)">
                                                 <span class="draw-participant-name">@ParticipantDisplayName(home)</span>
-                                                <button class="btn btn-sm p-0 ms-1 text-white-50 draw-participant-remove-btn" @onclick="() => ClearKnockoutCardSlot(card.MatchNumber, true)" @onclick:stopPropagation disabled="@(IsWorking || !CanEditTournamentStructure)">✕</button>
+                                                @if (CanEditTournamentStructure)
+                                                {
+                                                    <button class="btn btn-sm p-0 ms-1 text-white-50 draw-participant-remove-btn" @onclick="() => ClearKnockoutCardSlot(card.MatchNumber, true)" @onclick:stopPropagation disabled="@IsWorking">✕</button>
+                                                }
+                                                else
+                                                {
+                                                    <button type="button" class="btn btn-sm p-0 ms-1 text-white-50 draw-participant-remove-btn btn-inactive-action" @onclick='() => HandleShowInactiveActionInfoAsync(CannotEditStructureReason, "Entfernen nicht möglich")' @onclick:stopPropagation title="@CannotEditStructureReason">✕</button>
+                                                }
                                             </span>
                                         }
                                         else
@@ -728,7 +748,14 @@
                                         {
                                             <span class="badge bg-dark draw-participant-badge @DrawParticipantAnimationCss(away.Id)">
                                                 <span class="draw-participant-name">@ParticipantDisplayName(away)</span>
-                                                <button class="btn btn-sm p-0 ms-1 text-white-50 draw-participant-remove-btn" @onclick="() => ClearKnockoutCardSlot(card.MatchNumber, false)" @onclick:stopPropagation disabled="@(IsWorking || !CanEditTournamentStructure)">✕</button>
+                                                @if (CanEditTournamentStructure)
+                                                {
+                                                    <button class="btn btn-sm p-0 ms-1 text-white-50 draw-participant-remove-btn" @onclick="() => ClearKnockoutCardSlot(card.MatchNumber, false)" @onclick:stopPropagation disabled="@IsWorking">✕</button>
+                                                }
+                                                else
+                                                {
+                                                    <button type="button" class="btn btn-sm p-0 ms-1 text-white-50 draw-participant-remove-btn btn-inactive-action" @onclick='() => HandleShowInactiveActionInfoAsync(CannotEditStructureReason, "Entfernen nicht möglich")' @onclick:stopPropagation title="@CannotEditStructureReason">✕</button>
+                                                }
                                             </span>
                                         }
                                         else
