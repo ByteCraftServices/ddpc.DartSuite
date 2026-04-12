@@ -1795,6 +1795,7 @@
                                                                                                                                                                        IsCurrentUserManager="@IsCurrentUserManager"
                                                                                                                                                                        CanManageScheduleInteractions="@CanManageScheduleInteractions"
                                                                                                                                                                        IsWorking="@isWorking"
+                                                                                                                                                                       IsCompactViewport="@isCompactViewport"
                                                                                                                                                                        ScheduleHideFinished="@scheduleHideFinished"
                                                                                                                                                                        ScheduleShowNoBoard="@scheduleShowNoBoard"
                                                                                                                                                                        ScheduleStatusFilter="@scheduleStatusFilter"
@@ -1802,7 +1803,10 @@
                                                                                                                                                                        EditMatchTimeValue="@editMatchTimeValue"
                                                                                                                                                                        DropTargetMatchId="@dropTargetMatchId"
                                                                                                                                                                        HasDraggedBoard="@draggedBoardId.HasValue"
+                                                                                                                                                                       DraggedBoardId="@draggedBoardId"
+                                                                                                                                                                       DraggedScheduleMatchId="@draggedScheduleMatchId"
                                                                                                                                                                        BoardQueues="@BoardQueues"
+                                                                                                                                                                       BoardQueueCardSettings="@GetMatchCardSettings(MatchCardSectionScheduleBoardsUpcoming)"
                                                                                                                                                                        TimelineCardSettings="@GetMatchCardSettings(MatchCardSectionScheduleZeitplan)"
                                                                                                                                                                        ScheduleHideFinishedChanged="OnHideFinishedChangedAsync"
                                                                                                                                                                        ScheduleShowNoBoardChanged="OnShowNoBoardChangedAsync"
@@ -1817,12 +1821,18 @@
                                                                                                                                                                        GetMonitoringBadgeText="@GetMonitoringBadgeText"
                                                                                                                                                                        GetMonitoringBadgeCss="@GetMonitoringBadgeCss"
                                                                                                                                                                        ParticipantName="@ParticipantName"
+                                                                                                                                                                       ResolveScheduleHomeName="@ScheduleHomeName"
+                                                                                                                                                                       ResolveScheduleAwayName="@ScheduleAwayName"
                                                                                                                                                                        MatchBoardName="@MatchBoardName"
+                                                                                                                                                                       BuildSlotOrigin="@BuildSlotOrigin"
                                                                                                                                                                        IsSetMode="@IsSetMode"
                                                                                                                                                                        BuildPlayerDetailCallback="@BuildPlayerDetailCallback"
                                                                                                                                                                        BuildMatchBoardDetailCallback="@BuildMatchBoardDetailCallback"
                                                                                                                                                                        BuildScheduleMatchCardCss="@(match => BuildScheduleMatchCardCss(match, includeBoardDropTarget: true))"
                                                                                                                                                                        CanDragScheduleMatch="@CanDragScheduleMatch"
+                                                                                                                                                                       CanAssignBoardToMatch="@CanAssignBoardToMatch"
+                                                                                                                                                                       BuildScheduleInsertMarkerCss="@BuildScheduleInsertMarkerCss"
+                                                                                                                                                                       BuildScheduleInsertMarkerLabel="@BuildScheduleInsertMarkerLabel"
                                                                                                                                                                        SetDropTargetMatchId="SetDropTargetMatchIdAsync"
                                                                                                                                                                        StartScheduleMatchDrag="StartScheduleMatchDragAsync"
                                                                                                                                                                        EndScheduleMatchDrag="EndScheduleMatchDragAsync"
@@ -1830,8 +1840,11 @@
                                                                                                                                                                        OnBoardDragEnd="ClearDraggedBoardIdAsync"
                                                                                                                                                                        MarkScheduleDropTargetMatch="MarkScheduleDropTargetMatchAsync"
                                                                                                                                                                        ClearScheduleDropTargetMatch="ClearScheduleDropTargetMatchAsync"
-                                                                                                                                                                       MarkScheduleDropTargetBoard="@(id => { MarkScheduleDropTargetBoard(id); return Task.CompletedTask; })"
-                                                                                                                                                                       ClearScheduleDropTargetBoard="@(id => { ClearScheduleDropTargetBoard(id); return Task.CompletedTask; })"
+                                                                                                                                                                       MarkScheduleDropTargetBoard="MarkScheduleDropTargetBoardAsync"
+                                                                                                                                                                       ClearScheduleDropTargetBoard="ClearScheduleDropTargetBoardAsync"
+                                                                                                                                                                       MarkScheduleInsertTarget="MarkScheduleInsertTargetAsync"
+                                                                                                                                                                       ClearScheduleInsertTarget="ClearScheduleInsertTargetAsync"
+                                                                                                                                                                       DropOnScheduleMarker="DropOnScheduleMarkerCallbackAsync"
                                                                                                                                                                        DropOnBoardHeader="DropOnBoardHeaderAsync"
                                                                                                                                                                        DropOnTimelineMatch="DropOnTimelineMatchAsync"
                                                                                                                                                                        OpenMatchDetail="OpenScheduledMatchDetailAsync"
@@ -2414,6 +2427,9 @@
     }
 
     .page > main > article.content {
+        display: flex;
+        flex-direction: column;
+        min-height: calc(100dvh - 3.5rem);
         max-width: 100%;
         overflow: visible;
     }
@@ -2549,6 +2565,7 @@
     }
 
     .tournaments-main-row {
+        flex: 1 1 auto;
         margin-left: 0;
         margin-right: 0;
         max-width: 100%;
@@ -2788,7 +2805,7 @@
         justify-content: space-between;
         gap: 0.5rem;
         padding: 0.6rem 0.75rem calc(0.6rem + env(safe-area-inset-bottom));
-        margin-top: 0.5rem;
+        margin-top: auto;
         border-top: 1px solid rgba(0, 0, 0, 0.1);
         background: rgba(255, 255, 255, 0.97);
         backdrop-filter: blur(3px);

@@ -943,7 +943,6 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
 
         var matches = await dbContext.Matches
             .Where(x => x.TournamentId == tournamentId)
-            .OrderBy(x => x.Phase).ThenBy(x => x.Round).ThenBy(x => x.MatchNumber)
             .ToListAsync(cancellationToken);
 
         var boards = await dbContext.Boards.AsNoTracking()
@@ -977,7 +976,13 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         var nextRoundRobinBoardIndex = 0;
         var playerLastEnd = new Dictionary<Guid, DateTimeOffset>();
 
-        foreach (var match in matches.Where(m => m.Status != MatchStatus.WalkOver))
+        foreach (var match in matches
+            .Where(m => m.Status != MatchStatus.WalkOver)
+            .OrderBy(m => GetSchedulePhaseBucket(m.Phase))
+            .ThenBy(m => m.Phase == MatchPhase.Knockout ? m.Round : 0)
+            .ThenBy(m => BuildScheduleSeed(m, startUtc))
+            .ThenBy(m => m.GroupNumber ?? 0)
+            .ThenBy(m => m.MatchNumber))
         {
             // Skip finished or started matches — don't replan them
             if (match.FinishedUtc is not null || match.StartedUtc is not null)
@@ -1093,16 +1098,28 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
             }
             else
             {
-                bestBoard = SelectBestDynamicBoard(
-                    boardIds,
-                    boardIndexById,
-                    boardEndTimes,
-                    boardUsageCounts,
-                    earliest,
-                    ref nextRoundRobinBoardIndex);
-                bestTime = bestBoard.HasValue
-                    ? boardEndTimes.GetValueOrDefault(bestBoard.Value, startUtc)
-                    : startUtc;
+                var hasExistingBoardHint = match.BoardId.HasValue
+                    && match.PlannedStartUtc.HasValue
+                    && boardEndTimes.ContainsKey(match.BoardId.Value);
+
+                if (hasExistingBoardHint && match.BoardId is { } existingBoardId)
+                {
+                    bestBoard = existingBoardId;
+                    bestTime = boardEndTimes.GetValueOrDefault(existingBoardId, startUtc);
+                }
+                else
+                {
+                    bestBoard = SelectBestDynamicBoard(
+                        boardIds,
+                        boardIndexById,
+                        boardEndTimes,
+                        boardUsageCounts,
+                        earliest,
+                        ref nextRoundRobinBoardIndex);
+                    bestTime = bestBoard.HasValue
+                        ? boardEndTimes.GetValueOrDefault(bestBoard.Value, startUtc)
+                        : startUtc;
+                }
             }
 
             var matchStart = bestTime > earliest ? bestTime : earliest;
@@ -1172,6 +1189,24 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
 
     private static int GetRoundRobinDistance(int boardIndex, int nextBoardIndex, int boardCount)
         => (boardIndex - nextBoardIndex + boardCount) % boardCount;
+
+    private static int GetSchedulePhaseBucket(MatchPhase phase)
+        => phase == MatchPhase.Group ? 0 : 1;
+
+    private static DateTimeOffset BuildScheduleSeed(Match match, DateTimeOffset scheduleStartUtc)
+    {
+        if (match.PlannedStartUtc.HasValue)
+            return match.PlannedStartUtc.Value.ToUniversalTime();
+
+        var phaseOffset = GetSchedulePhaseBucket(match.Phase) * 365 * 24 * 60;
+        var roundOffset = match.Phase == MatchPhase.Group ? 0 : match.Round * 60;
+        var groupOffset = (match.GroupNumber ?? 0) * 10;
+        return scheduleStartUtc
+            .AddMinutes(phaseOffset)
+            .AddMinutes(roundOffset)
+            .AddMinutes(groupOffset)
+            .AddSeconds(match.MatchNumber);
+    }
 
     // ─── Prediction ───
 

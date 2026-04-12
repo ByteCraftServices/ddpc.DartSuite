@@ -78,4 +78,116 @@ public sealed class ScheduleGenerationTests
         var maxCount = boardCounts.Values.Max();
         (maxCount - minCount).Should().BeLessThanOrEqualTo(1);
     }
+
+    [Fact]
+    public async Task GenerateSchedule_ShouldRespectExistingPlannedStartOrderHints_ForGroupMatches()
+    {
+        await using var db = CreateDbContext();
+        var service = new MatchManagementService(db, new MatchPredictionService());
+
+        var tournamentId = Guid.NewGuid();
+        var boardId = Guid.NewGuid();
+        var baseStart = new DateTimeOffset(DateTime.UtcNow.Date.AddHours(18), TimeSpan.Zero);
+
+        db.Tournaments.Add(new Tournament
+        {
+            Id = tournamentId,
+            Name = "Order Hint Cup",
+            OrganizerAccount = "manager",
+            StartDate = DateOnly.FromDateTime(DateTime.Today),
+            EndDate = DateOnly.FromDateTime(DateTime.Today),
+            StartTime = new TimeOnly(18, 0)
+        });
+
+        db.Boards.Add(new Board { Id = boardId, ExternalBoardId = "b1", Name = "Board 1", TournamentId = tournamentId });
+
+        var matchA = new Match
+        {
+            TournamentId = tournamentId,
+            Phase = MatchPhase.Group,
+            GroupNumber = 1,
+            Round = 1,
+            MatchNumber = 1,
+            HomeParticipantId = Guid.NewGuid(),
+            AwayParticipantId = Guid.NewGuid(),
+            PlannedStartUtc = baseStart.AddMinutes(30),
+            BoardId = boardId
+        };
+        var matchB = new Match
+        {
+            TournamentId = tournamentId,
+            Phase = MatchPhase.Group,
+            GroupNumber = 1,
+            Round = 3,
+            MatchNumber = 2,
+            HomeParticipantId = Guid.NewGuid(),
+            AwayParticipantId = Guid.NewGuid(),
+            PlannedStartUtc = baseStart,
+            BoardId = boardId
+        };
+
+        db.Matches.AddRange(matchA, matchB);
+        await db.SaveChangesAsync();
+
+        var scheduled = await service.GenerateScheduleAsync(tournamentId);
+
+        var scheduledA = scheduled.Single(m => m.Id == matchA.Id);
+        var scheduledB = scheduled.Single(m => m.Id == matchB.Id);
+        scheduledB.PlannedStartUtc.Should().NotBeNull();
+        scheduledA.PlannedStartUtc.Should().NotBeNull();
+        scheduledB.PlannedStartUtc!.Value.Should().BeBefore(scheduledA.PlannedStartUtc!.Value);
+    }
+
+    [Fact]
+    public async Task GenerateSchedule_ShouldKeepExistingBoardHint_WhenScheduledMatchIsMovedToAnotherQueue()
+    {
+        await using var db = CreateDbContext();
+        var service = new MatchManagementService(db, new MatchPredictionService());
+
+        var tournamentId = Guid.NewGuid();
+        var boardA = new Board { Id = Guid.NewGuid(), ExternalBoardId = "b1", Name = "Board 1", TournamentId = tournamentId };
+        var boardB = new Board { Id = Guid.NewGuid(), ExternalBoardId = "b2", Name = "Board 2", TournamentId = tournamentId };
+        var baseStart = new DateTimeOffset(DateTime.UtcNow.Date.AddHours(18), TimeSpan.Zero);
+
+        db.Tournaments.Add(new Tournament
+        {
+            Id = tournamentId,
+            Name = "Queue Move Cup",
+            OrganizerAccount = "manager",
+            StartDate = DateOnly.FromDateTime(DateTime.Today),
+            EndDate = DateOnly.FromDateTime(DateTime.Today),
+            StartTime = new TimeOnly(18, 0)
+        });
+        db.Boards.AddRange(boardA, boardB);
+
+        var movedMatch = new Match
+        {
+            TournamentId = tournamentId,
+            Phase = MatchPhase.Knockout,
+            Round = 1,
+            MatchNumber = 1,
+            HomeParticipantId = Guid.NewGuid(),
+            AwayParticipantId = Guid.NewGuid(),
+            PlannedStartUtc = baseStart,
+            BoardId = boardB.Id
+        };
+        var otherMatch = new Match
+        {
+            TournamentId = tournamentId,
+            Phase = MatchPhase.Knockout,
+            Round = 1,
+            MatchNumber = 2,
+            HomeParticipantId = Guid.NewGuid(),
+            AwayParticipantId = Guid.NewGuid(),
+            PlannedStartUtc = baseStart.AddMinutes(30),
+            BoardId = boardA.Id
+        };
+
+        db.Matches.AddRange(movedMatch, otherMatch);
+        await db.SaveChangesAsync();
+
+        var scheduled = await service.GenerateScheduleAsync(tournamentId);
+
+        scheduled.Single(m => m.Id == movedMatch.Id).BoardId.Should().Be(boardB.Id);
+    }
 }

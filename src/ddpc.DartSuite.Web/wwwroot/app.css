@@ -222,6 +222,108 @@ h1:focus {
     filter: grayscale(.2);
 }
 
+.schedule-board-queue-card {
+    min-height: 100%;
+}
+
+.schedule-board-queue-header,
+.schedule-board-queue-card > .card-header {
+    position: sticky;
+    top: 3.6rem;
+    z-index: 10;
+    background-color: var(--bs-card-bg, #fff);
+    border-bottom: 1px solid var(--bs-card-border-color, rgba(0,0,0,.125));
+}
+
+/* Mobile: no top-row, so sticky starts at 0 */
+@media (max-width: 575.98px) {
+    .schedule-board-queue-header,
+    .schedule-board-queue-card > .card-header {
+        top: 0;
+    }
+
+    .schedule-board-headers-sticky {
+        top: 0;
+    }
+}
+
+.schedule-board-queue-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    scroll-padding-top: 3.5rem;
+}
+
+.schedule-board-headers-sticky {
+    position: sticky;
+    top: 3.6rem;
+    z-index: 9;
+    background-color: var(--bs-body-bg, #fff);
+}
+
+.schedule-board-sticky-proxy {
+    border: 1px solid var(--bs-card-border-color, rgba(0,0,0,.125));
+    border-radius: 0.55rem;
+}
+
+.schedule-queue-item-shell,
+.schedule-timeline-item-shell {
+    display: flex;
+    flex-direction: column;
+}
+
+.schedule-mobile-move-handle {
+    min-width: 2.1rem;
+    line-height: 1;
+}
+
+.schedule-mobile-move-handle.active,
+.schedule-mobile-source-active {
+    box-shadow: 0 0 0 0.18rem rgba(13, 110, 253, 0.22);
+}
+
+.schedule-insert-marker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 1.75rem;
+    margin: 0.1rem 0;
+    border-radius: 0.45rem;
+    border: 1px dashed rgba(108, 117, 125, 0.45);
+    background: rgba(108, 117, 125, 0.08);
+    transition: background-color .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+
+.schedule-insert-marker.is-valid {
+    border-color: rgba(13, 110, 253, 0.35);
+    background: rgba(13, 110, 253, 0.05);
+}
+
+.schedule-insert-marker.is-invalid {
+    border-color: rgba(108, 117, 125, 0.35);
+    background: rgba(108, 117, 125, 0.12);
+    opacity: 0.7;
+}
+
+.schedule-insert-marker.is-active {
+    border-color: #0d6efd;
+    background: rgba(13, 110, 253, 0.12);
+    box-shadow: 0 0 0 0.18rem rgba(13, 110, 253, 0.14);
+}
+
+.schedule-insert-marker-button {
+    border: 0;
+    background: transparent;
+    width: 100%;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.78rem;
+    color: inherit;
+}
+
+.schedule-insert-marker.is-invalid .schedule-insert-marker-button {
+    cursor: not-allowed;
+}
+
 .match-status-completed {
     background-color: rgba(13, 110, 253, 0.65) !important;
     color: #fff !important;

@@ -145,6 +145,7 @@ public partial class Tournaments : IAsyncDisposable
     private Guid? draggedScheduleMatchId;
     private Guid? dropTargetScheduleMatchId;
     private Guid? dropTargetScheduleBoardId;
+    private string? activeScheduleInsertTargetKey;
 
     // ─── Match Detail / Result Edit Modal ───
     private MatchDto? detailMatch;
@@ -1882,6 +1883,10 @@ public partial class Tournaments : IAsyncDisposable
         if (!boards.Any(b => b.Id == boardId))
             return Task.CompletedTask;
 
+        draggedScheduleMatchId = null;
+        dropTargetScheduleMatchId = null;
+        dropTargetScheduleBoardId = null;
+        activeScheduleInsertTargetKey = null;
         draggedBoardId = boardId;
         return Task.CompletedTask;
     }
@@ -1890,6 +1895,7 @@ public partial class Tournaments : IAsyncDisposable
     {
         draggedBoardId = null;
         dropTargetMatchId = null;
+        activeScheduleInsertTargetKey = null;
         return Task.CompletedTask;
     }
 
@@ -1946,6 +1952,21 @@ public partial class Tournaments : IAsyncDisposable
         ClearScheduleDropTargetBoard(boardId);
         return Task.CompletedTask;
     }
+
+    private Task MarkScheduleInsertTargetAsync(ScheduleDropRequest request)
+    {
+        MarkScheduleInsertTarget(request);
+        return Task.CompletedTask;
+    }
+
+    private Task ClearScheduleInsertTargetAsync(ScheduleDropRequest request)
+    {
+        ClearScheduleInsertTarget(request);
+        return Task.CompletedTask;
+    }
+
+    private Task DropOnScheduleMarkerCallbackAsync(ScheduleDropRequest request)
+        => DropOnScheduleMarkerAsync(request);
 
     private Task OnEditMatchTimeValueChangedAsync(string value)
     {
@@ -3982,15 +4003,17 @@ public partial class Tournaments : IAsyncDisposable
 
     private bool IsScheduleDragLocked(MatchDto match)
     {
+        // Lock wenn Start-Zeit explizit gesperrt ist
         if (match.IsStartTimeLocked)
             return true;
 
+        // Lock wenn Match bereits gestartet oder beendet ist
         if (match.StartedUtc is not null || match.FinishedUtc is not null)
             return true;
 
+        // Lock nur wenn Match aktiv lauft oder beendet ist (nicht beim Warten/Geplant)
         return string.Equals(match.Status, "Beendet", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(match.Status, "Aktiv", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(match.Status, "Warten", StringComparison.OrdinalIgnoreCase);
+            || string.Equals(match.Status, "Aktiv", StringComparison.OrdinalIgnoreCase);
     }
 
     private bool CanDragScheduleMatch(MatchDto match)
@@ -4013,6 +4036,7 @@ public partial class Tournaments : IAsyncDisposable
         dropTargetMatchId = null;
         dropTargetScheduleMatchId = null;
         dropTargetScheduleBoardId = null;
+        activeScheduleInsertTargetKey = null;
     }
 
     private void EndScheduleMatchDrag()
@@ -4020,10 +4044,14 @@ public partial class Tournaments : IAsyncDisposable
         draggedScheduleMatchId = null;
         dropTargetScheduleMatchId = null;
         dropTargetScheduleBoardId = null;
+        activeScheduleInsertTargetKey = null;
     }
 
     private bool CanDropScheduleOnMatch(MatchDto target)
     {
+        if (draggedBoardId.HasValue)
+            return CanAssignBoardToMatch(target);
+
         if (draggedScheduleMatchId is null)
             return false;
 
@@ -4046,7 +4074,10 @@ public partial class Tournaments : IAsyncDisposable
         if (dragged is null || !CanDragScheduleMatch(dragged))
             return false;
 
-        return boards.Any(b => b.Id == boardId);
+        if (!boards.Any(b => b.Id == boardId))
+            return false;
+
+        return HasValidScheduleInsertMarkerForBoard(boardId);
     }
 
     private void MarkScheduleDropTargetMatch(Guid matchId)
@@ -4083,6 +4114,174 @@ public partial class Tournaments : IAsyncDisposable
             dropTargetScheduleBoardId = null;
     }
 
+    private bool HasValidScheduleInsertMarkerForBoard(Guid boardId)
+    {
+        var queue = BoardQueues.GetValueOrDefault(boardId) ?? [];
+        if (queue.Count == 0)
+            return CanDropScheduleAtMarker(null, null, boardId);
+
+        if (CanDropScheduleAtMarker(null, queue[0].Id, boardId))
+            return true;
+
+        for (var index = 0; index < queue.Count - 1; index++)
+        {
+            if (CanDropScheduleAtMarker(queue[index].Id, queue[index + 1].Id, boardId))
+                return true;
+        }
+
+        return CanDropScheduleAtMarker(queue[^1].Id, null, boardId);
+    }
+
+    private bool CanDropScheduleAtMarker(Guid? previousMatchId, Guid? nextMatchId, Guid? boardId)
+    {
+        if (draggedScheduleMatchId is null)
+            return false;
+
+        var dragged = FindScheduledMatch(draggedScheduleMatchId);
+        if (dragged is null || !CanDragScheduleMatch(dragged))
+            return false;
+
+        var previous = FindScheduledMatch(previousMatchId);
+        var next = FindScheduledMatch(nextMatchId);
+
+        if (previous?.Id == dragged.Id || next?.Id == dragged.Id)
+            return false;
+
+        var effectiveBoardId = boardId ?? dragged.BoardId;
+        if (dragged.IsBoardLocked && effectiveBoardId != dragged.BoardId)
+            return false;
+
+        if (previous is not null && !CanScheduleMatchesBeAdjacent(previous, dragged))
+            return false;
+
+        if (next is not null && !CanScheduleMatchesBeAdjacent(dragged, next))
+            return false;
+
+        return true;
+    }
+
+    private static bool CanScheduleMatchesBeAdjacent(MatchDto left, MatchDto right)
+    {
+        if (!string.Equals(left.Phase, right.Phase, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (string.Equals(left.Phase, "Group", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return left.Round == right.Round;
+    }
+
+    private MatchDto? FindScheduledMatch(Guid? matchId)
+        => matchId.HasValue ? matches.FirstOrDefault(m => m.Id == matchId.Value) : null;
+
+    private string BuildScheduleInsertMarkerCss(Guid? previousMatchId, Guid? nextMatchId, Guid? boardId)
+    {
+        var request = new ScheduleDropRequest(previousMatchId, nextMatchId, boardId);
+        var classes = new List<string> { "schedule-insert-marker" };
+
+        if (CanDropScheduleAtMarker(previousMatchId, nextMatchId, boardId))
+            classes.Add("is-valid");
+        else
+            classes.Add("is-invalid");
+
+        if (activeScheduleInsertTargetKey == BuildScheduleInsertTargetKey(request))
+            classes.Add("is-active");
+
+        return string.Join(' ', classes);
+    }
+
+    private string BuildScheduleInsertMarkerLabel(Guid? nextMatchId)
+    {
+        var next = FindScheduledMatch(nextMatchId);
+        if (next?.PlannedStartUtc is not null)
+            return $"vor {next.PlannedStartUtc.Value.LocalDateTime:HH:mm}";
+
+        return "danach";
+    }
+
+    private void MarkScheduleInsertTarget(ScheduleDropRequest request)
+    {
+        if (!CanDropScheduleAtMarker(request.PreviousMatchId, request.NextMatchId, request.BoardId))
+            return;
+
+        activeScheduleInsertTargetKey = BuildScheduleInsertTargetKey(request);
+    }
+
+    private void ClearScheduleInsertTarget(ScheduleDropRequest request)
+    {
+        var key = BuildScheduleInsertTargetKey(request);
+        if (activeScheduleInsertTargetKey == key)
+            activeScheduleInsertTargetKey = null;
+    }
+
+    private async Task DropOnScheduleMarkerAsync(ScheduleDropRequest request)
+    {
+        if (selectedTournament is null || draggedScheduleMatchId is null)
+            return;
+
+        var dragged = FindScheduledMatch(draggedScheduleMatchId);
+        if (dragged is null || !CanDropScheduleAtMarker(request.PreviousMatchId, request.NextMatchId, request.BoardId))
+            return;
+
+        try
+        {
+            isWorking = true;
+
+            var targetBoardId = request.BoardId ?? dragged.BoardId;
+            var seedTime = CalculateScheduleInsertSeed(request.PreviousMatchId, request.NextMatchId);
+
+            await Api.UpdateMatchScheduleAsync(dragged.Id, seedTime, dragged.IsStartTimeLocked, targetBoardId, dragged.IsBoardLocked);
+            matches = (await Api.GenerateScheduleAsync(selectedTournament.Id)).ToList();
+        }
+        finally
+        {
+            isWorking = false;
+            EndScheduleMatchDrag();
+            dropTargetMatchId = null;
+            dropTargetScheduleMatchId = null;
+            dropTargetScheduleBoardId = null;
+            activeScheduleInsertTargetKey = null;
+        }
+    }
+
+    private DateTimeOffset CalculateScheduleInsertSeed(Guid? previousMatchId, Guid? nextMatchId)
+    {
+        var previous = FindScheduledMatch(previousMatchId);
+        var next = FindScheduledMatch(nextMatchId);
+
+        if (previous?.PlannedStartUtc is not null && next?.PlannedStartUtc is not null)
+        {
+            var previousUtc = previous.PlannedStartUtc.Value.ToUniversalTime();
+            var nextUtc = next.PlannedStartUtc.Value.ToUniversalTime();
+            if (nextUtc > previousUtc)
+            {
+                var midpointTicks = previousUtc.UtcTicks + ((nextUtc.UtcTicks - previousUtc.UtcTicks) / 2);
+                if (midpointTicks > previousUtc.UtcTicks && midpointTicks < nextUtc.UtcTicks)
+                    return new DateTimeOffset(midpointTicks, TimeSpan.Zero);
+            }
+
+            return nextUtc.AddSeconds(-1);
+        }
+
+        if (next?.PlannedStartUtc is not null)
+            return next.PlannedStartUtc.Value.ToUniversalTime().AddMinutes(-1);
+
+        if (previous?.PlannedStartUtc is not null)
+            return previous.PlannedStartUtc.Value.ToUniversalTime().AddMinutes(1);
+
+        if (selectedTournament is not null && TimeOnly.TryParse(selectedTournament.StartTime, out var tournamentStartTime))
+        {
+            var startDateTime = selectedTournament.StartDate.ToDateTime(tournamentStartTime);
+            var localOffset = TimeZoneInfo.Local.GetUtcOffset(startDateTime);
+            return new DateTimeOffset(startDateTime, localOffset).ToUniversalTime();
+        }
+
+        return DateTimeOffset.UtcNow;
+    }
+
+    private static string BuildScheduleInsertTargetKey(ScheduleDropRequest request)
+        => $"{request.PreviousMatchId?.ToString() ?? "null"}|{request.NextMatchId?.ToString() ?? "null"}|{request.BoardId?.ToString() ?? "null"}";
+
     private string ScheduleMatchDragCss(MatchDto match)
     {
         if (draggedScheduleMatchId == match.Id)
@@ -4118,7 +4317,7 @@ public partial class Tournaments : IAsyncDisposable
 
     private string BuildScheduleBoardHeaderCss(Guid boardId)
     {
-        var classes = "card-header py-1 d-flex justify-content-between align-items-center";
+        var classes = "card-header py-1 d-flex justify-content-between align-items-center schedule-board-queue-header";
         var dropZone = ScheduleBoardDropZoneCss(boardId);
         if (!string.IsNullOrWhiteSpace(dropZone))
             classes += $" {dropZone}";
@@ -4167,9 +4366,9 @@ public partial class Tournaments : IAsyncDisposable
             isWorking = true;
 
             var targetStart = target.PlannedStartUtc ?? dragged.PlannedStartUtc;
-            var lockTime = targetStart.HasValue;
+            var lockTime = dragged.IsStartTimeLocked;
             var targetBoardId = target.BoardId;
-            var lockBoard = targetBoardId.HasValue;
+            var lockBoard = dragged.IsBoardLocked;
 
             await Api.UpdateMatchScheduleAsync(dragged.Id, targetStart, lockTime, targetBoardId, lockBoard);
             matches = (await Api.GenerateScheduleAsync(selectedTournament.Id)).ToList();
@@ -4196,18 +4395,21 @@ public partial class Tournaments : IAsyncDisposable
         {
             isWorking = true;
 
-            var firstOnBoard = BoardQueues.GetValueOrDefault(boardId)?.FirstOrDefault();
-            var anchorStart = firstOnBoard?.PlannedStartUtc ?? dragged.PlannedStartUtc;
-            var lockTime = anchorStart.HasValue;
+            // Match -> Board: keep current planned start time and only change board assignment.
+            // Re-timing is done explicitly via "Spielplan generieren".
+            var anchorStart = dragged.PlannedStartUtc;
+            var lockTime = dragged.IsStartTimeLocked;
+            var lockBoard = dragged.IsBoardLocked;
 
-            await Api.UpdateMatchScheduleAsync(dragged.Id, anchorStart, lockTime, boardId, true);
-            matches = (await Api.GenerateScheduleAsync(selectedTournament.Id)).ToList();
+            await Api.UpdateMatchScheduleAsync(dragged.Id, anchorStart, lockTime, boardId, lockBoard);
+            await LoadMatchesAsync(selectedTournament.Id);
         }
         finally
         {
             isWorking = false;
             EndScheduleMatchDrag();
             dropTargetScheduleBoardId = null;
+            activeScheduleInsertTargetKey = null;
         }
     }
 
@@ -4914,7 +5116,7 @@ public partial class Tournaments : IAsyncDisposable
         get
         {
             var query = matches
-                .Where(m => m.HomeParticipantId != Guid.Empty && m.AwayParticipantId != Guid.Empty);
+                .Where(m => !string.Equals(m.Status, "WalkOver", StringComparison.OrdinalIgnoreCase));
 
             if (scheduleHideFinished)
                 query = query.Where(m => m.FinishedUtc is null);
@@ -4972,6 +5174,28 @@ public partial class Tournaments : IAsyncDisposable
         }
 
         return participant.DisplayName.ToUpperInvariant();
+    }
+
+    private string ScheduleHomeName(MatchDto match)
+        => ResolveScheduleParticipantName(match, isHome: true);
+
+    private string ScheduleAwayName(MatchDto match)
+        => ResolveScheduleParticipantName(match, isHome: false);
+
+    private string ResolveScheduleParticipantName(MatchDto match, bool isHome)
+    {
+        var participantId = isHome ? match.HomeParticipantId : match.AwayParticipantId;
+        if (participantId != Guid.Empty)
+            return ParticipantName(participantId);
+
+        if (string.Equals(match.Phase, "Knockout", StringComparison.OrdinalIgnoreCase))
+            return KoParticipantLabel(Guid.Empty, match, isHome);
+
+        var slotOrigin = isHome ? match.HomeSlotOrigin : match.AwaySlotOrigin;
+        if (!string.IsNullOrWhiteSpace(slotOrigin))
+            return slotOrigin;
+
+        return "?";
     }
 
     private string ParticipantNameWithSeed(Guid? id)
