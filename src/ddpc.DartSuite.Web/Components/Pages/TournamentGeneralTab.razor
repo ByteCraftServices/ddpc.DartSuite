@@ -22,12 +22,23 @@
         @if (CanEditBasicSettings)
         {
             <div class="mb-3">
-                <label class="form-label fw-semibold" title="Eindeutiger Turniername für Listen, Suche und Turnierlink.">Turniername</label>
-                <input class="form-control @(string.IsNullOrWhiteSpace(EditName) ? "border-danger" : "")" value="@EditName" @onchange="HandleEditNameChanged" />
+                <div class="form-floating">
+                    <input class="form-control @(string.IsNullOrWhiteSpace(EditName) ? "border-danger" : "")"
+                           value="@EditName"
+                           @onchange="HandleEditNameChanged"
+                           placeholder="Turniername" />
+                    <label title="Eindeutiger Turniername fuer Listen, Suche und Turnierlink.">Turniername</label>
+                </div>
             </div>
             <div class="mb-3">
-                <label class="form-label fw-semibold" title="Autodarts-Account des Veranstalters; steuert Sichtbarkeit und Berechtigungen.">Veranstalter-Account</label>
-                <input class="form-control @(string.IsNullOrWhiteSpace(EditOrganizer) ? "border-danger" : "")" value="@EditOrganizer" @onchange="HandleEditOrganizerChanged" list="organizerSuggestions" />
+                <div class="form-floating">
+                    <input class="form-control @(string.IsNullOrWhiteSpace(EditOrganizer) ? "border-danger" : "")"
+                           value="@EditOrganizer"
+                           @onchange="HandleEditOrganizerChanged"
+                           list="organizerSuggestions"
+                           placeholder="Veranstalter-Account" />
+                    <label title="Autodarts-Account des Veranstalters; steuert Sichtbarkeit und Berechtigungen.">Veranstalter-Account</label>
+                </div>
                 <datalist id="organizerSuggestions">
                     @if (!string.IsNullOrEmpty(AutodartsDisplayName))
                     {
@@ -41,31 +52,53 @@
             </div>
             <div class="row g-2 mb-3">
                 <div class="col-md-4">
-                    <label class="form-label fw-semibold" title="Startdatum des Turniers. Grundlage für aktive/kommende Turniere.">Startdatum</label>
-                    <input type="date" class="form-control" value="@EditStartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" @onchange="HandleEditStartDateChanged" />
+                    <div class="form-floating">
+                        <input type="date"
+                               class="form-control"
+                               value="@EditStartDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)"
+                               @onchange="HandleEditStartDateChanged"
+                               placeholder="Startdatum" />
+                        <label title="Startdatum des Turniers. Grundlage fuer aktive/kommende Turniere.">Startdatum</label>
+                    </div>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label fw-semibold" title="Enddatum des Turniers; darf nicht vor dem Startdatum liegen.">Enddatum</label>
-                    <input type="date" class="form-control @((EditEndDate < EditStartDate) ? "border-danger" : "")" value="@EditEndDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)" @onchange="HandleEditEndDateChanged" />
+                    <div class="form-floating">
+                        <input type="date"
+                               class="form-control @((EditEndDate < EditStartDate) ? "border-danger" : "")"
+                               value="@EditEndDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)"
+                               @onchange="HandleEditEndDateChanged"
+                               placeholder="Enddatum" />
+                        <label title="Enddatum des Turniers; darf nicht vor dem Startdatum liegen.">Enddatum</label>
+                    </div>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label fw-semibold" title="Optional: Uhrzeit für Start und Spielplan-Generierung.">Startzeit</label>
-                    <input type="time" class="form-control" value="@(EditStartTimeInput?.ToString("HH:mm", CultureInfo.InvariantCulture))" @onchange="HandleEditStartTimeInputChanged" />
+                    <div class="form-floating">
+                        <input type="time"
+                               class="form-control"
+                               value="@(EditStartTimeInput?.ToString("HH:mm", CultureInfo.InvariantCulture))"
+                               @onchange="HandleEditStartTimeInputChanged"
+                               placeholder="Startzeit" />
+                        <label title="Optional: Uhrzeit fuer Start und Spielplan-Generierung.">Startzeit</label>
+                    </div>
                 </div>
             </div>
             <div class="mb-3">
-                <label class="form-label fw-semibold" title="Turniermodus: K.O. oder Gruppe + K.O. beeinflusst Auslosung und Gruppen-Tab.">Modus</label>
-                <select class="form-select" value="@EditMode" @onchange="HandleEditModeChanged">
-                    <option value="Knockout">K.O.-Modus</option>
-                    <option value="GroupAndKnockout">Gruppenphase + K.O.</option>
-                </select>
+                <div class="form-floating">
+                    <select class="form-select" value="@EditMode" @onchange="HandleEditModeChanged">
+                        <option value="Knockout">K.O.-Modus</option>
+                        <option value="GroupAndKnockout">Gruppenphase + K.O.</option>
+                    </select>
+                    <label title="Turniermodus: K.O. oder Gruppe + K.O. beeinflusst Auslosung und Gruppen-Tab.">Modus</label>
+                </div>
             </div>
             <div class="mb-3">
-                <label class="form-label fw-semibold" title="Vor-Ort: Board-Zuweisung und lokale Steuerung; Online: ohne Board-Zwang.">Variante</label>
-                <select class="form-select" value="@EditVariant" @onchange="HandleEditVariantChanged">
-                    <option value="OnSite">Vor-Ort</option>
-                    <option value="Online">Online</option>
-                </select>
+                <div class="form-floating">
+                    <select class="form-select" value="@EditVariant" @onchange="HandleEditVariantChanged">
+                        <option value="OnSite">Vor-Ort</option>
+                        <option value="Online">Online</option>
+                    </select>
+                    <label title="Vor-Ort: Board-Zuweisung und lokale Steuerung; Online: ohne Board-Zwang.">Variante</label>
+                </div>
             </div>
             <div class="form-check mb-0">
                 <input class="form-check-input" type="checkbox" id="editThirdPlace" checked="@EditThirdPlaceMatch" @onchange="HandleEditThirdPlaceMatchChanged" />
@@ -94,7 +127,14 @@
         </summary>
         <div class="card-body">
             <div class="input-group">
-                <input type="text" class="form-control form-control-sm" readonly value="@TournamentLink" />
+                <div class="form-floating flex-grow-1">
+                    <input type="text"
+                           class="form-control form-control-sm"
+                           readonly
+                           value="@TournamentLink"
+                           placeholder="Turnier-Link" />
+                    <label>Turnier-Link</label>
+                </div>
                 @if (CanEditTournamentSettings)
                 {
                     <button class="btn btn-outline-secondary btn-sm" @onclick="OnCopyTournamentLink" title="Kopiert den direkten Turnierlink in die Zwischenablage.">📋 Kopieren</button>
@@ -113,9 +153,15 @@
         @if (CanEditTournamentSettings)
         {
             <div class="mb-2">
-                <label class="form-label small" title="Webhook-URL für automatische Ergebnisposts bei Matchende.">Webhook URL</label>
                 <div class="input-group">
-                    <input type="url" class="form-control form-control-sm" value="@EditDiscordWebhookUrl" @onchange="HandleEditDiscordWebhookUrlChanged" placeholder="https://discord.com/api/webhooks/..." />
+                    <div class="form-floating flex-grow-1">
+                        <input type="url"
+                               class="form-control form-control-sm"
+                               value="@EditDiscordWebhookUrl"
+                               @onchange="HandleEditDiscordWebhookUrlChanged"
+                               placeholder="https://discord.com/api/webhooks/..." />
+                        <label title="Webhook-URL fuer automatische Ergebnisposts bei Matchende.">Webhook URL</label>
+                    </div>
                     @if (!string.IsNullOrEmpty(EditDiscordWebhookUrl))
                     {
                         <button class="btn btn-outline-secondary btn-sm" @onclick="OnTestDiscordWebhook" disabled="@IsWorking" title="Sendet eine Testnachricht an den konfigurierten Channel.">🔔 Testen</button>
@@ -123,8 +169,14 @@
                 </div>
             </div>
             <div class="mb-3">
-                <label class="form-label small" title="Optionaler Anzeigename für Bot-Nachrichten, z.B. Turnier-Bot.">Anzeigename (optional)</label>
-                <input type="text" class="form-control form-control-sm" value="@EditDiscordWebhookDisplayText" @onchange="HandleEditDiscordWebhookDisplayTextChanged" placeholder="z.B. Turnier-Bot" />
+                <div class="form-floating">
+                    <input type="text"
+                           class="form-control form-control-sm"
+                           value="@EditDiscordWebhookDisplayText"
+                           @onchange="HandleEditDiscordWebhookDisplayTextChanged"
+                           placeholder="z.B. Turnier-Bot" />
+                    <label title="Optionaler Anzeigename fuer Bot-Nachrichten, z.B. Turnier-Bot.">Anzeigename (optional)</label>
+                </div>
             </div>
         }
         else

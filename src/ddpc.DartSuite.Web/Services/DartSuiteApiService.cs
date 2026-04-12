@@ -44,6 +44,23 @@ public sealed class DartSuiteApiService
             // Read requests can be polled in the background; avoid hard navigation loops on expired sessions.
             return default;
         }
+        catch (HttpRequestException)
+        {
+            // Keep UI interactive when read endpoints temporarily fail (e.g. 500/network hiccups).
+            return default;
+        }
+        catch (TaskCanceledException)
+        {
+            return default;
+        }
+        catch (NotSupportedException)
+        {
+            return default;
+        }
+        catch (JsonException)
+        {
+            return default;
+        }
     }
 
     private async Task EnsureSuccessOrThrowAsync(HttpResponseMessage response, CancellationToken cancellationToken = default)

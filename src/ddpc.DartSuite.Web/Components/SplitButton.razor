@@ -19,7 +19,8 @@
                 {
                     <li>
                         <button class="dropdown-item @(item.IsDanger ? "text-danger" : "") @(item.IsDisabled ? "disabled" : "")"
-                                @onclick="() => item.OnClick.InvokeAsync()" disabled="@item.IsDisabled">
+                                @onclick="() => item.OnClick.InvokeAsync()" disabled="@item.IsDisabled"
+                                title="@item.Title">
                             @if (!string.IsNullOrEmpty(item.Icon))
                             {
                                 <span class="me-1">@item.Icon</span>
@@ -50,6 +51,7 @@
     {
         public string Text { get; set; } = "";
         public string? Icon { get; set; }
+        public string? Title { get; set; }
         public EventCallback OnClick { get; set; }
         public bool IsDivider { get; set; }
         public bool IsDanger { get; set; }

@@ -44,7 +44,8 @@ public partial class Tournaments : IAsyncDisposable
     private string? realtimePreferenceError;
     private bool isCompactViewport;
     private bool? forcedMatchDetailsExpanded;
-    private bool tournamentListCollapsed;
+    private bool tournamentListCollapsed = true;
+    private bool tournamentListMobileOpen;
     private const string TournamentListCollapsedStorageKey = "ds-tournaments-list-collapsed";
     private bool _detailsExpandedLoadedFromStorage;
     private bool isSavingMatchCardPreferences;
@@ -69,6 +70,7 @@ public partial class Tournaments : IAsyncDisposable
     private bool showPageSettingsDropdown;
     private bool showPageSettingsModal;
     private bool showMatchCardScopeModal;
+    private bool showLegacyMatchCardPanel = false;
     private bool showInactiveActionInfoModal;
     private string inactiveActionInfoTitle = "Aktion derzeit nicht verfügbar";
     private string inactiveActionInfoMessage = string.Empty;
@@ -306,6 +308,13 @@ public partial class Tournaments : IAsyncDisposable
             var index = CurrentTournamentStripIndex;
             return index >= 0 && index < TournamentStripItems.Count - 1;
         }
+    }
+
+    private static string GetTournamentRailItemHeight(TournamentDto tournament)
+    {
+        var nameLength = tournament.Name?.Length ?? 0;
+        var heightRem = Math.Clamp(2.8 + (nameLength * 0.24), 4.2, 11.0);
+        return $"{heightRem:0.##}rem";
     }
 
     // ─── Autodarts Session ───
@@ -1149,6 +1158,9 @@ public partial class Tournaments : IAsyncDisposable
         {
             Text = status,
             IsDisabled = string.Equals(selectedTournament.Status, status, StringComparison.OrdinalIgnoreCase),
+            Title = string.Equals(selectedTournament.Status, status, StringComparison.OrdinalIgnoreCase) 
+                ? $"Turnier ist bereits im Status '{status}'"
+                : null,
             IsDanger = status == "Abgebrochen",
             OnClick = EventCallback.Factory.Create(this, () => UpdateTournamentStatusAsync(status))
         }).ToList();
@@ -1206,16 +1218,7 @@ public partial class Tournaments : IAsyncDisposable
             }
             catch { /* best-effort */ }
 
-            try
-            {
-                var storedTournamentList = await JS.InvokeAsync<string?>("dartSuiteUi.localStorageGet", TournamentListCollapsedStorageKey);
-                if (!string.IsNullOrEmpty(storedTournamentList))
-                {
-                    tournamentListCollapsed = string.Equals(storedTournamentList, "true", StringComparison.OrdinalIgnoreCase);
-                    await InvokeAsync(StateHasChanged);
-                }
-            }
-            catch { /* best-effort */ }
+            tournamentListCollapsed = true;
 
             if (!hasLoadedGroupMatchesViewMode)
             {
@@ -1435,6 +1438,12 @@ public partial class Tournaments : IAsyncDisposable
 
     private bool CanGoToPreviousTab => selectedTournament is not null && ActiveTabSequenceIndex > 0;
 
+    private bool IsTournamentListPanelOpen
+        => selectedTournament is not null && (!tournamentListCollapsed || tournamentListMobileOpen);
+
+    private bool CanUsePreviousFooterAction
+        => selectedTournament is not null && (CanGoToPreviousTab || !IsTournamentListPanelOpen);
+
     private bool CanGoToNextTab => selectedTournament is not null && ActiveTabSequenceIndex >= 0 && ActiveTabSequenceIndex < VisibleTabSequence.Count - 1;
 
     private string ActiveTabDisplayName => TabDisplayName(activeTab);
@@ -1453,7 +1462,9 @@ public partial class Tournaments : IAsyncDisposable
         };
 
     private string PreviousTabDisplayName
-        => CanGoToPreviousTab ? TabDisplayName(VisibleTabSequence[ActiveTabSequenceIndex - 1]) : "Vorheriger Tab";
+        => IsTournamentListPanelOpen
+            ? (CanGoToPreviousTab ? TabDisplayName(VisibleTabSequence[ActiveTabSequenceIndex - 1]) : "Vorheriger Tab")
+            : "Turnierliste";
 
     private string NextTabDisplayName
         => CanGoToNextTab ? TabDisplayName(VisibleTabSequence[ActiveTabSequenceIndex + 1]) : "Nächster Tab";
@@ -1487,7 +1498,11 @@ public partial class Tournaments : IAsyncDisposable
             : "btn btn-primary btn-sm";
 
     private string PreviousTabButtonTitle
-        => PreviousTabIsSchedule ? ScheduleNavButtonTitle : "Zum vorherigen Tab wechseln";
+        => !IsTournamentListPanelOpen
+            ? "Turnierliste einblenden"
+            : PreviousTabIsSchedule
+                ? ScheduleNavButtonTitle
+                : "Zum vorherigen Tab wechseln";
 
     private string NextTabButtonTitle
         => NextTabIsSchedule ? ScheduleNavButtonTitle : "Zum nächsten Tab wechseln";
@@ -1533,6 +1548,18 @@ public partial class Tournaments : IAsyncDisposable
         }
 
         return -1;
+    }
+
+    private async Task HandlePreviousFooterActionAsync()
+    {
+        if (!IsTournamentListPanelOpen)
+        {
+            await SetTournamentListCollapsedAsync(false);
+            return;
+        }
+
+        if (CanGoToPreviousTab)
+            await NavigateTabRelativeAsync(-1);
     }
 
     private Task GoToPreviousTabAsync() => NavigateTabRelativeAsync(-1);
@@ -2009,14 +2036,14 @@ public partial class Tournaments : IAsyncDisposable
     [JSInvokable]
     public Task HandleTournamentListSwipeAsync(string direction)
     {
-        if (!isCompactViewport || !tournamentListCollapsed)
+        if (!isCompactViewport || !tournamentListMobileOpen)
             return Task.CompletedTask;
 
         if (string.Equals(direction, "left", StringComparison.OrdinalIgnoreCase))
-            return SelectAdjacentTournamentAsync(1);
+            return CloseTournamentListMobileAsync();
 
         if (string.Equals(direction, "right", StringComparison.OrdinalIgnoreCase))
-            return SelectAdjacentTournamentAsync(-1);
+            return Task.CompletedTask;
 
         return Task.CompletedTask;
     }
@@ -2044,12 +2071,24 @@ public partial class Tournaments : IAsyncDisposable
 
     private async Task ToggleTournamentListCollapsedAsync()
     {
+        if (isCompactViewport)
+        {
+            tournamentListMobileOpen = !tournamentListMobileOpen;
+            return;
+        }
+
         tournamentListCollapsed = !tournamentListCollapsed;
         await PersistTournamentListCollapsedAsync();
     }
 
     private async Task SetTournamentListCollapsedAsync(bool collapsed)
     {
+        if (isCompactViewport)
+        {
+            tournamentListMobileOpen = !collapsed;
+            return;
+        }
+
         if (tournamentListCollapsed == collapsed)
             return;
 
@@ -2079,7 +2118,7 @@ public partial class Tournaments : IAsyncDisposable
         try
         {
             await JS.InvokeVoidAsync("dartSuiteUi.registerHorizontalSwipe", "tournament-tab-content", tournamentTabSwipeRef, nameof(HandleTournamentTabsSwipeAsync));
-            await JS.InvokeVoidAsync("dartSuiteUi.registerHorizontalSwipe", "tournament-list-strip", tournamentTabSwipeRef, nameof(HandleTournamentListSwipeAsync));
+            await JS.InvokeVoidAsync("dartSuiteUi.registerHorizontalSwipe", "tournament-list-panel", tournamentTabSwipeRef, nameof(HandleTournamentListSwipeAsync));
         }
         catch
         {
@@ -2118,12 +2157,18 @@ public partial class Tournaments : IAsyncDisposable
         try
         {
             await JS.InvokeVoidAsync("dartSuiteUi.unregisterHorizontalSwipe", "tournament-tab-content");
-            await JS.InvokeVoidAsync("dartSuiteUi.unregisterHorizontalSwipe", "tournament-list-strip");
+            await JS.InvokeVoidAsync("dartSuiteUi.unregisterHorizontalSwipe", "tournament-list-panel");
         }
         catch
         {
             // ignore dispose-time JS interop errors
         }
+    }
+
+    private async Task CloseTournamentListMobileAsync()
+    {
+        tournamentListMobileOpen = false;
+        await SetTournamentListCollapsedAsync(true);
     }
 
     private async Task DetachTouchDragDropInteropAsync()
@@ -3173,6 +3218,9 @@ public partial class Tournaments : IAsyncDisposable
     // ─── Tournament Selection ───
     private async Task SelectTournamentAsync(TournamentDto tournament)
     {
+        tournamentListMobileOpen = false;
+        tournamentListCollapsed = true;
+
         // Leave previous tournament hub group
         if (selectedTournament is not null && selectedTournament.Id != tournament.Id)
         {

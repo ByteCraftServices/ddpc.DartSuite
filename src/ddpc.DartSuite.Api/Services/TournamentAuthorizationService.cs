@@ -21,6 +21,8 @@ public sealed class TournamentAuthorizationService(
         if (string.IsNullOrWhiteSpace(actorName))
             return AccessCheckResult.Unauthorized("Autodarts-Login erforderlich.");
 
+        var actorNameNormalized = actorName.Trim().ToLower();
+
         var tournament = await dbContext.Tournaments
             .AsNoTracking()
             .Where(x => x.Id == tournamentId)
@@ -37,8 +39,8 @@ public sealed class TournamentAuthorizationService(
             .AnyAsync(x =>
                 x.TournamentId == tournamentId
                 && x.IsManager
-                && (string.Equals(x.AccountName, actorName, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(x.DisplayName, actorName, StringComparison.OrdinalIgnoreCase)),
+                && ((x.AccountName != null && x.AccountName.ToLower() == actorNameNormalized)
+                    || (x.DisplayName != null && x.DisplayName.ToLower() == actorNameNormalized)),
                 cancellationToken);
 
         return managerParticipant
@@ -62,12 +64,14 @@ public sealed class TournamentAuthorizationService(
         if (string.IsNullOrWhiteSpace(actorName))
             return AccessCheckResult.Unauthorized("Autodarts-Login erforderlich.");
 
+        var actorNameNormalized = actorName.Trim().ToLower();
+
         var isParticipant = await dbContext.Participants
             .AsNoTracking()
             .AnyAsync(x =>
                 x.TournamentId == tournamentId
-                && (string.Equals(x.AccountName, actorName, StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(x.DisplayName, actorName, StringComparison.OrdinalIgnoreCase)),
+                && ((x.AccountName != null && x.AccountName.ToLower() == actorNameNormalized)
+                    || (x.DisplayName != null && x.DisplayName.ToLower() == actorNameNormalized)),
                 cancellationToken);
 
         return isParticipant

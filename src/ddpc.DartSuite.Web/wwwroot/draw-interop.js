@@ -148,7 +148,14 @@ window.dartSuiteUi = window.dartSuiteUi || {
             if (Math.abs(dx) < 45 || Math.abs(dx) <= Math.abs(dy)) return;
 
             const direction = dx < 0 ? "left" : "right";
-            dotNetRef.invokeMethodAsync(callbackMethodName, direction).catch(() => { });
+            try {
+                const invokeResult = dotNetRef.invokeMethodAsync(callbackMethodName, direction);
+                if (invokeResult && typeof invokeResult.catch === "function") {
+                    invokeResult.catch(() => { });
+                }
+            } catch (e) {
+                // Connection may already be closed; ignore best-effort callback.
+            }
         };
 
         el.addEventListener("touchstart", onStart, { passive: true });
@@ -585,7 +592,14 @@ window.dartSuiteUi = window.dartSuiteUi || {
                 }
             }
 
-            dotNetRef.invokeMethodAsync(callbackMethodName).catch(() => { });
+            try {
+                const invokeResult = dotNetRef.invokeMethodAsync(callbackMethodName);
+                if (invokeResult && typeof invokeResult.catch === "function") {
+                    invokeResult.catch(() => { });
+                }
+            } catch (e) {
+                // Connection may already be closed; ignore best-effort callback.
+            }
         };
 
         document.addEventListener("pointerdown", onPointerDown, true);

@@ -145,6 +145,51 @@
 			"dependsOn": [
 				"web release"
 			]
+		},
+		{
+			"label": "ds041-webtests",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"test",
+				"tests/ddpc.DartSuite.Web.Tests/ddpc.DartSuite.Web.Tests.csproj"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "ds041-build-test-clean",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Process ddpc.DartSuite.Web -ErrorAction SilentlyContinue | Stop-Process -Force; dotnet build ddpc.DartSuite.slnx; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }; dotnet test ddpc.DartSuite.slnx"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "ds041-build-test-no-locks",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-Command",
+				"Get-Process ddpc.DartSuite.Web,ddpc.DartSuite.Api -ErrorAction SilentlyContinue | Stop-Process -Force; dotnet build ddpc.DartSuite.slnx; if($LASTEXITCODE -ne 0){ exit $LASTEXITCODE }; dotnet test ddpc.DartSuite.slnx"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "ds041-run-web-watch",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"watch",
+				"--launch-profile",
+				"https",
+				"--project",
+				"src/ddpc.DartSuite.Web"
+			],
+			"isBackground": true
 		}
 	]
 }

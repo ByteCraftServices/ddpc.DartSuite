@@ -17,10 +17,13 @@
 <body>
     <Routes @rendermode="InteractiveServer" />
     <ReconnectModal />
+    <TooltipToast @ref="_tooltipToast" />
     <script src="@Assets["lib/bootstrap/dist/js/bootstrap.bundle.min.js"]"></script>
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     <script src="push-interop.js"></script>
     <script src="draw-interop.js"></script>
+    <script src="tooltip-interop.js"></script>
+    <script src="floating-labels.js"></script>
 </body>
 
 </html>

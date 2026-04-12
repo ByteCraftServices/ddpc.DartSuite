@@ -33,7 +33,7 @@
 
 
 
-@if (false) /* matchcard-panel moved to page settings modal */
+@if (showLegacyMatchCardPanel) /* matchcard-panel moved to page settings modal */
 {
     <details id="section-tournaments-matchcard-config" class="card shadow-sm mb-3" open>
         <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
@@ -774,14 +774,23 @@
                             }
 
                             @* ─── Tournament List + Detail ─── *@
-                            <div class="row g-3 tournaments-main-row">
+                            <div class="row g-3 tournaments-main-row @(selectedTournament is not null ? "has-detail" : string.Empty) @(tournamentListCollapsed ? "is-collapsed" : string.Empty) @((tournamentListMobileOpen || !tournamentListCollapsed) ? "is-mobile-open" : string.Empty)">
+                                @if (selectedTournament is not null && IsTournamentListPanelOpen)
+                                {
+                                    <button type="button"
+                                            class="tournament-list-backdrop"
+                                            title="Turnierliste schließen"
+                                            @onclick="CloseTournamentListMobileAsync"></button>
+                                }
+
                                 @if (selectedTournament is not null && tournamentListCollapsed)
                                 {
-                                    <div class="d-none d-lg-flex col-lg-1 tournament-list-rail flex-column gap-2">
+                                    <div class="d-none d-lg-flex col-auto tournament-list-rail flex-column gap-1">
                                         @foreach (var t in TournamentStripItems)
                                         {
                                             <button type="button"
                                                     class="btn btn-sm tournament-list-rail-item @(selectedTournament?.Id == t.Id ? "active" : string.Empty)"
+                                                    style="--rail-item-height:@GetTournamentRailItemHeight(t);"
                                                     title="@t.Name"
                                                     @onclick="() => SelectTournamentAsync(t)">
                                                 <span class="tournament-list-rail-label">@t.Name</span>
@@ -790,7 +799,7 @@
                                     </div>
                                 }
 
-                                <div class="@(selectedTournament is not null ? (tournamentListCollapsed ? "d-none d-lg-block col-lg-3" : "col-12 col-lg-3") : "col-12")">
+                                <div id="tournament-list-panel" class="@(selectedTournament is not null ? "col-12 col-lg-3 tournament-list-pane" : "col-12")">
                                     @if (ActiveTournaments.Any())
                                     {
                                         <h6 class="mb-1 fw-semibold text-success">▶ Aktiv</h6>
@@ -869,74 +878,63 @@
                                 @* ─── Detail Panel ─── *@
                                 @if (selectedTournament is not null)
                                 {
-                                    <div class="@(tournamentListCollapsed ? "col-12 col-lg-11" : "col-12 col-lg-9")">
-                                        @if (tournamentListCollapsed)
-                                        {
-                                            <div class="d-flex d-lg-none align-items-center gap-1 mb-2 tournament-mobile-strip-wrap">
-                                                <button type="button" class="btn btn-outline-secondary btn-sm" title="Vorheriges Turnier" @onclick="SelectPreviousTournamentAsync" disabled="@(!CanSelectPreviousTournament)">←</button>
-                                                <div id="tournament-list-strip" class="tournament-mobile-strip flex-grow-1">
-                                                    @foreach (var t in TournamentStripItems)
-                                                    {
-                                                        <button type="button"
-                                                                class="btn btn-sm tournament-mobile-strip-item @(selectedTournament?.Id == t.Id ? "active" : string.Empty)"
-                                                                title="@t.Name"
-                                                                @onclick="() => SelectTournamentAsync(t)">
-                                                            @t.Name
-                                                        </button>
-                                                    }
-                                                </div>
-                                                <button type="button" class="btn btn-outline-secondary btn-sm" title="Nächstes Turnier" @onclick="SelectNextTournamentAsync" disabled="@(!CanSelectNextTournament)">→</button>
-                                                <button type="button" class="btn btn-outline-secondary btn-sm" title="Turnierliste ausklappen" @onclick="() => SetTournamentListCollapsedAsync(false)">☰</button>
-                                            </div>
-                                        }
-
+                                    <div class="@(tournamentListCollapsed ? "col-12 col-lg tournament-detail-pane" : "col-12 col-lg-9 tournament-detail-pane")">
                                         <div class="card shadow-sm">
-                                            <div class="card-header d-flex justify-content-between align-items-center gap-1">
-                                                <div>
+                                            <div class="card-header d-flex flex-column gap-1">
+                                                <!-- Top row: Tournament name -->
+                                                <div class="tournament-header-title">
                                                     <span class="fw-semibold">@selectedTournament!.Name</span>
-                                                    @if (!string.IsNullOrEmpty(selectedTournament.JoinCode))
-                                                    {
-                                                        <span class="badge text-bg-primary ms-2 font-monospace">@selectedTournament.JoinCode</span>
-                                                    }
-                                                    <span class="badge text-bg-dark ms-2" title="Aktuelle Rolle im Turnier">@(IsCurrentUserManager ? "Rolle: Spielleiter" : "Rolle: Teilnehmer")</span>
-                                                    @if (selectedTournament.IsLocked)
-                                                    {
-                                                        <span class="badge text-bg-danger ms-2">🔒 Gesperrt</span>
-                                                    }
                                                 </div>
-                                                <div class="d-flex gap-1">
-                                                    <span class="badge text-bg-secondary">@ModeDisplay(selectedTournament.Mode)</span>
-                                                    <span class="badge text-bg-info">@VariantDisplay(selectedTournament.Variant)</span>
-                                                    @if (IsCurrentUserManager)
-                                                    {
-                                                        <div class="ms-1">
-                                                            <SplitButton PrimaryText="@selectedTournament.Status"
-                                                                         ButtonStyle="@StatusBadgeCss(selectedTournament.Status).Replace("text-bg-", "")"
-                                                                         Size="sm"
-                                                                         Disabled="@isWorking"
-                                                                         Items="@BuildTournamentStatusItems()" />
+                                                
+                                                <!-- Badge + Button row -->
+                                                <div class="d-flex justify-content-between align-items-center gap-1 flex-wrap">
+                                                    <!-- Left section: badges -->
+                                                    <div class="tournament-badges-row">
+                                                        <!-- Left badges: Code, Role, Status -->
+                                                        <div class="tournament-badges-left">
+                                                            @if (!string.IsNullOrEmpty(selectedTournament.JoinCode))
+                                                            {
+                                                                <span class="badge text-bg-primary font-monospace" title="Code zum Turnierbeitritt">@selectedTournament.JoinCode</span>
+                                                            }
+                                                            <span class="badge text-bg-dark" title="@(IsCurrentUserManager ? "Ihrer Rolle im Turnier" : "Ihrer Rolle im Turnier")">
+                                                                @(IsCurrentUserManager ? "Spielleiter" : "Teilnehmer")
+                                                            </span>
+                                                            @if (selectedTournament.IsLocked)
+                                                            {
+                                                                <span class="badge text-bg-danger" title="Turnier ist gesperrt">🔒 Gesperrt</span>
+                                                            }
                                                         </div>
-                                                    }
-                                                    else
-                                                    {
-                                                        <span class="badge @StatusBadgeCss(selectedTournament.Status)">@selectedTournament.Status</span>
-                                                    }
-                                                    @if (IsCurrentUserManager)
-                                                    {
-                                                        <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleLockAsync" title="@(selectedTournament.IsLocked ? "Entsperren" : "Sperren")">
-                                                            @(selectedTournament.IsLocked ? "🔒" : "🔓")
-                                                        </button>
-                                                    }
-                                                    <button class="btn btn-sm btn-outline-secondary d-none d-lg-inline-flex align-items-center"
-                                                            title="@(tournamentListCollapsed ? "Turnierliste einblenden" : "Turnierliste ausblenden")"
-                                                            @onclick="ToggleTournamentListCollapsedAsync">
-                                                        <i class="bi @(tournamentListCollapsed ? "bi-layout-sidebar" : "bi-layout-sidebar-inset")"></i>
-                                                    </button>
-                                                    <button class="btn btn-sm btn-outline-secondary d-inline-flex d-lg-none align-items-center"
-                                                            title="@(tournamentListCollapsed ? "Turnierliste einblenden" : "Turnierliste ausblenden")"
-                                                            @onclick="ToggleTournamentListCollapsedAsync">
-                                                        <i class="bi @(tournamentListCollapsed ? "bi-layout-sidebar" : "bi-layout-sidebar-inset")"></i>
-                                                    </button>
+                                                        
+                                                        <!-- Right badges -->
+                                                        <div class="tournament-badges-right">
+                                                            <span class="badge text-bg-secondary" title="Turnierformat">@ModeDisplay(selectedTournament.Mode)</span>
+                                                            <span class="badge text-bg-info" title="Turniervariante">@VariantDisplay(selectedTournament.Variant)</span>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <!-- Right section: function buttons -->
+                                                    <div class="d-flex gap-1">
+                                                        @if (IsCurrentUserManager)
+                                                        {
+                                                            <div class="ms-1">
+                                                                <SplitButton PrimaryText="@selectedTournament.Status"
+                                                                             ButtonStyle="@StatusBadgeCss(selectedTournament.Status).Replace("text-bg-", "")"
+                                                                             Size="sm"
+                                                                             Disabled="@isWorking"
+                                                                             Items="@BuildTournamentStatusItems()" />
+                                                            </div>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="badge @StatusBadgeCss(selectedTournament.Status)">@selectedTournament.Status</span>
+                                                        }
+                                                        @if (IsCurrentUserManager)
+                                                        {
+                                                            <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleLockAsync" title="@(selectedTournament.IsLocked ? "Entsperren" : "Sperren")">
+                                                                @(selectedTournament.IsLocked ? "🔒" : "🔓")
+                                                            </button>
+                                                        }
+                                                    </div>
                                                 </div>
                                             </div>
                                             <div class="card-body" id="tournament-tab-content">
@@ -1867,7 +1865,7 @@
 @if (selectedTournament is not null)
 {
     <div class="tournament-tab-footer-nav">
-        <button class="@PreviousTabButtonCssClass" @onclick="GoToPreviousTabAsync" title="@PreviousTabButtonTitle" disabled="@(isWorking || !CanGoToPreviousTab)">← @PreviousTabDisplayName</button>
+        <button class="@PreviousTabButtonCssClass" @onclick="HandlePreviousFooterActionAsync" title="@PreviousTabButtonTitle" disabled="@(isWorking || !CanUsePreviousFooterAction)">← @PreviousTabDisplayName</button>
         <span class="small text-muted px-2">@(ShowSpecialGroupScheduleFlowHint ? SpecialGroupScheduleFlowHint : ActiveTabDisplayName)</span>
         <button class="@NextTabButtonCssClass" @onclick="GoToNextTabAsync" title="@NextTabButtonTitle" disabled="@(isWorking || !CanGoToNextTab)">@NextTabDisplayName →</button>
     </div>
@@ -2705,25 +2703,34 @@
         cursor: not-allowed;
     }
 
+    .tournament-detail-pane {
+        position: relative;
+        min-width: 0;
+    }
+
     .tournament-list-rail {
         position: sticky;
-        top: 0.75rem;
+        top: 0.6rem;
         align-self: flex-start;
-        max-height: calc(100vh - 2rem);
+        max-height: calc(100dvh - 1.2rem);
         overflow-y: auto;
-        padding-right: 0.25rem;
+        padding-right: 0.2rem;
     }
 
     .tournament-list-rail-item {
-        width: 2.8rem;
-        height: 9.5rem;
+        --rail-item-height: 5.2rem;
+        width: 1.9rem;
+        min-height: 4.2rem;
+        height: var(--rail-item-height);
+        padding: 0.1rem;
         border: 1px solid rgba(13, 110, 253, 0.25);
-        background: rgba(248, 249, 250, 0.95);
+        border-radius: 0.7rem;
+        background: rgba(255, 255, 255, 0.95);
         color: #0d6efd;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        padding: 0;
+        box-shadow: 0 0.08rem 0.22rem rgba(0, 0, 0, 0.08);
     }
 
     .tournament-list-rail-item.active {
@@ -2736,47 +2743,70 @@
         display: inline-block;
         transform: rotate(-90deg);
         white-space: nowrap;
-        max-width: 8.5rem;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        font-size: 0.76rem;
+        font-size: 0.68rem;
         line-height: 1;
+        letter-spacing: 0.01em;
     }
 
-    .tournament-mobile-strip-wrap {
-        background: rgba(248, 249, 250, 0.92);
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        border-radius: 0.5rem;
-        padding: 0.3rem;
+    .tournament-list-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 1055;
+        border: 0;
+        background: rgba(0, 0, 0, 0.08);
     }
 
-    .tournament-mobile-strip {
-        display: flex;
-        gap: 0.35rem;
-        overflow-x: auto;
-        overflow-y: hidden;
-        scroll-snap-type: x proximity;
-        -webkit-overflow-scrolling: touch;
-        white-space: nowrap;
-        padding-bottom: 0.1rem;
+    @@media (min-width: 992px) {
+        .tournaments-main-row.has-detail .tournament-list-pane {
+            position: relative;
+            z-index: 1060;
+        }
+
+        .tournaments-main-row.has-detail .tournament-list-pane {
+            transition: transform 240ms ease, opacity 220ms ease, max-width 240ms ease, flex-basis 240ms ease, padding 240ms ease;
+            transform: translateX(0);
+            opacity: 1;
+        }
+
+        .tournaments-main-row.has-detail.is-collapsed .tournament-list-pane {
+            transform: translateX(-1.25rem);
+            opacity: 0;
+            max-width: 0;
+            flex-basis: 0;
+            padding-left: 0;
+            padding-right: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
     }
 
-    .tournament-mobile-strip-item {
-        flex: 0 0 auto;
-        border: 1px solid rgba(13, 110, 253, 0.3);
-        background: #fff;
-        color: #0d6efd;
-        max-width: 12rem;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        scroll-snap-align: start;
-    }
+    @@media (max-width: 991.98px) {
+        .tournaments-main-row.has-detail {
+            position: relative;
+        }
 
-    .tournament-mobile-strip-item.active {
-        background: #0d6efd;
-        border-color: #0d6efd;
-        color: #fff;
+        .tournament-list-backdrop {
+            background: rgba(0, 0, 0, 0.35);
+        }
+
+        .tournaments-main-row.has-detail .tournament-list-pane {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: min(22rem, 88vw);
+            height: 100dvh;
+            z-index: 1060;
+            padding: 0.9rem;
+            background: #f8fbff;
+            box-shadow: 0 1rem 2rem rgba(0, 0, 0, 0.22);
+            overflow-y: auto;
+            transform: translateX(-102%);
+            transition: transform 240ms ease;
+        }
+
+        .tournaments-main-row.has-detail.is-mobile-open .tournament-list-pane {
+            transform: translateX(0);
+        }
     }
 
     .tournament-tabs-nowrap {

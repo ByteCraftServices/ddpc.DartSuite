@@ -29,7 +29,9 @@
 			"2498..2512": true,
 			"git rev-list": true,
 			"dotnet watch": true,
-			"Get-Process": true
+			"Get-Process": true,
+			"ConvertTo-Json": true,
+			"Out-Null": true
 		},
 		"chat.agent.maxRequests": 100,
 		"workbench.browser.enableChatTools": true

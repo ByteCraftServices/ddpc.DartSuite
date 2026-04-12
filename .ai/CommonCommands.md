@@ -1,6 +1,49 @@
 # Crash / continue
 Lies /memories/repo/dartsuite-project.md und mach beim Sprint weiter
 
+# Abahmeprotokoll eines Issues
+Aus dem Github Issue # soll eine konkrete Arbeitsliste erstellt werden, die alle notwendigen Schritte zur Umsetzung der Anforderung enthält. Diese Liste soll so detailliert sein, dass sie als klare Anleitung für die Umsetzung dient. Alle Schritte müssen klar formuliert und nachvollziehbar sein, um sicherzustellen, dass die Umsetzung reibungslos verläuft und alle Aspekte der Anforderung abgedeckt werden.
+
+Plane die vollständige umsetzung so , dass zusammenhängende Blöcke von Codeänderungen, Tests und Dokumentation in einem Schritt umgesetzt werden können, um die Konsistenz zwischen diesen Artefakten zu gewährleisten. Alle Änderungen müssen im Kommentar dokumentiert werden, um Transparenz und Nachvollziehbarkeit zu gewährleisten.
+
+Jeder Punkt aus der Arbeitsliste wird separat behandelt dabei erwarte ich mirch zu Beginn der Implementierung eine konkrete Zusammenfassund der Ist-Situation danach eine klare Aufteilung der Aufgaben in Code, Tests und Dokumentation. Alle Schritte müssen klar formuliert und nachvollziehbar sein, um sicherzustellen, dass die Umsetzung reibungslos verläuft und alle Aspekte der Anforderung abgedeckt werden. Zusätzlich möchte ich die Aktzeptanzkriterien festlegen können,falls diese nicht bereits in der Anforderung definiert sind, um sicherzustellen, dass die Umsetzung den Erwartungen entspricht und die Anforderungen vollständig erfüllt werden.
+
+Nach der Zusammenfassung erfolgt die Implementierung. Alle erforderlichen Tests sind vom Agent zu koordinieren und durchzuführen.
+Danach möchte informiert werden, damit ich die Testergebnisse überprüfen und die Abnahme durchführen kann. Alle Testergebnisse müssen dokumentiert und nachvollziehbar sein, um eine transparente und objektive Abnahme zu gewährleisten. Sobald die Abnahme erfolgreich abgeschlossen ist. Kann für einen Punkt aus der Arbeitsliste ein Kommentar imm Issue erstellt werden und der dazugehörige Commit erstellt werden. Danach beginnt die gleiche Vorgangsweise für den nächsten Punkt aus der Arbeitsliste, bis alle Punkte abgearbeitet sind. Am Ende der Umsetzung aller Punkte aus der Arbeitsliste erfolgt eine abschließende Zusammenfassung der gesamten Umsetzung, um einen Überblick über die durchgeführten Änderungen und deren Auswirkungen zu geben.
+
+Wichtig: Damit ich alle Tests Sofort nach der Implementierung durchführen kann soll die Terminalsitzungen "API" und "WEB" jeweils mit ihrer HotReload Sitzung gestartet sein. Es ist also nicht erforderlich neue Terminals zu starten. Es reicht das Reload im jeweiligen Terminal.
+
+# UI Test
+- Führe einen UI Test im integrierten Browser durch. Simuliere alle Interaktionen eigenständig, um die Funktionalität und Benutzerfreundlichkeit der Anwendung zu überprüfen. Achte dabei auf die Konsistenz der UI-Elemente, die Reaktionsfähigkeit der Anwendung und die Einhaltung von Designrichtlinien. 
+
+# Testfälle
+Die Testfälle sollen klar ausdefiniert sein. Denn Details fehlen, müssen sie erfragt werden.
+
+## Turnier erstellen
+- Anzahl der Spieler
+- Teamplay oder Einzelspieler
+  - Anzahl Spieler / Team (Standard = 2)
+- Setzliste aktivieren
+  - Anzahl der gesetzten Teilnehmer  
+- Tourniermodus (KO, Gruppenphase, etc.)
+  - Anzahlder Gruppen (Vorschlag durch KI, abhängig von Spieleranzahl)
+- Datum/Uhrzeit (Standard = heute; Startzeit = Jetzt)
+
+## Bestehendes Turner verwenden
+- Teamname oder Code
+
+## Teilnehmer hinzufügen
+- Als Namen sind echte Dartsprofis zu verwenden
+- Alle Teilnehmer sind als lokale Spieler zu kennzeichnen
+
+## Auslosung
+- Optionale:  Lostopf 
+- Standardanimation: Moderat
+
+### Autodarts Accounts
+- Die Teilnehmer werden aktiv von mir übergeben. 
+- Du kannst mit dem Test erst, dann fortfahren wenn die Spieler ans Backend gemeldet wurden bzw. in der UI aktualisiert wurden.
+
 # Planner
 ## Github Issues
 - Erstelle einen neuen Github Issue aus der Spezifikation.
