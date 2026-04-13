@@ -67,118 +67,148 @@
         <div class="card-body">
             <div class="row g-2 mb-2">
                 <div class="col-md-3">
-                    <label class="form-label small">Phase</label>
-                    <select class="form-select form-select-sm" value="@NewRoundPhase" @onchange="HandleNewRoundPhaseChanged">
-                        <option value="Knockout">Knockout</option>
-                        <option value="Group">Gruppe</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small">Rundennr.</label>
-                    <input type="number" class="form-control form-control-sm" value="@NewRoundNumber" @onchange="HandleNewRoundNumberChanged" min="1" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small">Base Score</label>
-                    <select class="form-select form-select-sm" value="@NewRoundBaseScore" @onchange="HandleNewRoundBaseScoreChanged">
-                        <option value="121">121</option>
-                        <option value="170">170</option>
-                        <option value="301">301</option>
-                        <option value="501">501</option>
-                        <option value="701">701</option>
-                        <option value="901">901</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small">Spielmodus</label>
-                    <select class="form-select form-select-sm" value="@NewRoundGameMode" @onchange="HandleNewRoundGameModeChanged">
-                        <option value="Legs">Legs</option>
-                        <option value="Sets">Sets</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small">Legs (First to)</label>
-                    @if (NewRoundGameMode == "Sets")
-                    {
-                        <select class="form-select form-select-sm" value="@NewRoundLegs" @onchange="HandleNewRoundLegsChanged">
-                            <option value="2">2</option>
-                            <option value="3">3</option>
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundPhase" @onchange="HandleNewRoundPhaseChanged">
+                            <option value="Knockout">Knockout</option>
+                            <option value="Group">Gruppe</option>
                         </select>
-                    }
-                    else
-                    {
-                        <input type="number" class="form-control form-control-sm" value="@NewRoundLegs" @onchange="HandleNewRoundLegsChanged" min="1" max="11" />
-                    }
+                        <label>Phase</label>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="form-floating">
+                        <input type="number" class="form-control form-control-sm" value="@NewRoundNumber" @onchange="HandleNewRoundNumberChanged" min="1" placeholder=" " />
+                        <label>Rundennr.</label>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundBaseScore" @onchange="HandleNewRoundBaseScoreChanged">
+                            <option value="121">121</option>
+                            <option value="170">170</option>
+                            <option value="301">301</option>
+                            <option value="501">501</option>
+                            <option value="701">701</option>
+                            <option value="901">901</option>
+                        </select>
+                        <label>Base Score</label>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundGameMode" @onchange="HandleNewRoundGameModeChanged">
+                            <option value="Legs">Legs</option>
+                            <option value="Sets">Sets</option>
+                        </select>
+                        <label>Spielmodus</label>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="form-floating">
+                        @if (NewRoundGameMode == "Sets")
+                        {
+                            <select class="form-select form-select-sm" value="@NewRoundLegs" @onchange="HandleNewRoundLegsChanged">
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                            </select>
+                        }
+                        else
+                        {
+                            <input type="number" class="form-control form-control-sm" value="@NewRoundLegs" @onchange="HandleNewRoundLegsChanged" min="1" max="11" placeholder=" " />
+                        }
+                        <label>Legs (First to)</label>
+                    </div>
                 </div>
                 @if (NewRoundGameMode == "Sets")
                 {
                     <div class="col-md-2">
-                        <label class="form-label small">Sets (First to)</label>
-                        <input type="number" class="form-control form-control-sm" value="@NewRoundSets" @onchange="HandleNewRoundSetsChanged" min="2" max="7" />
+                        <div class="form-floating">
+                            <input type="number" class="form-control form-control-sm" value="@NewRoundSets" @onchange="HandleNewRoundSetsChanged" min="2" max="7" placeholder=" " />
+                            <label>Sets (First to)</label>
+                        </div>
                     </div>
                 }
                 <div class="col-md-2">
-                    <label class="form-label small">In-Modus</label>
-                    <select class="form-select form-select-sm" value="@NewRoundInMode" @onchange="HandleNewRoundInModeChanged">
-                        <option value="Straight">Straight In (SI)</option>
-                        <option value="Double">Double In (DI)</option>
-                        <option value="Master">Master In (MI)</option>
-                    </select>
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundInMode" @onchange="HandleNewRoundInModeChanged">
+                            <option value="Straight">Straight In (SI)</option>
+                            <option value="Double">Double In (DI)</option>
+                            <option value="Master">Master In (MI)</option>
+                        </select>
+                        <label>In-Modus</label>
+                    </div>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small">Out-Modus</label>
-                    <select class="form-select form-select-sm" value="@NewRoundOutMode" @onchange="HandleNewRoundOutModeChanged">
-                        <option value="Straight">Straight Out (SO)</option>
-                        <option value="Double">Double Out (DO)</option>
-                        <option value="Master">Master Out (MO)</option>
-                    </select>
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundOutMode" @onchange="HandleNewRoundOutModeChanged">
+                            <option value="Straight">Straight Out (SO)</option>
+                            <option value="Double">Double Out (DO)</option>
+                            <option value="Master">Master Out (MO)</option>
+                        </select>
+                        <label>Out-Modus</label>
+                    </div>
                 </div>
             </div>
             <div class="row g-2 mb-2">
                 <div class="col-md-2">
-                    <label class="form-label small">Max Runden</label>
-                    <select class="form-select form-select-sm" value="@NewRoundMaxRounds" @onchange="HandleNewRoundMaxRoundsChanged">
-                        <option value="15">15</option>
-                        <option value="20">20</option>
-                        <option value="50">50</option>
-                        <option value="80">80</option>
-                    </select>
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundMaxRounds" @onchange="HandleNewRoundMaxRoundsChanged">
+                            <option value="15">15</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                            <option value="80">80</option>
+                        </select>
+                        <label>Max Runden</label>
+                    </div>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label small">Bull Mode</label>
-                    <select class="form-select form-select-sm" value="@NewRoundBullMode" @onchange="HandleNewRoundBullModeChanged">
-                        <option value="25/50">25/50</option>
-                        <option value="50/50">50/50</option>
-                    </select>
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundBullMode" @onchange="HandleNewRoundBullModeChanged">
+                            <option value="25/50">25/50</option>
+                            <option value="50/50">50/50</option>
+                        </select>
+                        <label>Bull Mode</label>
+                    </div>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label small">Bull-off</label>
-                    <select class="form-select form-select-sm" value="@NewRoundBullOffMode" @onchange="HandleNewRoundBullOffModeChanged">
-                        <option value="Off">Off</option>
-                        <option value="Normal">Normal</option>
-                        <option value="Official">Official</option>
-                    </select>
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundBullOffMode" @onchange="HandleNewRoundBullOffModeChanged">
+                            <option value="Off">Off</option>
+                            <option value="Normal">Normal</option>
+                            <option value="Official">Official</option>
+                        </select>
+                        <label>Bull-off</label>
+                    </div>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small">Spielzeit pro Leg (s)</label>
-                    <input type="number" class="form-control form-control-sm" value="@NewRoundDuration" @onchange="HandleNewRoundDurationChanged" min="0" />
+                    <div class="form-floating">
+                        <input type="number" class="form-control form-control-sm" value="@NewRoundDuration" @onchange="HandleNewRoundDurationChanged" min="0" placeholder=" " />
+                        <label>Spielzeit pro Leg (s)</label>
+                    </div>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small">Pause (min)</label>
-                    <input type="number" class="form-control form-control-sm" value="@NewRoundPause" @onchange="HandleNewRoundPauseChanged" min="0" />
+                    <div class="form-floating">
+                        <input type="number" class="form-control form-control-sm" value="@NewRoundPause" @onchange="HandleNewRoundPauseChanged" min="0" placeholder=" " />
+                        <label>Pause (min)</label>
+                    </div>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small">Min. Spielerpause (min)</label>
-                    <input type="number" class="form-control form-control-sm" value="@NewRoundPlayerPause" @onchange="HandleNewRoundPlayerPauseChanged" min="0" />
+                    <div class="form-floating">
+                        <input type="number" class="form-control form-control-sm" value="@NewRoundPlayerPause" @onchange="HandleNewRoundPlayerPauseChanged" min="0" placeholder=" " />
+                        <label>Min. Spielerpause (min)</label>
+                    </div>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small">Boardauswahl</label>
-                    <select class="form-select form-select-sm" value="@NewRoundBoardAssignment" @onchange="HandleNewRoundBoardAssignmentChanged">
-                        <option value="Dynamic">Dynamisch</option>
-                        @foreach (var b in Boards)
-                        {
-                            <option value="Fixed:@b.Id">@b.Name (fix)</option>
-                        }
-                    </select>
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundBoardAssignment" @onchange="HandleNewRoundBoardAssignmentChanged">
+                            <option value="Dynamic">Dynamisch</option>
+                            @foreach (var b in Boards)
+                            {
+                                <option value="Fixed:@b.Id">@b.Name (fix)</option>
+                            }
+                        </select>
+                        <label>Boardauswahl</label>
+                    </div>
                 </div>
             </div>
             <div class="d-flex gap-2 flex-wrap">
