@@ -194,6 +194,10 @@ public partial class Tournaments : IAsyncDisposable
     private string confirmationMessage = string.Empty;
     private Func<Task>? confirmationAction;
 
+    // ─── Registration-Draw Confirmation Dialog ───
+    private bool showRegistrationDrawConfirmation;
+    private Func<Task>? registrationDrawContinuation;
+
     // ─── Spielplan: Collapsed Groups ───
     private bool showGroupMatches;
     private string groupMatchesViewMode = "vertical"; // vertical | horizontal
@@ -606,6 +610,9 @@ public partial class Tournaments : IAsyncDisposable
 
     /// <summary>True when at least one non-walkover match has started or finished.</summary>
     private bool HasProgressedMatches => matches.Any(m => !IsWalkOverMatch(m) && (m.StartedUtc is not null || m.FinishedUtc is not null));
+
+    /// <summary>Returns true when the selected tournament has its registration currently open.</summary>
+    private bool IsRegistrationOpen => selectedTournament?.IsRegistrationOpen == true;
 
     /// <summary>Structure edits are allowed only before first active/finished match and while status is planned/created.</summary>
     private bool CanEditTournamentStructure =>
@@ -1059,6 +1066,9 @@ public partial class Tournaments : IAsyncDisposable
     private bool hasUnsavedTeamDraftChanges;
     private string? teamDraftError;
     private const string TeamSeedGridId = "team-seed-grid";
+
+    /// <summary>Sentinel date used as "no automatic close" when registration is opened manually (= open until explicitly closed).</summary>
+    private static readonly DateTime MaxRegistrationDate = new DateTime(9999, 12, 31, 23, 59, 59);
     private const int TeamSeedLongPressMs = 380;
 
     private List<KnockoutDrawCard> knockoutDrawCards = [];
@@ -3473,6 +3483,43 @@ public partial class Tournaments : IAsyncDisposable
     private async Task AutoSaveSettingAsync()
     {
         await SaveTournamentAsync();
+    }
+
+    /// <summary>Fired when the "Registrierung offen" checkbox changes.
+    /// Auto-fills start = now and end = MaxDate when registration is activated.</summary>
+    private async Task OnRegistrationOpenChangedAsync()
+    {
+        if (editIsRegistrationOpen)
+        {
+            editRegistrationStart = DateTime.Now;
+            editRegistrationEnd = MaxRegistrationDate;
+        }
+        await AutoSaveSettingAsync();
+    }
+
+    /// <summary>Closes the registration (sets IsRegistrationOpen = false) and auto-saves.</summary>
+    private async Task CloseRegistrationAsync()
+    {
+        editIsRegistrationOpen = false;
+        await AutoSaveSettingAsync();
+    }
+
+    /// <summary>User accepted the registration-close confirmation before proceeding with draw/plan.</summary>
+    private async Task AcceptRegistrationDrawConfirmationAsync()
+    {
+        showRegistrationDrawConfirmation = false;
+        var continuation = registrationDrawContinuation;
+        registrationDrawContinuation = null;
+        await CloseRegistrationAsync();
+        if (continuation is not null)
+            await continuation();
+    }
+
+    /// <summary>User rejected the registration-close confirmation (cancelled the draw/plan action).</summary>
+    private void RejectRegistrationDrawConfirmation()
+    {
+        showRegistrationDrawConfirmation = false;
+        registrationDrawContinuation = null;
     }
 
     private async Task OnSeedingEnabledChangedAsync()
@@ -6160,6 +6207,12 @@ public partial class Tournaments : IAsyncDisposable
         if (!EnsureTournamentStructureEditable(message => teamDraftError = message))
             return;
 
+        if (IsRegistrationOpen)
+        {
+            teamDraftError = "Die Registrierung ist noch geöffnet. Bitte zuerst die Registrierung schließen, bevor Teams gebildet werden.";
+            return;
+        }
+
         if (!TeamSizeDividesParticipants)
         {
             teamDraftError = "Die Teamgröße passt nicht zur Teilnehmeranzahl. Bitte Teilnehmer oder Spieler/Team anpassen.";
@@ -6307,6 +6360,9 @@ public partial class Tournaments : IAsyncDisposable
             return;
         if (!EnsureTournamentStructureEditable(message => teamDraftError = message))
             return;
+
+        if (IsRegistrationOpen)
+            return; // Block saving while registration is open; UI warning explains this to the user.
 
         if (!TeamSizeDividesParticipants)
         {
@@ -7455,6 +7511,14 @@ public partial class Tournaments : IAsyncDisposable
         if (selectedTournament.Mode != "Knockout" && editGroupCount < 1) return;
         if (!EnsureTournamentStructureEditable(message => editError = message)) return;
 
+        if (IsRegistrationOpen)
+        {
+            registrationDrawContinuation = AutoDrawAsync;
+            showRegistrationDrawConfirmation = true;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
         if (selectedTournament.Mode == "Knockout")
         {
             await BeginViewportLockAsync();
@@ -7565,6 +7629,14 @@ public partial class Tournaments : IAsyncDisposable
         if (!CanExecuteDrawCreatePlan)
         {
             ShowInactiveActionInfo(DrawCreatePlanDisabledReason, "Turnierplan erstellen nicht möglich");
+            return;
+        }
+
+        if (IsRegistrationOpen)
+        {
+            registrationDrawContinuation = CreateTournamentPlanAsync;
+            showRegistrationDrawConfirmation = true;
+            await InvokeAsync(StateHasChanged);
             return;
         }
 
