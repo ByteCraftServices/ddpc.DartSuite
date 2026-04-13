@@ -1,16 +1,21 @@
 @using System.Text.Json
+@using ddpc.DartSuite.Application.Contracts.Matches
 @inject DartSuiteApiService Api
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 @if (Visible)
 {
     <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="HandleBackdropClick">
-        <div class="modal-dialog modal-dialog-centered modal-lg" @onclick:stopPropagation>
+        <div class="modal-dialog modal-fullscreen" @onclick:stopPropagation>
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">MatchCard – @GetScopeLabel(ScopeKey)</h5>
                     <button type="button" class="btn-close" @onclick="CloseAsync"></button>
                 </div>
-                <div class="modal-body">
+                <div class="modal-body mcsm-body">
+                    <!-- Left panel: Settings -->
+                    <div class="mcsm-settings-panel" style="@SettingsPanelWidthStyle" @ref="_settingsPanelRef">
                     @if (_isLoading)
                     {
                         <div class="text-center py-3 text-muted small">Laden...</div>
@@ -138,7 +143,71 @@
                         </div>
                         </fieldset>
                     }
-                </div>
+                    </div><!-- end .mcsm-settings-panel -->
+
+                    <!-- Splitter: desktop only, draggable -->
+                    <div class="mcsm-splitter d-none d-md-flex" @ref="_splitterRef">
+                        <div class="mcsm-splitter__handle"></div>
+                    </div>
+
+                    <!-- Right panel: Live Preview -->
+                    <div class="mcsm-preview-panel">
+                        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                            <span class="small fw-semibold text-muted">Vorschau:</span>
+                            @foreach (var opt in _previewSizeOptions)
+                            {
+                                <button class="btn btn-sm mcsm-size-btn @(_previewSize == opt.Key ? "btn-primary active" : "btn-outline-secondary")"
+                                        @onclick="() => _previewSize = opt.Key">
+                                    @opt.Label
+                                </button>
+                            }
+                        </div>
+                        <div class="mcsm-preview-inner">
+                            <div style="width: @GetPreviewWidth(); max-width: 100%;">
+                                <MatchCard Match="@_demoMatch"
+                                           ViewSettings="@EffectivePreviewSettings"
+                                           Label="M5"
+                                           HomeName="Max Mustermann"
+                                           AwayName="Anna Schmidt"
+                                           BoardName="Board 1"
+                                           ShowRuntimeBadge="@EffectivePreviewSettings.ShowRuntimeBadge"
+                                           ShowMonitoringStatus="@EffectivePreviewSettings.ShowMonitoringStatus"
+                                           MonitoringStatusText="Online"
+                                           MonitoringStatusCssClass="text-bg-success"
+                                           ShowMatchStatus="@EffectivePreviewSettings.ShowMatchStatus"
+                                           ShowSchedulingStatus="@EffectivePreviewSettings.ShowSchedulingStatus"
+                                           ShowAverage="@EffectivePreviewSettings.ShowAverage"
+                                           ShowHighestPpr="@EffectivePreviewSettings.ShowHighestPpr"
+                                           ShowHighestCheckout="@EffectivePreviewSettings.ShowHighestCheckout"
+                                           ShowAverageDartsPerLeg="@EffectivePreviewSettings.ShowAverageDartsPerLeg"
+                                           ShowMinimalDartsPerLeg="@EffectivePreviewSettings.ShowMinimalDartsPerLeg"
+                                           HomeStatistic="@_demoHomeStatistic"
+                                           AwayStatistic="@_demoAwayStatistic"
+                                           ShowActionButtons="@EffectivePreviewSettings.ShowActionButtons"
+                                           ShowSyncAction="@EffectivePreviewSettings.ShowSyncAction"
+                                           ShowFollowAction="@EffectivePreviewSettings.ShowFollowAction"
+                                           ShowStartMatchAction="@EffectivePreviewSettings.ShowStartMatchAction"
+                                           ShowResetAction="@EffectivePreviewSettings.ShowResetAction"
+                                           ShowListenerAction="@EffectivePreviewSettings.ShowListenerAction"
+                                           EnablePlayerLinks="@EffectivePreviewSettings.EnablePlayerLinks"
+                                           EnableBoardLink="@EffectivePreviewSettings.EnableBoardLink"
+                                           CanSync="true"
+                                           CanFollow="true"
+                                           CanStartMatch="true"
+                                           CanResetMatch="true"
+                                           CanStartListener="true"
+                                           OnSync="@EventCallback.Factory.Create(this, () => { })"
+                                           OnFollow="@EventCallback.Factory.Create(this, () => { })"
+                                           OnStartMatch="@EventCallback.Factory.Create(this, () => { })"
+                                           OnResetMatch="@EventCallback.Factory.Create(this, () => { })"
+                                           OnStartListener="@EventCallback.Factory.Create(this, () => { })"
+                                           EnableDetailPanel="true"
+                                           DetailsExpandedByDefault="true"
+                                           ForceDetailsExpanded="true" />
+                            </div>
+                        </div>
+                    </div><!-- end .mcsm-preview-panel -->
+                </div><!-- end .mcsm-body -->
                 <div class="modal-footer">
                     <button class="btn btn-secondary" @onclick="CloseAsync">Schließen</button>
                     <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(_isSaving || _isLoading)">Speichern</button>
@@ -301,6 +370,8 @@
 
     private async Task CloseAsync()
     {
+        await DisposeSplitterAsync();
+        _splitterInitialized = false;
         _lastLoadedScopeKey = string.Empty;
         await OnClosed.InvokeAsync();
     }
@@ -384,4 +455,164 @@
         string s when bool.TryParse(s, out var p) => p,
         _ => false
     };
+
+    // ─── Split-layout / Preview state ───────────────────────────────────────
+
+    private double _settingsPanelWidthPct = 42;
+    private string _previewSize = "m";
+    private bool _splitterInitialized;
+    private DotNetObjectReference<MatchCardSettingsModal>? _dotNetRef;
+    private ElementReference _splitterRef;
+    private ElementReference _settingsPanelRef;
+
+    private record PreviewSizeOption(string Key, string Label, string Width);
+
+    private static readonly PreviewSizeOption[] _previewSizeOptions =
+    [
+        new("xs",   "XS (300px)",  "300px"),
+        new("s",    "S (500px)",   "500px"),
+        new("m",    "M (800px)",   "800px"),
+        new("l",    "L (1000px)",  "1000px"),
+        new("full", "Full (100%)", "100%"),
+    ];
+
+    private string SettingsPanelWidthStyle => $"width: {_settingsPanelWidthPct:F0}%";
+
+    private string GetPreviewWidth()
+        => Array.Find(_previewSizeOptions, x => x.Key == _previewSize)?.Width ?? "100%";
+
+    private MatchCardViewSettings EffectivePreviewSettings
+        => _useDefaults ? ResolveInherited(NormalizeKey(ScopeKey)) : _settings;
+
+    [JSInvokable]
+    public void SetSettingsPanelWidth(double pct)
+    {
+        _settingsPanelWidthPct = pct;
+        InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Visible && !_splitterInitialized && !_isLoading)
+            await InitSplitterAsync();
+    }
+
+    private async Task InitSplitterAsync()
+    {
+        try
+        {
+            _dotNetRef ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("dartSuiteSplitter.init", _splitterRef, _settingsPanelRef, _dotNetRef);
+            _splitterInitialized = true;
+        }
+        catch
+        {
+            // JS interop may fail (e.g., during pre-rendering)
+        }
+    }
+
+    private async Task DisposeSplitterAsync()
+    {
+        if (!_splitterInitialized) return;
+        try
+        {
+            await JS.InvokeVoidAsync("dartSuiteSplitter.dispose");
+        }
+        catch { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await DisposeSplitterAsync();
+        _dotNetRef?.Dispose();
+        _dotNetRef = null;
+    }
+
+    // ─── Demo data for live preview ──────────────────────────────────────────
+
+    private readonly MatchDto _demoMatch = new(
+        Id: new Guid("11111111-0000-0000-0000-000000000004"),
+        TournamentId: new Guid("11111111-0000-0000-0000-000000000005"),
+        Phase: "Knockout",
+        GroupNumber: null,
+        Round: 2,
+        MatchNumber: 5,
+        BoardId: new Guid("11111111-0000-0000-0000-000000000003"),
+        HomeParticipantId: new Guid("11111111-0000-0000-0000-000000000001"),
+        AwayParticipantId: new Guid("11111111-0000-0000-0000-000000000002"),
+        HomeLegs: 3,
+        AwayLegs: 2,
+        HomeSets: 1,
+        AwaySets: 0,
+        WinnerParticipantId: null,
+        PlannedStartUtc: DateTimeOffset.UtcNow.AddMinutes(-35),
+        IsStartTimeLocked: true,
+        IsBoardLocked: false,
+        StartedUtc: DateTimeOffset.UtcNow.AddMinutes(-18),
+        FinishedUtc: null,
+        Status: "Aktiv",
+        ExternalMatchId: "demo-12345",
+        DelayMinutes: 5,
+        SchedulingStatus: "Delayed",
+        HomeParticipantName: "Max Mustermann",
+        AwayParticipantName: "Anna Schmidt",
+        BoardName: "Board 1");
+
+    private static readonly MatchPlayerStatisticDto _demoHomeStatistic = new(
+        Id: new Guid("22222222-0000-0000-0000-000000000001"),
+        MatchId: new Guid("11111111-0000-0000-0000-000000000004"),
+        ParticipantId: new Guid("11111111-0000-0000-0000-000000000001"),
+        ParticipantName: "Max Mustermann",
+        Average: 78.5,
+        First9Average: 82.3,
+        DartsThrown: 51,
+        LegsWon: 3,
+        LegsLost: 2,
+        SetsWon: 1,
+        SetsLost: 0,
+        HighestCheckout: 120,
+        CheckoutPercent: 33.3,
+        CheckoutHits: 2,
+        CheckoutAttempts: 6,
+        Plus100: 4,
+        Plus140: 2,
+        Plus170: 0,
+        Plus180: 1,
+        Breaks: 1,
+        AverageDartsPerLeg: 17.0,
+        BestLegDarts: 15,
+        WorstLegDarts: 21,
+        TonPlusCheckouts: 1,
+        DoubleQuota: 0.33,
+        TotalPoints: 4200,
+        HighestRoundScore: 180);
+
+    private static readonly MatchPlayerStatisticDto _demoAwayStatistic = new(
+        Id: new Guid("22222222-0000-0000-0000-000000000002"),
+        MatchId: new Guid("11111111-0000-0000-0000-000000000004"),
+        ParticipantId: new Guid("11111111-0000-0000-0000-000000000002"),
+        ParticipantName: "Anna Schmidt",
+        Average: 62.3,
+        First9Average: 65.1,
+        DartsThrown: 57,
+        LegsWon: 2,
+        LegsLost: 3,
+        SetsWon: 0,
+        SetsLost: 1,
+        HighestCheckout: 96,
+        CheckoutPercent: 25.0,
+        CheckoutHits: 1,
+        CheckoutAttempts: 4,
+        Plus100: 2,
+        Plus140: 1,
+        Plus170: 0,
+        Plus180: 0,
+        Breaks: 0,
+        AverageDartsPerLeg: 22.3,
+        BestLegDarts: 18,
+        WorstLegDarts: 27,
+        TonPlusCheckouts: 0,
+        DoubleQuota: 0.25,
+        TotalPoints: 3500,
+        HighestRoundScore: 140);
 }
