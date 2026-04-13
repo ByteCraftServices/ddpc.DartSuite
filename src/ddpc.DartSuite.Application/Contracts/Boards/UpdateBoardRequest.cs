@@ -4,4 +4,5 @@ public sealed record UpdateBoardRequest(
     Guid Id,
     string Name,
     string? LocalIpAddress,
-    string? BoardManagerUrl);
+    string? BoardManagerUrl,
+    string? OwnerAccountName = null);

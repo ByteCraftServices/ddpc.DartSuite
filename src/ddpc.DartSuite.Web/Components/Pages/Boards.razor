@@ -1,4 +1,5 @@
 @page "/boards"
+@using ddpc.DartSuite.Application.Contracts.Boards
 @using ddpc.DartSuite.Application.Contracts.Tournaments
 @using ddpc.DartSuite.Web.Services
 @inject DartSuiteApiService Api
@@ -46,6 +47,107 @@ else
     </div>
 </div>
 
+@* ─── Virtual Board Management (Admin only) ─── *@
+@if (AppState.IsAdmin)
+{
+    <div class="card mt-3 shadow-sm border-info">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">⚡ Virtuelle Boards</span>
+            <button class="btn btn-outline-info btn-sm" @onclick="() => showVirtualBoardForm = !showVirtualBoardForm">
+                @(showVirtualBoardForm ? "Abbrechen" : "+ Virtuelles Board erstellen")
+            </button>
+        </div>
+        @if (showVirtualBoardForm)
+        {
+            <div class="card-body">
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <input type="text" class="form-control" placeholder="Name" @bind="newVirtualBoardName" />
+                    </div>
+                    <div class="col-md-4">
+                        <input type="text" class="form-control" placeholder="Owner (Account-Name, optional)" @bind="newVirtualBoardOwner" />
+                    </div>
+                    <div class="col-md-4">
+                        <button class="btn btn-info w-100" @onclick="CreateVirtualBoardAsync">Erstellen</button>
+                    </div>
+                </div>
+                @if (virtualBoardError is not null)
+                {
+                    <div class="alert alert-danger py-2 mt-2 d-flex justify-content-between align-items-center">
+                        <span>@virtualBoardError</span>
+                        <button type="button" class="btn-close" @onclick="() => virtualBoardError = null"></button>
+                    </div>
+                }
+            </div>
+        }
+        @if (virtualBoards.Count > 0)
+        {
+            <div class="table-responsive">
+                <table class="table table-sm mb-0">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Owner</th>
+                            <th>Aktuelles Match</th>
+                            <th>Turnier</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var vb in virtualBoards)
+                        {
+                            <tr>
+                                <td>
+                                    <span class="badge bg-info me-1">Virtual</span>
+                                    @vb.Name
+                                </td>
+                                <td>
+                                    @if (editingOwnerBoardId == vb.Id)
+                                    {
+                                        <div class="d-flex gap-1">
+                                            <input type="text" class="form-control form-control-sm" style="max-width:180px" @bind="editOwnerValue" />
+                                            <button class="btn btn-sm btn-success" @onclick="() => SaveOwnerAsync(vb.Id)">✓</button>
+                                            <button class="btn btn-sm btn-secondary" @onclick="CancelEditOwner">✗</button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">@(vb.OwnerAccountName ?? "—")</span>
+                                        <button class="btn btn-link btn-sm p-0 ms-1" title="Owner ändern" @onclick="() => StartEditOwner(vb)">✎</button>
+                                    }
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(vb.CurrentMatchLabel))
+                                    {
+                                        <span class="small">@vb.CurrentMatchLabel</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (vb.TournamentId.HasValue)
+                                    {
+                                        <span class="badge bg-success small">Zugewiesen</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    <button class="btn btn-outline-danger btn-sm" @onclick="() => DeleteBoardAsync(vb.Id)">🗑</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+}
+
 <div class="table-responsive">
 <table class="table table-striped mt-3">
     <thead>
@@ -67,6 +169,10 @@ else
             <tr>
                 <td><BoardStatusIndicator Board="@board" ShowLabel="true" /></td>
                 <td>
+                    @if (board.IsVirtual)
+                    {
+                        <span class="badge bg-info me-1">Virtual</span>
+                    }
                     <a href="/tournaments?boardId=@board.Id"
                        class="text-primary fw-semibold"
                        style="text-decoration:underline dotted">@board.Name</a>
@@ -117,15 +223,27 @@ else
 
 @code {
     private List<BoardDto> boards = new();
+    private List<BoardDto> virtualBoards = new();
     private string newBoardExternalId = string.Empty;
     private string newBoardName = string.Empty;
     private string? boardError;
     private bool isRealtimeConnected;
 
+    // Virtual board form
+    private bool showVirtualBoardForm;
+    private string newVirtualBoardName = string.Empty;
+    private string newVirtualBoardOwner = string.Empty;
+    private string? virtualBoardError;
+
+    // Owner editing
+    private Guid? editingOwnerBoardId;
+    private string editOwnerValue = string.Empty;
+
     protected override async Task OnInitializedAsync()
     {
         AppState.OnChange += OnAppStateChanged;
         await LoadBoardsForCurrentScopeAsync();
+        await LoadVirtualBoardsAsync();
 
         try
         {
@@ -156,6 +274,17 @@ else
     {
         await InvokeAsync(() =>
         {
+            if (board.IsVirtual)
+            {
+                var vidx = virtualBoards.FindIndex(b => b.Id == board.Id);
+                if (vidx >= 0)
+                    virtualBoards[vidx] = board;
+                else
+                    virtualBoards.Add(board);
+                StateHasChanged();
+                return;
+            }
+
             if (!IsBoardInCurrentScope(board))
             {
                 boards.RemoveAll(b => b.Id == board.Id);
@@ -178,6 +307,7 @@ else
         await InvokeAsync(() =>
         {
             boards.RemoveAll(b => b.Id == boardId);
+            virtualBoards.RemoveAll(b => b.Id == boardId);
             StateHasChanged();
         });
     }
@@ -187,6 +317,7 @@ else
         await InvokeAsync(async () =>
         {
             await LoadBoardsForCurrentScopeAsync();
+            await LoadVirtualBoardsAsync();
             StateHasChanged();
         });
     }
@@ -214,6 +345,73 @@ else
         }
     }
 
+    private async Task CreateVirtualBoardAsync()
+    {
+        if (string.IsNullOrWhiteSpace(newVirtualBoardName))
+        {
+            virtualBoardError = "Name ist erforderlich.";
+            return;
+        }
+
+        try
+        {
+            virtualBoardError = null;
+            await Api.CreateVirtualBoardAsync(new CreateVirtualBoardRequest(
+                newVirtualBoardName,
+                string.IsNullOrWhiteSpace(newVirtualBoardOwner) ? null : newVirtualBoardOwner.Trim()));
+            newVirtualBoardName = string.Empty;
+            newVirtualBoardOwner = string.Empty;
+            showVirtualBoardForm = false;
+            await LoadVirtualBoardsAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            virtualBoardError = ex.Message;
+        }
+        catch
+        {
+            virtualBoardError = "Fehler beim Erstellen des virtuellen Boards.";
+        }
+    }
+
+    private async Task DeleteBoardAsync(Guid boardId)
+    {
+        try
+        {
+            await Api.DeleteBoardAsync(boardId);
+            await LoadBoardsForCurrentScopeAsync();
+            await LoadVirtualBoardsAsync();
+        }
+        catch { }
+    }
+
+    private void StartEditOwner(BoardDto board)
+    {
+        editingOwnerBoardId = board.Id;
+        editOwnerValue = board.OwnerAccountName ?? string.Empty;
+    }
+
+    private void CancelEditOwner()
+    {
+        editingOwnerBoardId = null;
+        editOwnerValue = string.Empty;
+    }
+
+    private async Task SaveOwnerAsync(Guid boardId)
+    {
+        try
+        {
+            await Api.ChangeVirtualBoardOwnerAsync(boardId, string.IsNullOrWhiteSpace(editOwnerValue) ? null : editOwnerValue.Trim());
+            await LoadVirtualBoardsAsync();
+        }
+        catch { }
+        finally
+        {
+            editingOwnerBoardId = null;
+            editOwnerValue = string.Empty;
+        }
+    }
+
     private async Task LoadBoardsForCurrentScopeAsync()
     {
         if (AppState.SelectedTournament is not null)
@@ -223,8 +421,14 @@ else
         }
 
         boards = (await Api.GetBoardsAsync())
-            .Where(b => !b.TournamentId.HasValue)
+            .Where(b => !b.TournamentId.HasValue && !b.IsVirtual)
             .ToList();
+    }
+
+    private async Task LoadVirtualBoardsAsync()
+    {
+        if (AppState.IsAdmin)
+            virtualBoards = (await Api.GetVirtualBoardsAsync()).ToList();
     }
 
     private bool IsBoardInCurrentScope(BoardDto board)

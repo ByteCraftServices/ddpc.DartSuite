@@ -17,7 +17,8 @@ public sealed class BoardManagementService(DartSuiteDbContext dbContext) : IBoar
         b.ConnectionState.ToString(), b.ExtensionStatus.ToString(), b.SchedulingStatus.ToString(),
         b.ComputeOverallStatus().ToString(),
         b.LocalIpAddress, b.BoardManagerUrl, b.CurrentMatchId, b.CurrentMatchLabel,
-        b.ManagedMode.ToString(), b.TournamentId, b.UpdatedUtc, IsExtensionConnected(b));
+        b.ManagedMode.ToString(), b.TournamentId, b.UpdatedUtc, IsExtensionConnected(b),
+        b.IsVirtual, b.OwnerAccountName);
 
     public async Task<IReadOnlyList<BoardDto>> GetBoardsAsync(CancellationToken cancellationToken = default)
     {
@@ -55,6 +56,8 @@ public sealed class BoardManagementService(DartSuiteDbContext dbContext) : IBoar
         board.Name = request.Name;
         board.LocalIpAddress = request.LocalIpAddress;
         board.BoardManagerUrl = request.BoardManagerUrl;
+        if (board.IsVirtual && request.OwnerAccountName is not null)
+            board.OwnerAccountName = request.OwnerAccountName;
         board.UpdatedUtc = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
         return ToDto(board);
@@ -234,5 +237,43 @@ public sealed class BoardManagementService(DartSuiteDbContext dbContext) : IBoar
             .OrderBy(x => x.Name)
             .ToListAsync(cancellationToken);
         return boards.Select(ToDto).ToList();
+    }
+
+    public async Task<BoardDto> CreateVirtualBoardAsync(CreateVirtualBoardRequest request, CancellationToken cancellationToken = default)
+    {
+        var board = new Board
+        {
+            ExternalBoardId = Guid.Empty.ToString(),
+            Name = request.Name,
+            IsVirtual = true,
+            OwnerAccountName = request.OwnerAccountName,
+            Status = BoardStatus.Running,
+            ConnectionState = ConnectionState.Online,
+            UpdatedUtc = DateTimeOffset.UtcNow
+        };
+
+        dbContext.Boards.Add(board);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return ToDto(board);
+    }
+
+    public async Task<IReadOnlyList<BoardDto>> GetVirtualBoardsAsync(CancellationToken cancellationToken = default)
+    {
+        var boards = await dbContext.Boards.AsNoTracking()
+            .Where(x => x.IsVirtual)
+            .OrderBy(x => x.Name)
+            .ToListAsync(cancellationToken);
+        return boards.Select(ToDto).ToList();
+    }
+
+    public async Task<BoardDto?> ChangeVirtualBoardOwnerAsync(Guid id, string? ownerAccountName, CancellationToken cancellationToken = default)
+    {
+        var board = await dbContext.Boards.FirstOrDefaultAsync(x => x.Id == id && x.IsVirtual, cancellationToken);
+        if (board is null) return null;
+
+        board.OwnerAccountName = ownerAccountName;
+        board.UpdatedUtc = DateTimeOffset.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return ToDto(board);
     }
 }

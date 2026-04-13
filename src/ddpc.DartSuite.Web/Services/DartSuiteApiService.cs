@@ -96,9 +96,29 @@ public sealed class DartSuiteApiService
     public async Task<IReadOnlyList<BoardDto>> GetBoardsAsync(CancellationToken cancellationToken = default)
         => await GetFromJsonOrDefaultAsync<IReadOnlyList<BoardDto>>("api/boards", cancellationToken) ?? Array.Empty<BoardDto>();
 
+    public async Task<IReadOnlyList<BoardDto>> GetVirtualBoardsAsync(CancellationToken cancellationToken = default)
+        => await GetFromJsonOrDefaultAsync<IReadOnlyList<BoardDto>>("api/boards/virtual", cancellationToken) ?? Array.Empty<BoardDto>();
+
     public async Task<BoardDto> AddBoardAsync(CreateBoardRequest request, CancellationToken cancellationToken = default)
     {
         var response = await _httpClient.PostAsJsonAsync("api/boards", request, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<BoardDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task<BoardDto> CreateVirtualBoardAsync(CreateVirtualBoardRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsJsonAsync("api/boards/virtual", request, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<BoardDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task<BoardDto> ChangeVirtualBoardOwnerAsync(Guid boardId, string? ownerAccountName, CancellationToken cancellationToken = default)
+    {
+        var url = $"api/boards/{boardId}/owner";
+        if (!string.IsNullOrWhiteSpace(ownerAccountName))
+            url += $"?ownerAccountName={Uri.EscapeDataString(ownerAccountName)}";
+        var response = await _httpClient.PatchAsync(url, null, cancellationToken);
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<BoardDto>(cancellationToken: cancellationToken))!;
     }
@@ -528,6 +548,21 @@ public sealed class DartSuiteApiService
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<IReadOnlyList<MatchDto>>(cancellationToken: cancellationToken))
             ?? Array.Empty<MatchDto>();
+    }
+
+    // ─── MatchMaker (Virtual Boards) ───
+
+    public async Task<MatchDto> MatchMakerStartAsync(Guid matchId, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsync($"api/matches/{matchId}/matchmaker/start", null, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<MatchDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task MatchMakerThrowAsync(Guid matchId, object payload, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsJsonAsync($"api/matches/{matchId}/matchmaker/throw", payload, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
     }
 
     // ─── Notifications (#14) ───
