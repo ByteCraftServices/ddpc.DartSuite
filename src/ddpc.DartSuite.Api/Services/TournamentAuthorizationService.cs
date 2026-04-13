@@ -17,6 +17,14 @@ public sealed class TournamentAuthorizationService(
         if (IsIntegrationRequest(context))
             return AccessCheckResult.Allow("integration");
 
+        // Admin is the highest role and includes all manager privileges.
+        var adminAccess = await EnsureAdminAsync(context, cancellationToken);
+        if (adminAccess.Allowed)
+            return AccessCheckResult.Allow("admin");
+
+        if (adminAccess.StatusCode == StatusCodes.Status401Unauthorized)
+            return adminAccess;
+
         var actorName = GetActiveActorName();
         if (string.IsNullOrWhiteSpace(actorName))
             return AccessCheckResult.Unauthorized("Autodarts-Login erforderlich.");

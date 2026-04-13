@@ -379,12 +379,20 @@ public partial class Tournaments : IAsyncDisposable
         "DirectDuel"
     ];
 
-    /// <summary>True if the current user is a Spielleiter for the selected tournament.</summary>
+    /// <summary>True if the current user has manager-level rights for the selected tournament.</summary>
     private bool IsCurrentUserManager =>
-        selectedTournament is not null && autodartsDisplayName is not null &&
+        AppState.IsAdmin
+        || selectedTournament is not null && autodartsDisplayName is not null &&
         (string.Equals(selectedTournament.OrganizerAccount, autodartsDisplayName, StringComparison.OrdinalIgnoreCase)
          || participants.Any(p => p.IsManager && string.Equals(p.AccountName, autodartsDisplayName, StringComparison.OrdinalIgnoreCase))
          || participants.Any(p => p.IsManager && string.Equals(p.DisplayName, autodartsDisplayName, StringComparison.OrdinalIgnoreCase)));
+
+    private string CurrentUserTournamentRoleLabel
+        => AppState.IsAdmin
+            ? "Admin"
+            : IsCurrentUserManager
+                ? "Spielleiter"
+                : "Teilnehmer";
 
     private MatchListenerInfoDto? GetMatchListener(Guid matchId)
         => matchListeners.FirstOrDefault(l => l.MatchId == matchId);
@@ -1433,13 +1441,15 @@ public partial class Tournaments : IAsyncDisposable
 
     private int ActiveTabSequenceIndex => GetVisibleTabIndex(activeTab);
 
+    private bool IsFirstVisibleTab => selectedTournament is not null && ActiveTabSequenceIndex == 0;
+
     private bool CanGoToPreviousTab => selectedTournament is not null && ActiveTabSequenceIndex > 0;
 
     private bool IsTournamentListPanelOpen
         => selectedTournament is not null && (!tournamentListCollapsed || tournamentListMobileOpen);
 
     private bool CanUsePreviousFooterAction
-        => selectedTournament is not null && (CanGoToPreviousTab || !IsTournamentListPanelOpen);
+        => selectedTournament is not null && (CanGoToPreviousTab || (IsFirstVisibleTab && !IsTournamentListPanelOpen));
 
     private bool CanGoToNextTab => selectedTournament is not null && ActiveTabSequenceIndex >= 0 && ActiveTabSequenceIndex < VisibleTabSequence.Count - 1;
 
@@ -1459,9 +1469,11 @@ public partial class Tournaments : IAsyncDisposable
         };
 
     private string PreviousTabDisplayName
-        => IsTournamentListPanelOpen
-            ? (CanGoToPreviousTab ? TabDisplayName(VisibleTabSequence[ActiveTabSequenceIndex - 1]) : "Vorheriger Tab")
-            : "Turnierliste";
+        => CanGoToPreviousTab
+            ? TabDisplayName(VisibleTabSequence[ActiveTabSequenceIndex - 1])
+            : IsFirstVisibleTab
+                ? "Turnierliste"
+                : "Vorheriger Tab";
 
     private string NextTabDisplayName
         => CanGoToNextTab ? TabDisplayName(VisibleTabSequence[ActiveTabSequenceIndex + 1]) : "Nächster Tab";
@@ -1495,10 +1507,10 @@ public partial class Tournaments : IAsyncDisposable
             : "btn btn-primary btn-sm";
 
     private string PreviousTabButtonTitle
-        => !IsTournamentListPanelOpen
-            ? "Turnierliste einblenden"
-            : PreviousTabIsSchedule
-                ? ScheduleNavButtonTitle
+        => CanGoToPreviousTab
+            ? (PreviousTabIsSchedule ? ScheduleNavButtonTitle : "Zum vorherigen Tab wechseln")
+            : IsFirstVisibleTab
+                ? "Turnierliste einblenden"
                 : "Zum vorherigen Tab wechseln";
 
     private string NextTabButtonTitle
@@ -1550,14 +1562,14 @@ public partial class Tournaments : IAsyncDisposable
 
     private async Task HandlePreviousFooterActionAsync()
     {
-        if (!IsTournamentListPanelOpen)
+        if (CanGoToPreviousTab)
         {
-            await SetTournamentListCollapsedAsync(false);
+            await NavigateTabRelativeAsync(-1);
             return;
         }
 
-        if (CanGoToPreviousTab)
-            await NavigateTabRelativeAsync(-1);
+        if (IsFirstVisibleTab && !IsTournamentListPanelOpen)
+            await SetTournamentListCollapsedAsync(false);
     }
 
     private Task GoToPreviousTabAsync() => NavigateTabRelativeAsync(-1);

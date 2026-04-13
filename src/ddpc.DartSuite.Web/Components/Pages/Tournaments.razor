@@ -918,8 +918,8 @@
                                                             {
                                                                 <span class="badge text-bg-primary font-monospace" title="Code zum Turnierbeitritt">@selectedTournament.JoinCode</span>
                                                             }
-                                                            <span class="badge text-bg-dark" title="@(IsCurrentUserManager ? "Ihrer Rolle im Turnier" : "Ihrer Rolle im Turnier")">
-                                                                @(IsCurrentUserManager ? "Spielleiter" : "Teilnehmer")
+                                                            <span class="badge text-bg-dark" title="Ihrer Rolle im Turnier">
+                                                                @CurrentUserTournamentRoleLabel
                                                             </span>
                                                             @if (selectedTournament.IsLocked)
                                                             {

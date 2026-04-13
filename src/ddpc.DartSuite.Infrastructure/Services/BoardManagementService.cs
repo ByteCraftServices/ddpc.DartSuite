@@ -229,8 +229,29 @@ public sealed class BoardManagementService(DartSuiteDbContext dbContext) : IBoar
 
     public async Task<IReadOnlyList<BoardDto>> GetBoardsByTournamentAsync(Guid tournamentId, CancellationToken cancellationToken = default)
     {
+        var boardIdsFromMatches = await dbContext.Matches.AsNoTracking()
+            .Where(x => x.TournamentId == tournamentId && x.BoardId.HasValue)
+            .Select(x => x.BoardId!.Value)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var boardIdsFromCurrentMatches = await dbContext.Boards.AsNoTracking()
+            .Where(x => x.CurrentMatchId.HasValue)
+            .Join(
+                dbContext.Matches.AsNoTracking().Where(x => x.TournamentId == tournamentId),
+                board => board.CurrentMatchId,
+                match => match.Id,
+                (board, _) => board.Id)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        var boardIds = boardIdsFromMatches
+            .Concat(boardIdsFromCurrentMatches)
+            .Distinct()
+            .ToList();
+
         var boards = await dbContext.Boards.AsNoTracking()
-            .Where(x => x.TournamentId == tournamentId)
+            .Where(x => x.TournamentId == tournamentId || boardIds.Contains(x.Id))
             .OrderBy(x => x.Name)
             .ToListAsync(cancellationToken);
         return boards.Select(ToDto).ToList();
