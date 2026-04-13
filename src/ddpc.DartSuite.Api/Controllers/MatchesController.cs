@@ -693,7 +693,13 @@ public sealed class MatchesController(
             return Conflict(new { message = "Match ist bereits beendet." });
 
         // Extract score data from payload
-        bool finished = payload.TryGetProperty("finished", out var finishedEl) && finishedEl.ValueKind == JsonValueKind.True;
+        bool finished = false;
+        if (payload.TryGetProperty("finished", out var finishedEl))
+        {
+            finished = finishedEl.ValueKind == JsonValueKind.True
+                || (finishedEl.ValueKind == JsonValueKind.String && string.Equals(finishedEl.GetString(), "true", StringComparison.OrdinalIgnoreCase))
+                || (finishedEl.ValueKind == JsonValueKind.Number && finishedEl.TryGetInt32(out var n) && n != 0);
+        }
 
         var adMatch = new AutodartsMatchDetail(
             Id: matchId.ToString(),

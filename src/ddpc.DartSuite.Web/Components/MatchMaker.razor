@@ -587,33 +587,44 @@ else
 
     private async Task RunAutoAsync(CancellationToken ct)
     {
-        var rng = new Random();
-        while (!ct.IsCancellationRequested && _isRunning && !_matchFinished)
+        try
         {
-            _autoCountdown = 2;
-            for (int i = 2; i >= 1 && !ct.IsCancellationRequested; i--)
+            while (!ct.IsCancellationRequested && _isRunning && !_matchFinished)
             {
-                _autoCountdown = i;
-                await InvokeAsync(StateHasChanged);
-                await Task.Delay(500, ct).ConfigureAwait(false);
-            }
-            if (ct.IsCancellationRequested) break;
+                _autoCountdown = 2;
+                for (int i = 2; i >= 1 && !ct.IsCancellationRequested; i--)
+                {
+                    _autoCountdown = i;
+                    await InvokeAsync(StateHasChanged);
+                    await Task.Delay(500, ct).ConfigureAwait(false);
+                }
+                if (ct.IsCancellationRequested) break;
 
-            var (val, mult) = SimulateThrow(rng, _playerScores[_currentPlayerSlot]);
-            await InvokeAsync(() => ThrowDartAsync(val, mult));
-            await Task.Delay(300, ct).ConfigureAwait(false);
+                var (val, mult) = SimulateThrow(_playerScores[_currentPlayerSlot]);
+                await InvokeAsync(() => ThrowDartAsync(val, mult));
+                await Task.Delay(300, ct).ConfigureAwait(false);
+            }
         }
-        _autoRunning = false;
-        await InvokeAsync(StateHasChanged);
+        catch (OperationCanceledException)
+        {
+            // Expected when stopped
+        }
+        finally
+        {
+            _autoRunning = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
-    private (int Value, int Multiplier) SimulateThrow(Random rng, int remaining)
+    private (int Value, int Multiplier) SimulateThrow(int remaining)
     {
-        // Try checkout
+        var rng = Random.Shared;
+
+        // Try checkout (simulates ~30% success rate — realistic for amateur play)
         if (remaining <= 170)
         {
             var checkout = TryFindCheckout(remaining, _outMode);
-            if (checkout.HasValue && rng.NextDouble() < 0.3) // 30% checkout rate
+            if (checkout.HasValue && rng.NextDouble() < 0.3)
                 return checkout.Value;
         }
 
