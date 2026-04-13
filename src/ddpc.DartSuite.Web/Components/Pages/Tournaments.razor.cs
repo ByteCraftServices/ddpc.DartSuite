@@ -462,7 +462,7 @@ public partial class Tournaments : IAsyncDisposable
         .FirstOrDefault(x => x.ScopeKey == activeMatchCardConfigScopeKey)
         ?.Label ?? activeMatchCardConfigScopeKey;
 
-    private bool RequiresBoardRealtime => activeTab is "boards-participants" or "schedule" || detailBoard is not null;
+    private bool RequiresBoardRealtime => activeTab is "boards" or "participants" or "schedule" || detailBoard is not null;
 
     private bool IsRealtimeFallbackActive => !isTournamentHubConnected || (RequiresBoardRealtime && !isBoardHubConnected);
 
@@ -1411,7 +1411,7 @@ public partial class Tournaments : IAsyncDisposable
         if (tab == "schedule")
             await LoadMatchListenersAsync();
 
-        if (tab is "groups" or "knockout" or "schedule" or "boards-participants")
+        if (tab is "groups" or "knockout" or "schedule" or "boards" or "participants")
             await ReconcileTournamentMonitoringForViewAsync();
 
         if (tab == "rounds")
@@ -1430,8 +1430,8 @@ public partial class Tournaments : IAsyncDisposable
             // GroupAndKnockout: groups → schedule → knockout gives the DS-024 special flow
             // (Gruppenphase → Spielplan one-click, then Spielplan → K.O. for the final phase).
             if (selectedTournament?.Mode == "GroupAndKnockout")
-                return ["general", "boards-participants", "draw", "rounds", "groups", "schedule", "knockout"];
-            return ["general", "boards-participants", "draw", "rounds", "knockout", "schedule"];
+                return ["general", "boards", "participants", "draw", "rounds", "groups", "schedule", "knockout"];
+            return ["general", "boards", "participants", "draw", "rounds", "knockout", "schedule"];
         }
     }
 
@@ -1530,7 +1530,8 @@ public partial class Tournaments : IAsyncDisposable
         => tab switch
         {
             "general" => "Allgemein",
-            "boards-participants" => "Boards & Teilnehmer",
+            "boards" => "Boards",
+            "participants" => "Teilnehmer",
             "draw" => "Auslosung",
             "rounds" => "Spielmodus",
             "groups" => "Gruppenphase",
@@ -2971,8 +2972,8 @@ public partial class Tournaments : IAsyncDisposable
             await InvokeAsync(async () =>
             {
                 var forceVisibleRefresh = hasPendingVisibilityRefresh;
-                var shouldRefreshBoards = forceVisibleRefresh || activeTab is "boards-participants" or "schedule" or "knockout" || detailBoard is not null;
-                var shouldRefreshParticipants = forceVisibleRefresh || activeTab is "boards-participants" or "draw" or "groups" || detailMatch is not null;
+                var shouldRefreshBoards = forceVisibleRefresh || activeTab is "boards" or "participants" or "schedule" or "knockout" || detailBoard is not null;
+                var shouldRefreshParticipants = forceVisibleRefresh || activeTab is "boards" or "participants" or "draw" or "groups" || detailMatch is not null;
                 var shouldRefreshMatches = forceVisibleRefresh || activeTab is "schedule" or "knockout" or "groups" || detailMatch is not null || detailBoard is not null;
                 var shouldRefreshGroupStandings = forceVisibleRefresh || activeTab == "groups";
 
