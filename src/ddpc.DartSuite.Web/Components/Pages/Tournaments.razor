@@ -1002,8 +1002,71 @@
                                                                                                     EditSuccess="@editSuccess" />
                                                                             }
 
-                                                                                    @* ═══════ Tab: Boards & Teilnehmer/Teams ═══════ *@
-                                                                                    @if (activeTab == "boards-participants")
+                                                                                    @* ═══════ Tab: Boards ═══════ *@
+                                                                                    @if (activeTab == "boards")
+                                                                                    {
+                                                                                        @if (boards.Any())
+                                                                                        {
+                                                                                            <div class="table-responsive mb-4">
+                                                                                                <table class="table table-sm table-hover mb-0">
+                                                                                                    <thead>
+                                                                                                        <tr>
+                                                                                                            <th>Board</th>
+                                                                                                            <th>Status</th>
+                                                                                                            <th>Aktuelles Match</th>
+                                                                                                            <th></th>
+                                                                                                        </tr>
+                                                                                                    </thead>
+                                                                                                    <tbody>
+                                                                                                        @foreach (var board in boards)
+                                                                                                        {
+                                                                                                            <tr>
+                                                                                                                <td><span role="button" @onclick="() => OpenBoardDetail(board)" class="text-decoration-none fw-semibold" style="cursor:pointer">@board.Name</span></td>
+                                                                                                                <td><span class="badge @BoardStatusBadge(board.Status)">@board.Status</span></td>
+                                                                                                                <td>
+                                                                                                                    @if (!string.IsNullOrEmpty(board.CurrentMatchLabel))
+                                                                                                                    {
+                                                                                                                        var boardMatch = board.CurrentMatchId.HasValue
+                                                                                                                            ? matches.FirstOrDefault(m => m.Id == board.CurrentMatchId.Value)
+                                                                                                                            : null;
+                                                                                                                        @if (boardMatch is not null)
+                                                                                                                        {
+                                                                                                                            <span role="button" class="text-primary fw-semibold" style="cursor:pointer;text-decoration:underline dotted"
+                                                                                                                                  @onclick="() => OpenMatchDetail(boardMatch)"><span class="autodarts-icon"></span> @board.CurrentMatchLabel</span>
+                                                                                                                        }
+                                                                                                                        else
+                                                                                                                        {
+                                                                                                                            <span>@board.CurrentMatchLabel</span>
+                                                                                                                        }
+                                                                                                                    }
+                                                                                                                    else
+                                                                                                                    {
+                                                                                                                        <span>—</span>
+                                                                                                                    }
+                                                                                                                </td>
+                                                                                                                <td class="d-flex gap-1">
+                                                                                                                    <a href="https://play.autodarts.io/boards/@(board.ExternalBoardId)/follow"
+                                                                                                                       target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">📺</a>
+                                                                                                                    @if (!selectedTournament.IsLocked)
+                                                                                                                    {
+                                                                                                                        <button class="btn btn-sm btn-outline-danger"
+                                                                                                                                @onclick="() => DeleteBoardAsync(board.Id)" disabled="@isWorking">✕</button>
+                                                                                                                    }
+                                                                                                                </td>
+                                                                                                            </tr>
+                                                                                                        }
+                                                                                                    </tbody>
+                                                                                                </table>
+                                                                                            </div>
+                                                                                        }
+                                                                                        else
+                                                                                        {
+                                                                                            <p class="text-muted small mb-4">Keine Boards konfiguriert. Boards können über die <a href="/boards">Boards-Seite</a> oder die Chrome-Extension hinzugefügt werden.</p>
+                                                                                        }
+                                                                                    }
+
+                                                                                    @* ═══════ Tab: Teilnehmer ═══════ *@
+                                                                                    @if (activeTab == "participants")
                                                                                     {
                                                                                         <SettingsPanel TournamentId="@selectedTournament?.Id" PanelId="teamplay-setzliste" SummaryText="@TeamplaySeedingSummary()" DefaultExpanded="true">
                                                                                             <TitleContent>
@@ -1119,66 +1182,6 @@
 
                                                                                         @if (activeBoardsParticipantsSubTab == "spieler")
                                                                                         {
-                                                                                            <h6 class="fw-semibold mb-2">Boards</h6>
-                                                                                            @if (boards.Any())
-                                                                                            {
-                                                                                                <div class="table-responsive mb-4">
-                                                                                                    <table class="table table-sm table-hover mb-0">
-                                                                                                        <thead>
-                                                                                                            <tr>
-                                                                                                                <th>Board</th>
-                                                                                                                <th>Status</th>
-                                                                                                                <th>Aktuelles Match</th>
-                                                                                                                <th></th>
-                                                                                                            </tr>
-                                                                                                        </thead>
-                                                                                                        <tbody>
-                                                                                                            @foreach (var board in boards)
-                                                                                                            {
-                                                                                                                <tr>
-                                                                                                                    <td><span role="button" @onclick="() => OpenBoardDetail(board)" class="text-decoration-none fw-semibold" style="cursor:pointer">@board.Name</span></td>
-                                                                                                                    <td><span class="badge @BoardStatusBadge(board.Status)">@board.Status</span></td>
-                                                                                                                    <td>
-                                                                                                                        @if (!string.IsNullOrEmpty(board.CurrentMatchLabel))
-                                                                                                                        {
-                                                                                                                            var boardMatch = board.CurrentMatchId.HasValue
-                                                                                                                                ? matches.FirstOrDefault(m => m.Id == board.CurrentMatchId.Value)
-                                                                                                                                : null;
-                                                                                                                            @if (boardMatch is not null)
-                                                                                                                            {
-                                                                                                                                <span role="button" class="text-primary fw-semibold" style="cursor:pointer;text-decoration:underline dotted"
-                                                                                                                                      @onclick="() => OpenMatchDetail(boardMatch)"><span class="autodarts-icon"></span> @board.CurrentMatchLabel</span>
-                                                                                                                            }
-                                                                                                                            else
-                                                                                                                            {
-                                                                                                                                <span>@board.CurrentMatchLabel</span>
-                                                                                                                            }
-                                                                                                                        }
-                                                                                                                        else
-                                                                                                                        {
-                                                                                                                            <span>—</span>
-                                                                                                                        }
-                                                                                                                    </td>
-                                                                                                                    <td class="d-flex gap-1">
-                                                                                                                        <a href="https://play.autodarts.io/boards/@(board.ExternalBoardId)/follow"
-                                                                                                                           target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">📺</a>
-                                                                                                                        @if (!selectedTournament.IsLocked)
-                                                                                                                        {
-                                                                                                                            <button class="btn btn-sm btn-outline-danger"
-                                                                                                                                    @onclick="() => DeleteBoardAsync(board.Id)" disabled="@isWorking">✕</button>
-                                                                                                                        }
-                                                                                                                    </td>
-                                                                                                                </tr>
-                                                                                                            }
-                                                                                                        </tbody>
-                                                                                                    </table>
-                                                                                                </div>
-                                                                                            }
-                                                                                            else
-                                                                                            {
-                                                                                                <p class="text-muted small mb-4">Keine Boards konfiguriert. Boards können über die <a href="/boards">Boards-Seite</a> oder die Chrome-Extension hinzugefügt werden.</p>
-                                                                                            }
-
                                                                                             <h6 class="fw-semibold mb-2">@(IsTeamplayActive ? "Spielerpool" : "Teilnehmer") <span class="badge text-bg-secondary">@EffectivePlayerCount</span>
                                                                                                 @if (IsTeamplayActive && AppState.IsAdmin)
                                                                                                 {

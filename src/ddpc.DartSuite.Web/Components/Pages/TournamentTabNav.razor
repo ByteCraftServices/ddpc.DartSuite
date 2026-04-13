@@ -5,7 +5,10 @@
         <button class="nav-link text-nowrap @(ActiveTab == "general" ? "active" : "")" @onclick='() => SelectAsync("general")'>Allgemein</button>
     </li>
     <li class="nav-item">
-        <button class="nav-link text-nowrap @(ActiveTab == "boards-participants" ? "active" : "")" @onclick='() => SelectAsync("boards-participants")'>Boards &amp; Teilnehmer</button>
+        <button class="nav-link text-nowrap @(ActiveTab == "boards" ? "active" : "")" @onclick='() => SelectAsync("boards")'>Boards</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link text-nowrap @(ActiveTab == "participants" ? "active" : "")" @onclick='() => SelectAsync("participants")'>Teilnehmer</button>
     </li>
     <li class="nav-item">
         <button class="nav-link text-nowrap @(ActiveTab == "draw" ? "active" : "")" @onclick='() => SelectAsync("draw")'>
