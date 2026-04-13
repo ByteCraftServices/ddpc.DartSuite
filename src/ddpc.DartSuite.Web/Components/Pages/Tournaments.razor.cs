@@ -5684,6 +5684,17 @@ public partial class Tournaments : IAsyncDisposable
             var updated = await Api.UpdateTournamentStatusAsync(selectedTournament.Id, status);
             if (updated is not null)
             {
+                // Collapse all settings panels when transitioning to "Geplant" or higher
+                if (!string.Equals(status, "Erstellt", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        await JS.InvokeVoidAsync("dartSuiteUi.collapseAllTournamentSettingsPanels",
+                            selectedTournament.Id.ToString("N"));
+                    }
+                    catch { /* best-effort */ }
+                }
+
                 await LoadTournamentsAsync();
                 selectedTournament = tournaments.FirstOrDefault(x => x.Id == updated.Id) ?? updated;
                 PopulateEditFields(selectedTournament);

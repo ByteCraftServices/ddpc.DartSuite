@@ -8,28 +8,24 @@
     <h6 class="fw-semibold mb-0">Spielplan — Chronologische Übersicht</h6>
 </div>
 
-<details class="card mb-3" open="@filtersPanelExpanded">
-    <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
-        <span>
-            Anzeige &amp; Filter
-            <span class="badge text-bg-light border ms-2">Warteschlange: @QueueLimitSummary</span>
-            <span class="badge text-bg-light border ms-2">Status: @StatusFilterSummary</span>
-        </span>
-        <span class="d-flex gap-2">
-            @if (Matches.Any() && !SelectedTournamentIsLocked && IsCurrentUserManager && HasTournamentStartTime)
-            {
-                <button class="btn btn-primary btn-sm"
-                        @onclick="HandleGenerateScheduleAsync"
-                        @onclick:stopPropagation
-                        disabled="@IsWorking">⏰ Spielplan generieren</button>
-            }
-            <button class="btn btn-sm btn-outline-secondary"
-                    title="MatchCard-Einstellungen fuer Spielplan"
-                    @onclick='() => OpenMatchCardScopeEditor.InvokeAsync("tournaments::schedule")'
-                    @onclick:stopPropagation>⚙</button>
-        </span>
-    </summary>
-    <div class="card-body">
+<SettingsPanel TournamentId="@TournamentId" PanelId="spielplan-filter" DefaultExpanded="@filtersPanelExpanded">
+    <TitleContent>
+        Anzeige &amp; Filter
+        <span class="badge text-bg-light border ms-2">Warteschlange: @QueueLimitSummary</span>
+        <span class="badge text-bg-light border ms-2">Status: @StatusFilterSummary</span>
+    </TitleContent>
+    <SummaryActions>
+        @if (Matches.Any() && !SelectedTournamentIsLocked && IsCurrentUserManager && HasTournamentStartTime)
+        {
+            <button class="btn btn-primary btn-sm"
+                    @onclick="HandleGenerateScheduleAsync"
+                    disabled="@IsWorking">⏰ Spielplan generieren</button>
+        }
+        <button class="btn btn-sm btn-outline-secondary"
+                title="MatchCard-Einstellungen fuer Spielplan"
+                @onclick='() => OpenMatchCardScopeEditor.InvokeAsync("tournaments::schedule")'>⚙</button>
+    </SummaryActions>
+    <ChildContent>
         <div class="d-flex flex-wrap gap-3 align-items-end small filter-bar">
             <div class="form-check">
                 <input class="form-check-input" type="checkbox" id="schedHideFinished" checked="@ScheduleHideFinished" @onchange="HandleScheduleHideFinishedChangedAsync" />
@@ -59,20 +55,18 @@
                 </select>
             </div>
         </div>
-    </div>
-</details>
+    </ChildContent>
+</SettingsPanel>
 
 @if (ShouldShowQueues)
 {
-    <details class="card mb-3" open="@queuePanelExpanded">
-        <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
-            <span>Boards &amp; Warteschlangen</span>
+    <SettingsPanel TournamentId="@TournamentId" PanelId="spielplan-boards-queues" Title="Boards &amp; Warteschlangen" DefaultExpanded="@queuePanelExpanded">
+        <SummaryActions>
             <button class="btn btn-sm btn-outline-secondary"
                     title="MatchCard-Einstellungen fuer Boards & anstehende Matches"
-                    @onclick='() => OpenMatchCardScopeEditor.InvokeAsync("tournaments::schedule-boards-upcoming")'
-                    @onclick:stopPropagation>⚙</button>
-        </summary>
-        <div class="card-body">
+                    @onclick='() => OpenMatchCardScopeEditor.InvokeAsync("tournaments::schedule-boards-upcoming")'>⚙</button>
+        </SummaryActions>
+        <ChildContent>
             <div class="row g-2">
                 @foreach (var board in Boards)
                 {
@@ -186,8 +180,8 @@
                     </div>
                 }
             </div>
-        </div>
-    </details>
+        </ChildContent>
+    </SettingsPanel>
 }
 
 @if (UnassignedUpcoming.Any())
@@ -388,6 +382,7 @@ else
 }
 
 @code {
+    [Parameter] public Guid? TournamentId { get; set; }
     [Parameter] public IReadOnlyList<MatchDto> Matches { get; set; } = [];
     [Parameter] public IReadOnlyList<BoardDto> Boards { get; set; } = [];
     [Parameter] public IReadOnlyList<MatchDto> ScheduledMatches { get; set; } = [];
