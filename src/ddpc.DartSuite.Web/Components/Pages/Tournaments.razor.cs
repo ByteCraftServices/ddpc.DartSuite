@@ -66,6 +66,7 @@ public partial class Tournaments : IAsyncDisposable
     private string activeTab = "general";
     private string activeBoardsParticipantsSubTab = "spieler";
     private bool isWorking;
+    private bool showAdminTeamMembers;
     private bool showStatusDropdown;
     private bool showPageSettingsDropdown;
     private bool showPageSettingsModal;

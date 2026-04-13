@@ -1,3 +1,4 @@
+using ddpc.DartSuite.Application.Contracts.Admins;
 using ddpc.DartSuite.Application.Contracts.Autodarts;
 using ddpc.DartSuite.Application.Contracts.Boards;
 using ddpc.DartSuite.Application.Contracts.Matches;
@@ -580,6 +581,38 @@ public sealed class DartSuiteApiService
         var response = await _httpClient.PutAsJsonAsync($"api/tournaments/preferences/{Uri.EscapeDataString(userAccountName)}/{Uri.EscapeDataString(viewContext)}", settingsJson, cancellationToken);
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<UserViewPreferenceDto>(cancellationToken: cancellationToken))!;
+    }
+
+    // ─── Admins ───
+
+    public async Task<bool> CheckIsAdminAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.GetAsync("api/admins/check", cancellationToken);
+        if (!response.IsSuccessStatusCode) return false;
+        return (await response.Content.ReadFromJsonAsync<bool>(cancellationToken: cancellationToken));
+    }
+
+    public async Task<IReadOnlyList<AdminDto>> GetAdminsAsync(CancellationToken cancellationToken = default)
+        => await GetFromJsonOrDefaultAsync<IReadOnlyList<AdminDto>>("api/admins", cancellationToken) ?? Array.Empty<AdminDto>();
+
+    public async Task<AdminDto> CreateAdminAsync(CreateAdminRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsJsonAsync("api/admins", request, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<AdminDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task<AdminDto> UpdateAdminAsync(UpdateAdminRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PutAsJsonAsync($"api/admins/{request.Id}", request, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<AdminDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task DeleteAdminAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.DeleteAsync($"api/admins/{id}", cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
     }
 
     public sealed record BoardExtensionSyncRequestAcceptedDto(bool Requested, Guid RequestId, DateTimeOffset RequestedAtUtc);

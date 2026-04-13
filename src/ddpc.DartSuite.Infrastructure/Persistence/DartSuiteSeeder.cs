@@ -1,5 +1,6 @@
 using ddpc.DartSuite.Domain.Entities;
 using ddpc.DartSuite.Domain.Enums;
+using Microsoft.EntityFrameworkCore;
 
 namespace ddpc.DartSuite.Infrastructure.Persistence;
 
@@ -7,6 +8,8 @@ public static class DartSuiteSeeder
 {
     public static async Task SeedAsync(DartSuiteDbContext dbContext, CancellationToken cancellationToken = default)
     {
+        await SeedAdminsAsync(dbContext, cancellationToken);
+
         if (dbContext.Boards.Any())
         {
             return;
@@ -141,5 +144,23 @@ public static class DartSuiteSeeder
         );
 
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private static async Task SeedAdminsAsync(DartSuiteDbContext dbContext, CancellationToken cancellationToken)
+    {
+        const string seedAdminAccount = "doc";
+        var exists = await dbContext.Admins
+            .AnyAsync(a => a.AccountName == seedAdminAccount, cancellationToken);
+
+        if (!exists)
+        {
+            dbContext.Admins.Add(new Admin
+            {
+                AccountName = seedAdminAccount,
+                ValidFromDate = new DateOnly(2000, 1, 1),
+                ValidToDate = DateOnly.MaxValue
+            });
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
     }
 }

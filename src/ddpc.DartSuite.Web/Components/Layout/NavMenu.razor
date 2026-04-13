@@ -156,6 +156,12 @@
                 <div class="nav-item px-4">
                     <NavLink class="nav-link small" href="matches">- Matches</NavLink>
                 </div>
+                @if (AppState.IsAdmin)
+                {
+                    <div class="nav-item px-4">
+                        <NavLink class="nav-link small" href="admin/accounts">- Accounts</NavLink>
+                    </div>
+                }
                 <div class="nav-item px-4 nav-group-head nav-subgroup-head">
                     <NavLink class="nav-link small flex-grow-1" href="boards">- Boards</NavLink>
                     <button type="button" class="btn btn-link nav-expand-btn" title="Boards ein-/ausklappen"
@@ -211,6 +217,10 @@
             var actor = AppState.AutodartsProfile?.DisplayName;
             if (string.IsNullOrWhiteSpace(actor))
                 return false;
+
+            // Admin role takes precedence
+            if (AppState.IsAdmin)
+                return true;
 
             return Tournaments.Any(t => string.Equals(t.OrganizerAccount, actor, StringComparison.OrdinalIgnoreCase));
         }

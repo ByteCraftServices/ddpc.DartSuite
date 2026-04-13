@@ -8,6 +8,7 @@ public sealed class AppStateService
     public TournamentDto? SelectedTournament { get; private set; }
     public AutodartsProfileDto? AutodartsProfile { get; private set; }
     public bool IsAutodartsConnected { get; private set; }
+    public bool IsAdmin { get; private set; }
 
     public event Action? OnChange;
 
@@ -35,5 +36,17 @@ public sealed class AppStateService
     {
         AutodartsProfile = profile;
         IsAutodartsConnected = isConnected;
+    }
+
+    public void SetIsAdmin(bool isAdmin)
+    {
+        IsAdmin = isAdmin;
+        OnChange?.Invoke();
+    }
+
+    /// <summary>Update without firing OnChange (used by MainLayout to avoid re-render loops).</summary>
+    public void SetIsAdminSilent(bool isAdmin)
+    {
+        IsAdmin = isAdmin;
     }
 }

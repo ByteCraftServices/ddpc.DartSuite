@@ -1184,13 +1184,23 @@
                                                                                                 <p class="text-muted small mb-4">Keine Boards konfiguriert. Boards können über die <a href="/boards">Boards-Seite</a> oder die Chrome-Extension hinzugefügt werden.</p>
                                                                                             }
 
-                                                                                            <h6 class="fw-semibold mb-2">@(IsTeamplayActive ? "Spielerpool" : "Teilnehmer") <span class="badge text-bg-secondary">@EffectivePlayerCount</span></h6>
+                                                                                            <h6 class="fw-semibold mb-2">@(IsTeamplayActive ? "Spielerpool" : "Teilnehmer") <span class="badge text-bg-secondary">@EffectivePlayerCount</span>
+                                                                                                @if (IsTeamplayActive && AppState.IsAdmin)
+                                                                                                {
+                                                                                                    <button class="btn btn-sm @(showAdminTeamMembers ? "btn-info" : "btn-outline-secondary") ms-2" style="font-size:0.75em"
+                                                                                                            @onclick="() => showAdminTeamMembers = !showAdminTeamMembers"
+                                                                                                            title="TeamMember-Einträge einblenden">Teams anzeigen</button>
+                                                                                                }
+                                                                                            </h6>
                                                                                             @if (participants.Any(p => !IsTeamMember(p)))
                                                                                             {
                                                                                                 var showPlayerSeedInPlayersSubTab = editSeedingEnabled && !IsTeamplayActive;
+                                                                                                var baseParticipants = (IsTeamplayActive && AppState.IsAdmin && showAdminTeamMembers)
+                                                                                                    ? participants
+                                                                                                    : participants.Where(p => !IsTeamMember(p));
                                                                                                 var sortedParticipants = showPlayerSeedInPlayersSubTab
-                                                                                                    ? participants.Where(p => !IsTeamMember(p)).OrderBy(p => p.Seed > 0 ? p.Seed : int.MaxValue).ThenBy(p => p.DisplayName).ToList()
-                                                                                                    : participants.Where(p => !IsTeamMember(p)).ToList();
+                                                                                                    ? baseParticipants.OrderBy(p => p.Seed > 0 ? p.Seed : int.MaxValue).ThenBy(p => p.DisplayName).ToList()
+                                                                                                    : baseParticipants.ToList();
                                                                                                 <div class="table-responsive mb-3">
                                                                                                     <table class="table table-sm table-hover align-middle mb-0">
                                                                                                         <thead>
