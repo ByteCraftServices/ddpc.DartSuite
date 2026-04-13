@@ -112,22 +112,20 @@
 
 @if (IsGroupPhaseMode)
 {
-<details class="card mb-3" open="@GroupSettingsPanelExpanded">
-    <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" title="@GroupSettingsPanelReason">
-        <span>
-            Gruppenphase-Einstellungen
-            @if (HasGroupSettingsRequiredMissing())
-            {
-                <span class="text-danger ms-2" title="Pflichteinstellungen fehlen">⚠</span>
-            }
-            @if (!string.IsNullOrWhiteSpace(GroupSettingsPanelReason))
-            {
-                <span class="badge text-bg-light border ms-2" title="@GroupSettingsPanelReason">Info</span>
-            }
-        </span>
-        <span class="d-none d-md-inline small text-muted">@GroupSettingsSummary()</span>
-    </summary>
-    <div class="card-body" title="@GroupSettingsPanelReason">
+<SettingsPanel TournamentId="@TournamentId" PanelId="gruppenphase-einstellungen" SummaryText="@GroupSettingsSummary()" DefaultExpanded="@GroupSettingsPanelExpanded" DisabledReason="@GroupSettingsPanelReason">
+    <TitleContent>
+        Gruppenphase-Einstellungen
+        @if (HasGroupSettingsRequiredMissing())
+        {
+            <span class="text-danger ms-2" title="Pflichteinstellungen fehlen">⚠</span>
+        }
+        @if (!string.IsNullOrWhiteSpace(GroupSettingsPanelReason))
+        {
+            <span class="badge text-bg-light border ms-2" title="@GroupSettingsPanelReason">Info</span>
+        }
+    </TitleContent>
+    <ChildContent>
+        <div title="@GroupSettingsPanelReason">
         @if (ShowGroupSettingsReadOnlyBadges)
         {
             <div class="small text-muted d-flex flex-wrap gap-2">
@@ -203,8 +201,9 @@
                 </div>
             </div>
         }
-    </div>
-</details>
+        </div>
+    </ChildContent>
+</SettingsPanel>
 
 }
 
@@ -807,6 +806,7 @@
 </div>
 
 @code {
+    [Parameter] public Guid? TournamentId { get; set; }
     [Parameter] public bool CanEditTournamentStructure { get; set; }
     [Parameter] public bool HasProgressedMatches { get; set; }
     [Parameter] public string SelectedTournamentMode { get; set; } = string.Empty;

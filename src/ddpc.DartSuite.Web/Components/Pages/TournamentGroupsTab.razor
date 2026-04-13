@@ -7,22 +7,20 @@
     var groupMatches = Matches.Where(m => m.Phase == "Group").ToList();
 }
 
-<details class="card mb-3" open="@ScoringPanelExpanded">
-    <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer" title="@ScoringPanelReason">
-        <span>
-            Punkte &amp; Playoff-Einstellungen
-            @if (HasScoringRequiredMissing())
-            {
-                <span class="text-danger ms-2" title="Pflichteinstellungen fehlen">⚠</span>
-            }
-            @if (!string.IsNullOrWhiteSpace(ScoringPanelReason))
-            {
-                <span class="badge text-bg-light border ms-2" title="@ScoringPanelReason">Info</span>
-            }
-        </span>
-        <span class="d-none d-md-inline small text-muted">@ScoringHeaderSummary</span>
-    </summary>
-    <div class="card-body" title="@ScoringPanelReason">
+<SettingsPanel TournamentId="@TournamentId" PanelId="punkte-playoff" SummaryText="@ScoringHeaderSummary" DefaultExpanded="@ScoringPanelExpanded" DisabledReason="@ScoringPanelReason">
+    <TitleContent>
+        Punkte &amp; Playoff-Einstellungen
+        @if (HasScoringRequiredMissing())
+        {
+            <span class="text-danger ms-2" title="Pflichteinstellungen fehlen">⚠</span>
+        }
+        @if (!string.IsNullOrWhiteSpace(ScoringPanelReason))
+        {
+            <span class="badge text-bg-light border ms-2" title="@ScoringPanelReason">Info</span>
+        }
+    </TitleContent>
+    <ChildContent>
+        <div title="@ScoringPanelReason">
         <div class="row g-2 mb-0">
             <div class="col-md-4" title="@PlayoffAdvancersFieldTitle">
                 <label class="form-label small" title="@PlayoffAdvancersFieldTitle">Playoff-Aufsteiger</label>
@@ -74,8 +72,9 @@
         {
             <div class="alert alert-danger py-1 mt-2 mb-0 small">@ScoringCriteriaError</div>
         }
-    </div>
-</details>
+        </div>
+    </ChildContent>
+</SettingsPanel>
 
 @if (groupMatches.Any())
 {
@@ -187,6 +186,7 @@ else
 }
 
 @code {
+    [Parameter] public Guid? TournamentId { get; set; }
     [Parameter] public IReadOnlyList<MatchDto> Matches { get; set; } = [];
     [Parameter] public IReadOnlyList<GroupStandingDto> GroupStandings { get; set; } = [];
     [Parameter] public int PlayoffAdvancers { get; set; }

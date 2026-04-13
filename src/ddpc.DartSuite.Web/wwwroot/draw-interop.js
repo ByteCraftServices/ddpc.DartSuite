@@ -106,16 +106,35 @@ window.dartSuiteUi = window.dartSuiteUi || {
     initDetailsStorage: function (id, key) {
         const el = document.getElementById(id);
         if (!el) return;
+        // Always update the active storage key (supports tournament change on same element)
+        el._dartsuiteStorageKey = key;
+        // Apply the stored state for the given key
         try {
             const stored = localStorage.getItem(key);
             if (stored !== null) el.open = (stored === "true");
         } catch (e) { }
+        // Register toggle listener once; handler reads the current key from the element
         if (!el._dartsuiteStorageInit) {
             el._dartsuiteStorageInit = true;
             el.addEventListener("toggle", function () {
-                try { localStorage.setItem(key, el.open.toString()); } catch (e) { }
+                try { localStorage.setItem(el._dartsuiteStorageKey, el.open.toString()); } catch (e) { }
             });
         }
+    },
+    collapseAllTournamentSettingsPanels: function (tournamentId) {
+        // tournamentId must be in 'N' format (no hyphens, lowercase) to match localStorage keys
+        const prefix = "ds-spanel-" + tournamentId + "-";
+        // Persist collapsed state for all matching keys in localStorage
+        try {
+            const keys = Object.keys(localStorage).filter(function (k) { return k.startsWith(prefix); });
+            keys.forEach(function (k) { localStorage.setItem(k, "false"); });
+        } catch (e) { }
+        // Collapse any currently mounted <details> elements managed by this storage
+        document.querySelectorAll("details").forEach(function (el) {
+            if (el._dartsuiteStorageKey && el._dartsuiteStorageKey.startsWith(prefix)) {
+                el.open = false;
+            }
+        });
     },
     registerHorizontalSwipe: function (elementId, dotNetRef, callbackMethodName) {
         const el = document.getElementById(elementId);
