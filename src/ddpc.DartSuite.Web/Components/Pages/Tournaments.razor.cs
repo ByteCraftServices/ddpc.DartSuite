@@ -977,20 +977,6 @@ public partial class Tournaments : IAsyncDisposable
                 ? "text-bg-warning"
                 : "text-bg-danger";
 
-    private string DrawStatusIconCss
-        => matches.Any()
-            ? "bi-check2-square"
-            : IsDrawCompleted
-                ? "bi-diagram-3-fill"
-                : "bi-hand-index-thumb-fill";
-
-    private string DrawStatusTitle
-        => matches.Any()
-            ? "Auslosung und Turnierplan abgeschlossen"
-            : IsDrawCompleted
-                ? "Auslosung abgeschlossen, Turnierplan wurde noch nicht erstellt."
-                : $"Auslosung noch nicht abgeschlossen: Noch {UnassignedDrawCount} {(IsTeamplayActive ? "Teams" : "Teilnehmer")} ohne Zuordnung ({DrawProgressPercent}%).";
-
     private int UnassignedDrawCount
         => selectedTournament?.Mode == "GroupAndKnockout"
             ? UnassignedParticipants.Count
