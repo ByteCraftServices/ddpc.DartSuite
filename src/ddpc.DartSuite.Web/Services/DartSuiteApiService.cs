@@ -615,6 +615,28 @@ public sealed class DartSuiteApiService
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
     }
 
+    // ─── Health ───
+
+    /// <summary>
+    /// Returns <c>true</c> if the DartSuite API backend is reachable.
+    /// Probes <c>GET /api/boards</c> with a 5-second timeout; any network
+    /// error or non-success status code is treated as unavailable.
+    /// </summary>
+    public async Task<bool> CheckHealthAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(5));
+            var response = await _httpClient.GetAsync("api/boards", cts.Token);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public sealed record BoardExtensionSyncRequestAcceptedDto(bool Requested, Guid RequestId, DateTimeOffset RequestedAtUtc);
 
     public sealed record BoardExtensionSyncDebugDto(

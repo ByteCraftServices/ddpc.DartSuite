@@ -7,6 +7,10 @@
 @inject ProtectedLocalStorage LocalStorage
 @implements IDisposable
 
+<ApiOfflineOverlay IsVisible="@isApiOffline"
+                   RetryCount="@apiRetryCount"
+                   SecondsToNextRetry="@apiSecondsToNextRetry" />
+
 <div class="page">
     <div class="sidebar">
         <NavMenu Tournaments="tournaments" SelectedTournamentId="@selectedTournamentId"
@@ -65,6 +69,15 @@
     private string selectedTournamentId = "";
     private bool initialized;
 
+    // ─── API Health ───
+    private bool isApiOffline;
+    private int apiRetryCount;
+    private int apiSecondsToNextRetry;
+    private CancellationTokenSource? _healthCts;
+
+    /// <summary>Retry delays for successive connection attempts (seconds).</summary>
+    private static readonly int[] RetryDelays = [3, 5, 10, 15, 30];
+
     protected override void OnInitialized()
     {
         AppState.OnChange += OnAppStateChanged;
@@ -86,9 +99,68 @@
         if (!firstRender || initialized) return;
         initialized = true;
 
+        _healthCts = new CancellationTokenSource();
+        await RunWithApiHealthMonitoringAsync(_healthCts.Token);
+    }
+
+    /// <summary>
+    /// Runs the initial data load.  If the API is unreachable, shows the offline overlay
+    /// and keeps retrying until the API responds, then completes initialization.
+    /// Retry delays escalate with each attempt: 3 → 5 → 10 → 15 → 30 seconds (capped).
+    /// </summary>
+    private async Task RunWithApiHealthMonitoringAsync(CancellationToken cancellationToken)
+    {
+        // ── 1. Check if API is available before loading data ──
+        var healthy = await Api.CheckHealthAsync(cancellationToken);
+
+        if (!healthy)
+        {
+            isApiOffline = true;
+            apiRetryCount = 0;
+            apiSecondsToNextRetry = 0;
+            await InvokeAsync(StateHasChanged);
+
+            while (!healthy && !cancellationToken.IsCancellationRequested)
+            {
+                apiRetryCount++;
+                var delaySec = RetryDelays[Math.Min(apiRetryCount - 1, RetryDelays.Length - 1)];
+
+                // Countdown display
+                for (var remaining = delaySec; remaining > 0 && !cancellationToken.IsCancellationRequested; remaining--)
+                {
+                    apiSecondsToNextRetry = remaining;
+                    await InvokeAsync(StateHasChanged);
+                    try
+                    {
+                        await Task.Delay(1000, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+                }
+
+                if (cancellationToken.IsCancellationRequested)
+                    return;
+
+                apiSecondsToNextRetry = 0;
+                await InvokeAsync(StateHasChanged);
+
+                healthy = await Api.CheckHealthAsync(cancellationToken);
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+                return;
+
+            isApiOffline = false;
+            apiRetryCount = 0;
+            await InvokeAsync(StateHasChanged);
+        }
+
+        // ── 2. API is reachable – load initial data ──
         try
         {
-            tournaments = (await Api.GetTournamentsAsync())
+            tournaments = (await Api.GetTournamentsAsync(cancellationToken))
                 .Where(t => t.Status != "Beendet" && t.Status != "Abgebrochen")
                 .ToList();
 
@@ -106,17 +178,17 @@
             }
 
             // Restore Autodarts session
-            var status = await Api.GetAutodartsStatusAsync();
+            var status = await Api.GetAutodartsStatusAsync(cancellationToken);
             if (status.IsConnected && status.Profile is not null)
             {
                 AppState.SetAutodartsProfileSilent(status.Profile, true);
             }
 
             // Load admin status
-            var isAdmin = await Api.CheckIsAdminAsync();
+            var isAdmin = await Api.CheckIsAdminAsync(cancellationToken);
             AppState.SetIsAdminSilent(isAdmin);
         }
-        catch { /* API not reachable */ }
+        catch { /* Secondary initialisation calls may fail if the API goes offline again immediately after the health check; degrade gracefully. */ }
 
         await InvokeAsync(StateHasChanged);
     }
@@ -148,5 +220,7 @@
     public void Dispose()
     {
         AppState.OnChange -= OnAppStateChanged;
+        _healthCts?.Cancel();
+        _healthCts?.Dispose();
     }
 }
