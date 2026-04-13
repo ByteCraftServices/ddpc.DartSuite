@@ -281,6 +281,28 @@
     </div>
 }
 
+@* ─── Registration-Draw Confirmation Modal ─── *@
+@if (showRegistrationDrawConfirmation)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title">⚠ Registrierung noch geöffnet</h5>
+                </div>
+                <div class="modal-body">
+                    <p>Die Registrierung ist noch geöffnet. Soll die Registrierung jetzt abgeschlossen werden?</p>
+                    <p class="text-muted small mb-0">Die Aktion wird nach dem Schließen der Registrierung fortgesetzt.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="RejectRegistrationDrawConfirmation">Abbrechen</button>
+                    <button class="btn btn-warning" @onclick="AcceptRegistrationDrawConfirmationAsync">Registrierung schließen</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
     @* ─── Match Detail / Result Edit Modal ─── *@
     @if (detailMatch is not null)
     {
@@ -1129,7 +1151,7 @@
                                                                                                 @if (CanEditParticipantSettings)
                                                                                                 {
                                                                                                     <div class="form-check mb-2">
-                                                                                                        <input class="form-check-input" type="checkbox" id="editRegistrationOpen" @bind="editIsRegistrationOpen" @bind:after="AutoSaveSettingAsync" />
+                                                                                                        <input class="form-check-input" type="checkbox" id="editRegistrationOpen" @bind="editIsRegistrationOpen" @bind:after="OnRegistrationOpenChangedAsync" />
                                                                                                         <label class="form-check-label" for="editRegistrationOpen" title="Steuert, ob Teilnehmer sich vor Turnierstart registrieren dürfen.">Registrierung offen</label>
                                                                                                     </div>
                                                                                                     <div class="row g-2 mb-0">
@@ -1383,13 +1405,20 @@
                                                                                             {
                                                                                                 <div class="alert alert-info py-2 small mb-2">Die Turnierstruktur ist gesperrt. Teamzuordnungen können nicht mehr geändert werden.</div>
                                                                                             }
+                                                                                            @if (IsRegistrationOpen)
+                                                                                            {
+                                                                                                <div class="alert alert-warning py-2 small mb-2">
+                                                                                                    Die Registrierung ist noch geöffnet. Die Teamerstellung kann erst nach dem Schließen der Registrierung abgeschlossen werden.
+                                                                                                    <a href="#" @onclick="CloseRegistrationAsync" @onclick:preventDefault class="alert-link">Registrierung schließen</a>.
+                                                                                                </div>
+                                                                                            }
                                                                                             @if (!TeamSizeDividesParticipants)
                                                                                             {
                                                                                                 <div class="alert alert-warning py-2 small mb-3">Die Spieleranzahl (@EffectivePlayerCount) ist nicht durch Spieler/Team (@editPlayersPerTeam) teilbar. Bitte Teamgröße oder Spieleranzahl anpassen.</div>
                                                                                             }
                                                                                             <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
-                                                                                                <button class="btn btn-sm btn-primary" @onclick="GenerateRandomTeamsAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure || !TeamSizeDividesParticipants)" title="Füllt nur unvollständige Teams zufällig auf. Vollständige Teams bleiben bestehen.">⚡ Teams zufällig bilden</button>
-                                                                                                <button class="btn btn-sm btn-outline-warning" @onclick="ResetTeamDraftLocal" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">↩ Entwurf leeren</button>
+                                                                                                <button class="btn btn-sm btn-primary" @onclick="GenerateRandomTeamsAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure || !TeamSizeDividesParticipants || IsRegistrationOpen)" title="Füllt nur unvollständige Teams zufällig auf. Vollständige Teams bleiben bestehen.">⚡ Teams zufällig bilden</button>
+                                                                                                <button class="btn btn-sm btn-outline-warning" @onclick="ResetTeamDraftLocal" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure || IsRegistrationOpen)">↩ Entwurf leeren</button>
                                                                                                 <div class="d-flex align-items-center gap-2 ms-auto">
                                                                                                     <label class="small text-muted mb-0">Animation</label>
                                                                                                     <select class="form-select form-select-sm" style="width:140px" @bind="drawAnimationMode" disabled="@(isWorking || isDrawAnimating)">
