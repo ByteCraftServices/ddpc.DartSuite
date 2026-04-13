@@ -44,8 +44,9 @@
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
+    private bool _firstParametersSet = true;
+    private Guid? _lastInitializedTournamentId;
     private bool _isExpanded;
-    private Guid? _lastInitializedTournamentId = Guid.NewGuid(); // Force init on first render
 
     private string ElementId => $"settings-panel-{PanelId}";
 
@@ -55,9 +56,10 @@
 
     protected override void OnParametersSet()
     {
-        if (_lastInitializedTournamentId != TournamentId)
+        if (_firstParametersSet || _lastInitializedTournamentId != TournamentId)
         {
             _isExpanded = DefaultExpanded;
+            _firstParametersSet = false;
         }
     }
 

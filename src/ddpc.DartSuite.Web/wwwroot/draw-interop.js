@@ -121,8 +121,9 @@ window.dartSuiteUi = window.dartSuiteUi || {
             });
         }
     },
-    collapseAllTournamentSettingsPanels: function (tournamentIdN) {
-        const prefix = "ds-spanel-" + tournamentIdN + "-";
+    collapseAllTournamentSettingsPanels: function (tournamentId) {
+        // tournamentId must be in 'N' format (no hyphens, lowercase) to match localStorage keys
+        const prefix = "ds-spanel-" + tournamentId + "-";
         // Persist collapsed state for all matching keys in localStorage
         try {
             const keys = Object.keys(localStorage).filter(function (k) { return k.startsWith(prefix); });
