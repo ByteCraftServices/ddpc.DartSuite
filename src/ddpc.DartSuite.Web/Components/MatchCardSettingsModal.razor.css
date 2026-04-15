@@ -1,0 +1,92 @@
+/* MatchCard Settings Modal – Split Layout (DS: MatchCard View Settings) */
+
+/* Modal body: override Bootstrap defaults for split flex layout */
+.mcsm-body {
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+    padding: 0;
+    flex: 1;
+    min-height: 0;
+}
+
+.mcsm-settings-panel {
+    overflow-y: auto;
+    flex-shrink: 0;
+    padding: 1rem;
+    border-right: 1px solid #dee2e6;
+    min-width: 240px;
+}
+
+.mcsm-splitter {
+    width: 6px;
+    background-color: #dee2e6;
+    cursor: col-resize;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s;
+}
+
+.mcsm-splitter:hover,
+.mcsm-splitter--dragging {
+    background-color: #0d6efd;
+}
+
+.mcsm-splitter__handle {
+    width: 2px;
+    height: 32px;
+    background-color: #adb5bd;
+    border-radius: 2px;
+    pointer-events: none;
+}
+
+.mcsm-preview-panel {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    background-color: #f0f2f5;
+    padding: 1rem;
+}
+
+.mcsm-preview-inner {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.mcsm-size-btn.active {
+    font-weight: 600;
+}
+
+/* Mobile: vertical stack, sticky preview at bottom */
+@media (max-width: 767px) {
+    .mcsm-body {
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .mcsm-settings-panel {
+        width: 100% !important;
+        border-right: none;
+        border-bottom: 2px solid #dee2e6;
+        flex-shrink: 0;
+        overflow-y: visible;
+        max-height: none;
+    }
+
+    .mcsm-splitter {
+        display: none !important;
+    }
+
+    .mcsm-preview-panel {
+        position: sticky;
+        bottom: 0;
+        max-height: 45vh;
+        border-top: 2px solid #0d6efd;
+        background-color: #e8edf2;
+        z-index: 10;
+        flex-shrink: 0;
+        overflow-y: auto;
+    }
+}
