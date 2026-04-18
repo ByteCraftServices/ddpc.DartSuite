@@ -297,4 +297,23 @@ public sealed class BoardManagementService(DartSuiteDbContext dbContext) : IBoar
         await dbContext.SaveChangesAsync(cancellationToken);
         return ToDto(board);
     }
+
+    public async Task<BoardDto?> ConvertBoardToVirtualAsync(Guid id, string? ownerAccountName, CancellationToken cancellationToken = default)
+    {
+        var board = await dbContext.Boards.FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (board is null) return null;
+
+        board.IsVirtual = true;
+        board.OwnerAccountName = string.IsNullOrWhiteSpace(ownerAccountName) ? board.OwnerAccountName : ownerAccountName.Trim();
+        board.Status = BoardStatus.Running;
+        board.ConnectionState = ConnectionState.Online;
+        board.ExtensionStatus = ExtensionConnectionStatus.Offline;
+        board.LocalIpAddress = null;
+        board.BoardManagerUrl = null;
+        board.LastExtensionPollUtc = null;
+        board.UpdatedUtc = DateTimeOffset.UtcNow;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return ToDto(board);
+    }
 }

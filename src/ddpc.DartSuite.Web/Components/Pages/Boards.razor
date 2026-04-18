@@ -98,7 +98,7 @@ else
                         {
                             <tr>
                                 <td>
-                                    <span class="badge bg-info me-1">Virtual</span>
+                                    <span class="badge bg-info me-1" title="Virtuelles Board ohne physisches Geraet">Virtual</span>
                                     @vb.Name
                                 </td>
                                 <td>
@@ -129,7 +129,7 @@ else
                                 <td>
                                     @if (vb.TournamentId.HasValue)
                                     {
-                                        <span class="badge bg-success small">Zugewiesen</span>
+                                        <span class="badge bg-success small" title="Virtuelles Board ist einem Turnier zugewiesen">Zugewiesen</span>
                                     }
                                     else
                                     {
@@ -161,6 +161,10 @@ else
             <th class="d-none d-md-table-cell">Extension</th>
             <th class="d-none d-md-table-cell">Zeitplan</th>
             <th class="d-none d-lg-table-cell">IP</th>
+            @if (AppState.IsAdmin)
+            {
+                <th>Aktion</th>
+            }
         </tr>
     </thead>
     <tbody>
@@ -171,16 +175,16 @@ else
                 <td>
                     @if (board.IsVirtual)
                     {
-                        <span class="badge bg-info me-1">Virtual</span>
+                        <span class="badge bg-info me-1" title="Virtuelles Board ohne physisches Geraet">Virtual</span>
                     }
                     <a href="/tournaments?boardId=@board.Id"
                        class="text-primary fw-semibold"
                        style="text-decoration:underline dotted">@board.Name</a>
                 </td>
                 <td class="d-none d-md-table-cell"><code class="small">@board.ExternalBoardId</code></td>
-                <td><span class="badge @StatusBadge(board.Status)">@board.Status</span></td>
+                <td><span class="badge @StatusBadge(board.Status)" title="Aktueller Betriebsstatus des Boards">@board.Status</span></td>
                 <td class="d-none d-sm-table-cell">
-                    <span class="badge @ConnectionBadge(board.ConnectionState)">@board.ConnectionState</span>
+                    <span class="badge @ConnectionBadge(board.ConnectionState)" title="Verbindungsstatus zwischen Plattform und Board">@board.ConnectionState</span>
                 </td>
                 <td>
                     @if (!string.IsNullOrEmpty(board.CurrentMatchLabel))
@@ -204,17 +208,26 @@ else
                 <td class="d-none d-md-table-cell">
                     @if (board.IsExtensionConnected)
                     {
-                        <span class="badge bg-success">Verbunden</span>
+                        <span class="badge bg-success" title="Browser-Extension meldet eine aktive Verbindung">Verbunden</span>
                     }
                     else
                     {
-                        <span class="badge bg-secondary">Getrennt</span>
+                        <span class="badge bg-secondary" title="Browser-Extension ist aktuell nicht verbunden">Getrennt</span>
                     }
                 </td>
                 <td class="d-none d-md-table-cell">
-                    <span class="badge @SchedulingBadge(board.SchedulingStatus)">@board.SchedulingStatus</span>
+                    <span class="badge @SchedulingBadge(board.SchedulingStatus)" title="Zeitplanstatus fuer Board-Einsaetze">@board.SchedulingStatus</span>
                 </td>
                 <td class="d-none d-lg-table-cell">@board.LocalIpAddress</td>
+                @if (AppState.IsAdmin)
+                {
+                    <td>
+                        @if (!board.IsVirtual)
+                        {
+                            <button class="btn btn-sm btn-outline-info" title="Bestehendes Board als virtuelles Board markieren" @onclick="() => ConvertBoardToVirtualAsync(board)">Als virtuell</button>
+                        }
+                    </td>
+                }
             </tr>
         }
     </tbody>
@@ -276,6 +289,7 @@ else
         {
             if (board.IsVirtual)
             {
+                boards.RemoveAll(b => b.Id == board.Id);
                 var vidx = virtualBoards.FindIndex(b => b.Id == board.Id);
                 if (vidx >= 0)
                     virtualBoards[vidx] = board;
@@ -342,6 +356,25 @@ else
         catch
         {
             boardError = "An unexpected error occurred. Please try again.";
+        }
+    }
+
+    private async Task ConvertBoardToVirtualAsync(BoardDto board)
+    {
+        try
+        {
+            boardError = null;
+            await Api.ConvertBoardToVirtualAsync(board.Id);
+            await LoadBoardsForCurrentScopeAsync();
+            await LoadVirtualBoardsAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            boardError = ex.Message;
+        }
+        catch
+        {
+            boardError = "Fehler beim Konvertieren in virtuelles Board.";
         }
     }
 

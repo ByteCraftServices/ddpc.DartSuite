@@ -90,6 +90,39 @@ public sealed class MatchCardRenderingMatrixTests
     }
 
     [Fact]
+    public void MatchStatusAndLiveBadges_ExposeDescriptiveTooltips()
+    {
+        using var ctx = CreateContext();
+
+        var cut = ctx.RenderComponent<MatchCard>(parameters => parameters
+            .Add(p => p.Match, CreateRunningMatch())
+            .Add(p => p.Layout, "Horizontal")
+            .Add(p => p.ShowActionButtons, false)
+            .Add(p => p.ShowHeaderMatchStatus, true)
+            .Add(p => p.ShowHeaderLiveBadge, true));
+
+        var liveBadge = cut.FindAll("span.badge").First(x => x.TextContent.Trim() == "Live");
+        liveBadge.GetAttribute("title").Should().Be("Live-Match: Werte werden in Echtzeit aktualisiert");
+
+        var statusBadge = cut.FindAll("span.badge").First(x => x.TextContent.Trim() == "Aktiv");
+        statusBadge.GetAttribute("title").Should().Contain("Aktiv: Match laeuft gerade");
+    }
+
+    [Fact]
+    public void Header_DoesNotUseOverflowHiddenClass()
+    {
+        using var ctx = CreateContext();
+
+        var cut = ctx.RenderComponent<MatchCard>(parameters => parameters
+            .Add(p => p.Match, CreateRunningMatch())
+            .Add(p => p.Layout, "Horizontal")
+            .Add(p => p.ShowActionButtons, false));
+
+        var header = cut.Find("div.card-header");
+        header.ClassList.Should().NotContain("overflow-hidden");
+    }
+
+    [Fact]
     public void ListLayout_FooterActionLocation_RendersSingleActionMenu()
     {
         using var ctx = CreateContext();
@@ -102,6 +135,26 @@ public sealed class MatchCardRenderingMatrixTests
             .Add(p => p.ShowSyncAction, true));
 
         cut.FindAll("button.match-action-menu-button").Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void ListLayout_RendersStableSlotStructure()
+    {
+        using var ctx = CreateContext();
+
+        var cut = ctx.RenderComponent<MatchCard>(parameters => parameters
+            .Add(p => p.Match, CreatePlannedMatch())
+            .Add(p => p.Layout, "List")
+            .Add(p => p.ShowActionButtons, true)
+            .Add(p => p.ShowSyncAction, true)
+            .Add(p => p.ActionButtonsLocation, "Header"));
+
+        cut.FindAll(".match-list-leading-meta").Should().HaveCount(1);
+        cut.FindAll(".match-list-player-slot-home").Should().HaveCount(1);
+        cut.FindAll(".match-list-score-slot").Should().HaveCount(1);
+        cut.FindAll(".match-list-player-slot-away").Should().HaveCount(1);
+        cut.FindAll(".match-list-trailing-meta").Should().HaveCount(1);
+        cut.FindAll(".match-list-actions-slot").Should().HaveCount(1);
     }
 
     [Fact]

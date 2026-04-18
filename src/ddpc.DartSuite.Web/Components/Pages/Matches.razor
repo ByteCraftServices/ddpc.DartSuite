@@ -22,7 +22,7 @@
 else
 {
     <div class="mb-3">
-        <span class="badge @StatusBadgeClass(AppState.SelectedTournament.Status) me-2">@AppState.SelectedTournament.Status</span>
+        <span class="badge @StatusBadgeClass(AppState.SelectedTournament.Status) me-2" title="Aktueller Status des ausgewaehlten Turniers">@AppState.SelectedTournament.Status</span>
         <strong>@AppState.SelectedTournament.Name</strong>
     </div>
 
@@ -273,7 +273,7 @@ else
                                 }
                             </td>
                             <td @onclick="() => OpenMatchDetail(match)" style="cursor:pointer">
-                                <span class="badge text-bg-secondary">@MatchLabel(match)</span>
+                                <span class="badge text-bg-secondary" title="Matchnummer im Turnierplan">@MatchLabel(match)</span>
                             </td>
                             <td class="@(match.WinnerParticipantId == match.HomeParticipantId ? "fw-bold text-success" : "")"
                                 @onclick="() => OpenMatchDetail(match)" style="cursor:pointer">
@@ -296,11 +296,11 @@ else
                             <td class="d-none d-md-table-cell" @onclick="() => OpenMatchDetail(match)" style="cursor:pointer">
                                 @if (assignedBoard is not null)
                                 {
-                                    <span class="badge text-bg-success">@assignedBoard.Name</span>
+                                    <span class="badge text-bg-success" title="Dem Match zugewiesenes Board">@assignedBoard.Name</span>
                                 }
                                 else if (!isDone)
                                 {
-                                    <span class="badge text-bg-warning">⚠ kein Board</span>
+                                    <span class="badge text-bg-warning" title="Noch kein Board zugewiesen">⚠ kein Board</span>
                                 }
                             </td>
                             <td @onclick="() => OpenMatchDetail(match)" style="cursor:pointer">

@@ -53,7 +53,6 @@ public partial class Tournaments : IAsyncDisposable
     private string? tournamentHubConnectionError;
     private string? boardHubConnectionError;
     private readonly Dictionary<string, MatchCardViewSettings> matchCardSettingsByView = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> inactiveMatchCardScopeKeys = new(StringComparer.OrdinalIgnoreCase);
 
     // ─── Data State ───
     private List<TournamentDto> tournaments = [];
@@ -320,18 +319,9 @@ public partial class Tournaments : IAsyncDisposable
 
     private static string GetTournamentRailItemHeight(TournamentDto tournament)
     {
-        // The rail label is rendered rotated by 90 degrees, so available visual height
-        // must track the effective rendered label text (including ellipsis) with extra buffer.
-        var effectiveLabel = GetTournamentRailLabel(tournament);
-        var effectiveLabelLength = effectiveLabel.Length;
-        var uppercaseCount = effectiveLabel.Count(char.IsUpper);
-
-        var heightRem = Math.Clamp(
-            2.35 + (effectiveLabelLength * 0.22) + (uppercaseCount * 0.015),
-            3.4,
-            8.8);
-
-        return $"{heightRem.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}rem";
+        var nameLength = Math.Min(tournament.Name?.Length ?? 0, TournamentRailLabelMaxLength);
+        var heightRem = Math.Clamp(1.9 + (nameLength * 0.2), 3.1, 7.2);
+        return $"{heightRem:0.##}rem";
     }
 
     private static string GetTournamentRailLabel(TournamentDto tournament)
@@ -365,7 +355,6 @@ public partial class Tournaments : IAsyncDisposable
     private const string MatchCardSectionScheduleZeitplan = "schedule-zeitplan";
     private const string MatchCardSectionScheduleQueueLegacy = "schedule-queue";
     private const string MatchCardSectionScheduleTimelineLegacy = "schedule-timeline";
-    private const string MatchCardSectionDetail = "detail";
     private const string MatchCardSectionBoardDetail = "board-detail";
 
     private static readonly IReadOnlyList<MatchCardScopeOption> MatchCardScopeOptions =
@@ -375,7 +364,6 @@ public partial class Tournaments : IAsyncDisposable
         new(BuildMatchCardScopeKey(MatchCardScopePage, MatchCardSectionGeneral), "Turniere / Allgemein"),
         new(BuildMatchCardScopeKey(MatchCardScopePage, MatchCardSectionGroups), "Turniere / Gruppen"),
         new(BuildMatchCardScopeKey(MatchCardScopePage, MatchCardSectionKnockout), "Turniere / K.O."),
-        new(BuildMatchCardScopeKey(MatchCardScopePage, MatchCardSectionDetail), "Turniere / Matchdetail"),
         new(BuildMatchCardScopeKey(MatchCardScopePage, MatchCardSectionSchedule), "Turniere / Spielplan (alle)"),
         new(BuildMatchCardScopeKey(MatchCardScopePage, MatchCardSectionScheduleBoardsUpcoming), "Turniere / Spielplan Boards & Anstehende Matches"),
         new(BuildMatchCardScopeKey(MatchCardScopePage, MatchCardSectionScheduleZeitplan), "Turniere / Spielplan Zeitplan"),
@@ -521,7 +509,6 @@ public partial class Tournaments : IAsyncDisposable
 
     private MatchCardViewSettings ActiveMatchCardSettings => GetMatchCardSettings(ActiveMatchCardContextSection);
     private MatchCardViewSettings ActiveMatchCardConfigSettings => GetEditableMatchCardSettings(activeMatchCardConfigScopeKey);
-    private MatchCardViewSettings DetailMatchCardSettings => GetMatchCardSettings(MatchCardSectionDetail);
     private MatchCardViewSettings BoardDetailMatchCardSettings => GetMatchCardSettings(MatchCardSectionBoardDetail);
 
     private MatchCardViewSettings MatchCardSettingsForMatchList(MatchDto match)
@@ -1283,7 +1270,6 @@ public partial class Tournaments : IAsyncDisposable
             _initDetailSections = false;
             try
             {
-                await JS.InvokeVoidAsync("dartSuiteUi.initDetailsStorage", "detailSection-statistiken", "detailMatchSection_statistiken");
                 await JS.InvokeVoidAsync("dartSuiteUi.initDetailsStorage", "detailSection-planung", "detailMatchSection_planung");
                 await JS.InvokeVoidAsync("dartSuiteUi.initDetailsStorage", "detailSection-allgemein", "detailMatchSection_allgemein");
             }
@@ -2294,7 +2280,6 @@ public partial class Tournaments : IAsyncDisposable
     {
         matchCardPreferenceError = null;
         matchCardSettingsByView.Clear();
-        inactiveMatchCardScopeKeys.Clear();
         activeMatchCardConfigScopeKey = BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll);
 
         var globalScopeKey = BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll);
@@ -2312,19 +2297,7 @@ public partial class Tournaments : IAsyncDisposable
                 return;
 
             var parsed = JsonSerializer.Deserialize<MatchCardViewPreferencePayload>(preference.SettingsJson);
-            if (parsed is null)
-                return;
-
-            foreach (var disabledScope in parsed.DisabledScopes)
-            {
-                var normalizedDisabledScope = NormalizeMatchCardScopeKey(disabledScope);
-                if (string.Equals(normalizedDisabledScope, globalScopeKey, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                inactiveMatchCardScopeKeys.Add(normalizedDisabledScope);
-            }
-
-            if (parsed.Views is null || parsed.Views.Count == 0)
+            if (parsed?.Views is null || parsed.Views.Count == 0)
                 return;
 
             foreach (var (key, value) in parsed.Views)
@@ -2356,10 +2329,7 @@ public partial class Tournaments : IAsyncDisposable
             Views = matchCardSettingsByView.ToDictionary(
                 entry => entry.Key,
                 entry => entry.Value.Clone(),
-                StringComparer.OrdinalIgnoreCase),
-            DisabledScopes = inactiveMatchCardScopeKeys
-                .Where(scope => !string.Equals(scope, BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll), StringComparison.OrdinalIgnoreCase))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase)
+                StringComparer.OrdinalIgnoreCase)
         };
 
         var json = JsonSerializer.Serialize(payload);
@@ -2451,9 +2421,6 @@ public partial class Tournaments : IAsyncDisposable
 
         foreach (var candidate in candidates)
         {
-            if (inactiveMatchCardScopeKeys.Contains(candidate))
-                continue;
-
             if (matchCardSettingsByView.TryGetValue(candidate, out var found))
                 return found;
         }
@@ -2544,7 +2511,6 @@ public partial class Tournaments : IAsyncDisposable
         var settings = ActiveMatchCardConfigSettings;
         update(settings);
         settings.Normalize();
-        inactiveMatchCardScopeKeys.Remove(NormalizeMatchCardScopeKey(activeMatchCardConfigScopeKey));
 
         if (string.IsNullOrWhiteSpace(autodartsDisplayName))
         {
@@ -4700,11 +4666,8 @@ public partial class Tournaments : IAsyncDisposable
         editAwaySets = match.AwaySets;
         resultError = null;
         detailMatchStatistics = [];
-        // Fire-and-forget loads for statistics and follow state.
-        // For live matches, ensure listener + sync path are active so SignalR updates continue.
-        if (IsCurrentUserManager && IsLiveMatch(match) && !string.IsNullOrWhiteSpace(match.ExternalMatchId))
-            _ = EnsureListenerAsync(match);
-        _ = LoadMatchStatisticsAsync(match.Id, tryLiveSyncFallback: true);
+        // Fire-and-forget loads for statistics and follow state
+        _ = LoadMatchStatisticsAsync(match.Id);
         _ = CheckFollowStateAsync(match.Id);
         _ = ReconcileTournamentMonitoringForViewAsync();
         _initDetailSections = true;
@@ -4727,9 +4690,6 @@ public partial class Tournaments : IAsyncDisposable
         // C2: refresh matches from server after close so any changes during the modal session are reflected
         _ = BackgroundRefreshMatchesAsync();
     }
-
-    private static bool IsLiveMatch(MatchDto match)
-        => match.StartedUtc is not null && match.FinishedUtc is null;
 
     private bool CanSetWalkover(MatchDto match)
     {
@@ -5159,38 +5119,12 @@ public partial class Tournaments : IAsyncDisposable
     }
 
     // ─── Match Statistics (#18) ───
-    private async Task LoadMatchStatisticsAsync(Guid matchId, bool tryLiveSyncFallback = false)
+    private async Task LoadMatchStatisticsAsync(Guid matchId)
     {
         try
         {
             isLoadingStats = true;
-            resultError = null;
-            var statistics = (await Api.GetMatchStatisticsAsync(matchId)).ToList();
-
-            var match = detailMatch?.Id == matchId
-                ? detailMatch
-                : matches.FirstOrDefault(m => m.Id == matchId);
-
-            var shouldTryLiveSync = tryLiveSyncFallback
-                && statistics.Count == 0
-                && match is not null
-                && IsLiveMatch(match)
-                && IsCurrentUserManager
-                && !string.IsNullOrWhiteSpace(match.ExternalMatchId);
-
-            if (shouldTryLiveSync)
-            {
-                try
-                {
-                    statistics = (await Api.SyncMatchStatisticsAsync(matchId)).ToList();
-                }
-                catch
-                {
-                    // Ignore fallback sync errors. Persisted statistics were already loaded.
-                }
-            }
-
-            detailMatchStatistics = statistics;
+            detailMatchStatistics = (await Api.GetMatchStatisticsAsync(matchId)).ToList();
         }
         catch { detailMatchStatistics = []; }
         finally { isLoadingStats = false; }
@@ -5202,23 +5136,9 @@ public partial class Tournaments : IAsyncDisposable
         try
         {
             isLoadingStats = true;
-            resultError = null;
             detailMatchStatistics = (await Api.SyncMatchStatisticsAsync(detailMatch.Id)).ToList();
         }
-        catch (Exception ex)
-        {
-            // Keep statistics accessible after match end or for non-manager users.
-            try
-            {
-                detailMatchStatistics = (await Api.GetMatchStatisticsAsync(detailMatch.Id)).ToList();
-            }
-            catch
-            {
-                detailMatchStatistics = [];
-            }
-
-            resultError = $"Statistik-Sync fehlgeschlagen: {ex.Message}";
-        }
+        catch (Exception ex) { resultError = $"Statistik-Sync fehlgeschlagen: {ex.Message}"; }
         finally { isLoadingStats = false; }
     }
 
@@ -7190,7 +7110,7 @@ public partial class Tournaments : IAsyncDisposable
         var point = await JS.InvokeAsync<RelativePoint?>("dartSuiteDraw.getRelativeCenter", KoDrawContainerId, targetId);
         if (point is null) return;
 
-        koDrawTokenStyle = $"left:{point.Left.ToString(System.Globalization.CultureInfo.InvariantCulture)}px; top:{point.Top.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;";
+        koDrawTokenStyle = $"left:{point.Left}px; top:{point.Top}px;";
         showKoDrawToken = true;
         await InvokeAsync(StateHasChanged);
     }

@@ -8,14 +8,14 @@
 {
     <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="HandleBackdropClick">
         <div class="modal-dialog modal-fullscreen" @onclick:stopPropagation>
-            <div class="modal-content mcsm-modal-content">
+            <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">MatchCard – @GetScopeLabel(ScopeKey)</h5>
                     <button type="button" class="btn-close" @onclick="CloseAsync"></button>
                 </div>
                 <div class="modal-body mcsm-body">
                     <!-- Left panel: Settings -->
-                    <div class="mcsm-settings-panel" style="@SettingsPanelWidthStyle" @ref="_settingsPanelRef" aria-label="MatchCard Einstellungen">
+                    <div class="mcsm-settings-panel" style="@SettingsPanelWidthStyle" @ref="_settingsPanelRef">
                     @if (_isLoading)
                     {
                         <div class="text-center py-3 text-muted small">Laden...</div>
@@ -292,13 +292,13 @@
                     </div><!-- end .mcsm-settings-panel -->
 
                     <!-- Splitter: desktop only, draggable -->
-                    <div class="mcsm-splitter d-none d-lg-flex" @ref="_splitterRef" aria-hidden="true">
+                    <div class="mcsm-splitter d-none d-md-flex" @ref="_splitterRef">
                         <div class="mcsm-splitter__handle"></div>
                     </div>
 
                     <!-- Right panel: Live Preview -->
                     <div class="mcsm-preview-panel">
-                        <div class="mcsm-preview-toolbar d-flex align-items-center gap-2 mb-3 flex-wrap">
+                        <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
                             <span class="small fw-semibold text-muted">Vorschau:</span>
                             @foreach (var opt in _previewSizeOptions)
                             {
@@ -309,7 +309,6 @@
                             }
                         </div>
                         <div class="mcsm-preview-inner">
-                            <div class="small text-muted mb-2">Die Vorschau rendert die MatchCard mit den aktuellen Einstellungen (WYSIWYG).</div>
                             <div style="width: @GetPreviewWidth(); max-width: 100%;">
                                 <MatchCard Match="@_demoMatch"
                                            ViewSettings="@EffectivePreviewSettings"
@@ -355,7 +354,7 @@
                         </div>
                     </div><!-- end .mcsm-preview-panel -->
                 </div><!-- end .mcsm-body -->
-                <div class="modal-footer mcsm-modal-footer">
+                <div class="modal-footer">
                     <button class="btn btn-secondary" @onclick="CloseAsync">Schließen</button>
                     <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(_isSaving || _isLoading)">Speichern</button>
                 </div>

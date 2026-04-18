@@ -23,4 +23,5 @@ public interface IBoardManagementService
     Task<BoardDto> CreateVirtualBoardAsync(CreateVirtualBoardRequest request, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<BoardDto>> GetVirtualBoardsAsync(CancellationToken cancellationToken = default);
     Task<BoardDto?> ChangeVirtualBoardOwnerAsync(Guid id, string? ownerAccountName, CancellationToken cancellationToken = default);
+    Task<BoardDto?> ConvertBoardToVirtualAsync(Guid id, string? ownerAccountName, CancellationToken cancellationToken = default);
 }

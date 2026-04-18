@@ -32,7 +32,8 @@
 			"Get-Process": true,
 			"ConvertTo-Json": true,
 			"Out-Null": true,
-			"git fetch": true
+			"git fetch": true,
+			"git rev-parse": true
 		},
 		"chat.agent.maxRequests": 100,
 		"workbench.browser.enableChatTools": true

@@ -107,46 +107,24 @@
                 </div>
             </details>
 
-            @foreach (var scopeKey in GetVisibleMatchCardScopeKeys(globalScopeKey))
+            @foreach (var overriddenKey in _userOverriddenScopeKeys
+                .Where(k => !string.Equals(k, globalScopeKey, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(k => k))
             {
-                var resolved = ResolveMatchCardSettingsForScope(scopeKey);
-                var isDefaultConfigured = IsDefaultConfiguredScope(scopeKey);
-                var isOverridden = _userOverriddenScopeKeys.Contains(scopeKey);
-                var isInactive = _inactiveMatchCardScopeKeys.Contains(scopeKey);
-                var removeTitle = isOverridden ? "Ueberschreibung entfernen" : "Default als inaktiv markieren";
-
-                <details id="@BuildScopePanelId(scopeKey)" class="card mb-2" open>
+                var resolved = ResolveMatchCardSettingsForScope(overriddenKey);
+                <details id="@BuildScopePanelId(overriddenKey)" class="card mb-2" open>
                     <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
-                        <span class="d-flex align-items-center gap-2 flex-wrap">
-                            <span>@GetScopeLabel(scopeKey)</span>
-                            @if (isDefaultConfigured && !isOverridden)
-                            {
-                                <span class="badge text-bg-warning border">Default</span>
-                            }
-                            @if (isInactive)
-                            {
-                                <span class="badge text-bg-secondary border">Inaktiv</span>
-                            }
-                        </span>
+                        <span>@GetScopeLabel(overriddenKey)</span>
                         <div class="d-flex gap-1" @onclick:stopPropagation @onclick:preventDefault>
                             <button type="button" class="btn btn-outline-secondary btn-sm"
                                     title="Sektion modal bearbeiten"
-                                    @onclick="() => OpenMatchCardEditor(scopeKey)">⚙</button>
-                            @if (isInactive)
-                            {
-                                <button type="button" class="btn btn-outline-success btn-sm"
-                                        title="Default wieder aktivieren"
-                                        @onclick="() => ActivateScopeDefaultAsync(scopeKey)">↺</button>
-                            }
-                            else
-                            {
-                                <button type="button" class="btn btn-outline-danger btn-sm"
-                                        title="@removeTitle"
-                                        @onclick="() => RemoveScopeOverrideAsync(scopeKey)">×</button>
-                            }
+                                    @onclick="() => OpenMatchCardEditor(overriddenKey)">⚙</button>
+                            <button type="button" class="btn btn-outline-danger btn-sm"
+                                    title="Überschreibung entfernen"
+                                    @onclick="() => RemoveScopeOverrideAsync(overriddenKey)">×</button>
                         </div>
                     </summary>
-                    <div class="card-body py-2 small d-flex flex-wrap gap-2" id="@($"{BuildScopePanelId(scopeKey)}-body")">
+                    <div class="card-body py-2 small d-flex flex-wrap gap-2" id="@($"{BuildScopePanelId(overriddenKey)}-body")">
                         <span class="badge text-bg-light border">Layout: @resolved.Layout</span>
                         <span class="badge text-bg-light border">Spielstand: @resolved.ScoreMode</span>
                         <span class="badge text-bg-light border">Spielernamen: @resolved.PlayerNameMode</span>
@@ -196,16 +174,16 @@ else
 @if (showSettingsModal)
 {
     <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="() => CloseSettingsModal()">
-        <div class="modal-dialog modal-dialog-centered modal-xl modal-fullscreen-lg-down" @onclick:stopPropagation>
-            <div class="modal-content settings-modal-content">
+        <div class="modal-dialog modal-dialog-centered modal-lg" @onclick:stopPropagation>
+            <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">@settingsModalTitle</h5>
                     <button type="button" class="btn-close" @onclick="() => CloseSettingsModal()"></button>
                 </div>
-                <div class="modal-body settings-modal-body">
+                <div class="modal-body">
                     @if (settingsModalKind == "matchcard")
                     {
-                        <div id="settings-modal-matchcard" class="settings-matchcard-editor">
+                        <div id="settings-modal-matchcard">
                             <div class="small text-muted mb-2">Kontext: @GetScopeLabel(settingsModalScopeKey)</div>
 
                             @{
@@ -479,7 +457,7 @@ else
                             </div>
                             </fieldset>
 
-                            <div class="border rounded p-2 mt-3 settings-matchcard-preview" id="settings-modal-matchcard-preview">
+                            <div class="border rounded p-2 mt-3" id="settings-modal-matchcard-preview">
                                 <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
                                     <div class="fw-semibold small mb-0">Vorschau</div>
                                     <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -661,7 +639,7 @@ else
                         </div>
                     }
                 </div>
-                <div class="modal-footer settings-modal-footer">
+                <div class="modal-footer">
                     <button class="btn btn-secondary" @onclick="() => CloseSettingsModal()">Schliessen</button>
                     @if (settingsModalKind == "matchcard")
                     {
@@ -702,7 +680,6 @@ else
     private string? matchCardPreferenceError;
     private readonly Dictionary<string, MatchCardViewSettings> matchCardSettingsByView = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _userOverriddenScopeKeys = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _inactiveMatchCardScopeKeys = new(StringComparer.OrdinalIgnoreCase);
 
     private bool showSettingsModal;
     private string settingsModalKind = string.Empty;
@@ -926,7 +903,6 @@ else
         matchCardPreferenceError = null;
         matchCardSettingsByView.Clear();
         _userOverriddenScopeKeys.Clear();
-        _inactiveMatchCardScopeKeys.Clear();
 
         var globalScopeKey = BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll);
         matchCardSettingsByView[globalScopeKey] = MatchCardViewSettings.CreateDefault(globalScopeKey);
@@ -941,19 +917,7 @@ else
                 return;
 
             var payload = JsonSerializer.Deserialize<MatchCardViewPreferencePayload>(preference.SettingsJson);
-            if (payload is null)
-                return;
-
-            foreach (var disabledScope in payload.DisabledScopes)
-            {
-                var normalizedDisabledScope = NormalizeMatchCardScopeKey(disabledScope);
-                if (string.Equals(normalizedDisabledScope, globalScopeKey, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                _inactiveMatchCardScopeKeys.Add(normalizedDisabledScope);
-            }
-
-            if (payload.Views is null)
+            if (payload?.Views is null)
                 return;
 
             foreach (var (key, configured) in payload.Views)
@@ -996,9 +960,6 @@ else
 
         foreach (var candidate in candidates)
         {
-            if (_inactiveMatchCardScopeKeys.Contains(candidate))
-                continue;
-
             if (matchCardSettingsByView.TryGetValue(candidate, out var found))
                 return found;
         }
@@ -1032,10 +993,7 @@ else
                 .ToDictionary(
                     entry => entry.Key,
                     entry => entry.Value.Clone(),
-                    StringComparer.OrdinalIgnoreCase),
-            DisabledScopes = _inactiveMatchCardScopeKeys
-                .Where(scope => !string.Equals(scope, BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll), StringComparison.OrdinalIgnoreCase))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase)
+                    StringComparer.OrdinalIgnoreCase)
         };
 
         var json = JsonSerializer.Serialize(payload);
@@ -1129,45 +1087,6 @@ else
                      && !_userOverriddenScopeKeys.Contains(o.ScopeKey));
     }
 
-    private IEnumerable<string> GetVisibleMatchCardScopeKeys(string globalScopeKey)
-    {
-        var knownOrder = MatchCardScopeOptions
-            .Select(x => NormalizeMatchCardScopeKey(x.ScopeKey))
-            .Where(k => !string.Equals(k, globalScopeKey, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        var visible = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var key in knownOrder)
-        {
-            if (_userOverriddenScopeKeys.Contains(key)
-                || _inactiveMatchCardScopeKeys.Contains(key)
-                || IsDefaultConfiguredScope(key))
-            {
-                visible.Add(key);
-            }
-        }
-
-        foreach (var overridden in _userOverriddenScopeKeys)
-        {
-            if (!string.Equals(overridden, globalScopeKey, StringComparison.OrdinalIgnoreCase))
-                visible.Add(overridden);
-        }
-
-        foreach (var inactive in _inactiveMatchCardScopeKeys)
-        {
-            if (!string.Equals(inactive, globalScopeKey, StringComparison.OrdinalIgnoreCase))
-                visible.Add(inactive);
-        }
-
-        return knownOrder
-            .Where(visible.Contains)
-            .Concat(visible.Where(k => !knownOrder.Contains(k, StringComparer.OrdinalIgnoreCase)).OrderBy(k => k));
-    }
-
-    private static bool IsDefaultConfiguredScope(string scopeKey)
-        => MatchCardViewSettings.IsExplicitlyConfiguredScope(scopeKey);
-
     private void CreateAndEditScope()
     {
         if (string.IsNullOrWhiteSpace(settingsModalScopeKey))
@@ -1193,41 +1112,8 @@ else
     private async Task RemoveScopeOverrideAsync(string scopeKey)
     {
         var normalizedKey = NormalizeMatchCardScopeKey(scopeKey);
-        var isDefaultScope = IsDefaultConfiguredScope(normalizedKey);
-
         _userOverriddenScopeKeys.Remove(normalizedKey);
         matchCardSettingsByView.Remove(normalizedKey);
-
-        if (isDefaultScope)
-            _inactiveMatchCardScopeKeys.Add(normalizedKey);
-        else
-            _inactiveMatchCardScopeKeys.Remove(normalizedKey);
-
-        matchCardPreferenceError = null;
-        if (!string.IsNullOrWhiteSpace(autodartsDisplayName))
-        {
-            try
-            {
-                isSavingMatchCardPreferences = true;
-                await PersistMatchCardSettingsAsync();
-            }
-            catch (Exception ex)
-            {
-                matchCardPreferenceError = $"MatchCard-Einstellungen konnten nicht gespeichert werden: {ex.Message}";
-            }
-            finally
-            {
-                isSavingMatchCardPreferences = false;
-            }
-        }
-
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task ActivateScopeDefaultAsync(string scopeKey)
-    {
-        var normalizedKey = NormalizeMatchCardScopeKey(scopeKey);
-        _inactiveMatchCardScopeKeys.Remove(normalizedKey);
 
         matchCardPreferenceError = null;
         if (!string.IsNullOrWhiteSpace(autodartsDisplayName))
@@ -1294,7 +1180,6 @@ else
         settingsModalMatchCard.Normalize();
         matchCardSettingsByView[settingsModalScopeKey] = settingsModalMatchCard.Clone();
         _userOverriddenScopeKeys.Add(settingsModalScopeKey);
-        _inactiveMatchCardScopeKeys.Remove(settingsModalScopeKey);
 
         if (string.IsNullOrWhiteSpace(autodartsDisplayName))
         {

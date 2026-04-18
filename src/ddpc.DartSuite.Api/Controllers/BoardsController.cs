@@ -517,6 +517,19 @@ public sealed class BoardsController(
         return Ok(board);
     }
 
+    [HttpPatch("{id:guid}/virtualize")]
+    public async Task<ActionResult<BoardDto>> ConvertToVirtual(Guid id, [FromQuery] string? ownerAccountName, CancellationToken cancellationToken)
+    {
+        var adminAccess = ToDeniedResult(await tournamentAuthorization.EnsureAdminAsync(HttpContext, cancellationToken));
+        if (adminAccess is not null) return adminAccess;
+
+        var board = await boardService.ConvertBoardToVirtualAsync(id, ownerAccountName, cancellationToken);
+        if (board is null) return NotFound();
+
+        await hubContext.Clients.All.SendAsync("BoardStatusChanged", board, cancellationToken);
+        return Ok(board);
+    }
+
     private async Task<ActionResult?> RequireBoardManagerAccessAsync(Guid boardId, CancellationToken cancellationToken, Guid? targetTournamentId = null)
     {
         var board = await boardService.GetBoardAsync(boardId, cancellationToken);

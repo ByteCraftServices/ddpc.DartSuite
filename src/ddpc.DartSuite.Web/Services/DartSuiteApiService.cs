@@ -123,6 +123,17 @@ public sealed class DartSuiteApiService
         return (await response.Content.ReadFromJsonAsync<BoardDto>(cancellationToken: cancellationToken))!;
     }
 
+    public async Task<BoardDto> ConvertBoardToVirtualAsync(Guid boardId, string? ownerAccountName = null, CancellationToken cancellationToken = default)
+    {
+        var url = $"api/boards/{boardId}/virtualize";
+        if (!string.IsNullOrWhiteSpace(ownerAccountName))
+            url += $"?ownerAccountName={Uri.EscapeDataString(ownerAccountName)}";
+
+        var response = await _httpClient.PatchAsync(url, null, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<BoardDto>(cancellationToken: cancellationToken))!;
+    }
+
     public async Task<BoardDto> UpdateBoardAsync(UpdateBoardRequest request, CancellationToken cancellationToken = default)
     {
         var response = await _httpClient.PutAsJsonAsync($"api/boards/{request.Id}", request, cancellationToken);
