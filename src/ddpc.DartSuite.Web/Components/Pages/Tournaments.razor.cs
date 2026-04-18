@@ -5660,7 +5660,7 @@ public partial class Tournaments : IAsyncDisposable
         if (rounds.Count == 0)
             return;
 
-        detailRoundGroup = [.. rounds.OrderBy(r => r.Phase).ThenBy(r => r.RoundNumber)];
+        detailRoundGroup = [.. OrderRounds(rounds)];
         var round = detailRoundGroup[0];
         detailRound = round;
         newRoundPhase = round.Phase;
@@ -5694,13 +5694,14 @@ public partial class Tournaments : IAsyncDisposable
         {
             return detailRoundGroup
                 .Select(r => new RoundSaveTarget(r.Phase, r.RoundNumber))
-                .OrderBy(r => r.Phase)
-                .ThenBy(r => r.RoundNumber)
                 .ToList();
         }
 
         return [new RoundSaveTarget(newRoundPhase, newRoundNumber)];
     }
+
+    private static IEnumerable<TournamentRoundDto> OrderRounds(IEnumerable<TournamentRoundDto> rounds)
+        => rounds.OrderBy(r => r.Phase).ThenBy(r => r.RoundNumber);
 
     private async Task DeleteRoundAsync()
     {

@@ -15,9 +15,9 @@ public sealed class TournamentsRoundSaveTargetTests
         SetPrivateField(sut, "newRoundNumber", 99);
         SetPrivateField(sut, "detailRoundGroup", new List<TournamentRoundDto>
         {
-            CreateRound("Knockout", 2),
+            CreateRound("Group", 3),
             CreateRound("Knockout", 1),
-            CreateRound("Group", 3)
+            CreateRound("Knockout", 2)
         });
 
         var targets = InvokeResolveRoundSaveTargets(sut);

@@ -27,9 +27,13 @@
     <label class="form-check-label small" for="showCompletedRounds">Abgeschlossene Runden anzeigen</label>
 </div>
 
-@if (VisibleRoundGroups.Any())
+@{
+    var visibleRoundGroups = VisibleRoundGroups;
+}
+
+@if (visibleRoundGroups.Any())
 {
-    @foreach (var grp in VisibleRoundGroups)
+    @foreach (var grp in visibleRoundGroups)
     {
         var started = grp.Rounds.Any(IsRoundStarted);
         var completed = grp.Rounds.All(IsRoundCompleted);
