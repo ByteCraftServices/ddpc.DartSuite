@@ -555,6 +555,68 @@ h1:focus {
     background-color: rgba(255, 255, 255, 0.92);
 }
 
+.match-meta-categories {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.55rem;
+    align-items: flex-start;
+}
+
+.match-meta-category {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+    padding: 0.2rem 0.35rem;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 0.5rem;
+    background: rgba(248, 249, 250, 0.7);
+}
+
+.match-meta-category-title {
+    font-size: 0.64rem;
+    line-height: 1;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--bs-gray-600);
+    font-weight: 700;
+}
+
+.match-meta-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    align-items: center;
+}
+
+.match-meta-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.2rem;
+}
+
+.match-meta-stack .badge {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.match-meta-category-tournamentplan {
+    min-width: 5.5rem;
+}
+
+@media (max-width: 575.98px) {
+    .match-meta-category {
+        width: 100%;
+    }
+
+    .match-meta-items {
+        gap: 0.2rem;
+    }
+}
+
 .prematch-info-action-chip {
     cursor: pointer;
 }
@@ -711,6 +773,10 @@ h1:focus {
     align-items: center;
 }
 
+.schedule-queue-carousel-wrap.no-nav {
+    grid-template-columns: minmax(0, 1fr);
+}
+
 .schedule-queue-nav {
     white-space: nowrap;
     width: 2.25rem;
@@ -734,10 +800,26 @@ h1:focus {
     padding-bottom: 0.25rem;
 }
 
-.schedule-queue-carousel-item {
+.schedule-queue-carousel.is-fit {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
+    overflow: visible;
+    padding-bottom: 0;
+}
+
+.schedule-queue-carousel.is-fit.single-board {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.schedule-queue-carousel.is-scrollable .schedule-queue-carousel-item {
     flex: 0 0 clamp(18rem, 31vw, 24rem);
     min-width: 18rem;
     scroll-snap-align: start;
+}
+
+.schedule-queue-carousel.is-fit .schedule-queue-carousel-item {
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .schedule-queue-item-shell,
@@ -916,7 +998,9 @@ h1:focus {
 .match-status-default {
     background-color: rgba(108, 117, 125, 0.65) !important;
     color: #fff !important;
+}
 
+@media (max-width: 991.98px) {
     .schedule-queue-carousel-wrap {
         grid-template-columns: 1fr;
     }
@@ -928,7 +1012,7 @@ h1:focus {
         min-width: 0;
     }
 
-    .schedule-queue-carousel-item {
+    .schedule-queue-carousel.is-scrollable .schedule-queue-carousel-item {
         flex-basis: min(88vw, 22rem);
         min-width: min(88vw, 22rem);
     }

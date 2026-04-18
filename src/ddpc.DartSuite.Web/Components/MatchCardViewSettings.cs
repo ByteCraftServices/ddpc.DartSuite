@@ -243,6 +243,15 @@ public sealed class MatchCardViewSettings
         }
     }
 
+    public static bool IsExplicitlyConfiguredScope(string? scopeKey)
+    {
+        var normalizedScope = NormalizeScopeKey(scopeKey);
+        return ConfiguredDefaultsByScope.ContainsKey(normalizedScope);
+    }
+
+    public static IEnumerable<string> GetExplicitlyConfiguredScopes()
+        => ConfiguredDefaultsByScope.Keys;
+
     private static MatchCardViewSettings? ResolveConfiguredDefault(string? scopeKey)
     {
         var normalizedScope = NormalizeScopeKey(scopeKey);
@@ -408,6 +417,7 @@ public sealed class MatchCardViewSettings
 public sealed class MatchCardViewPreferencePayload
 {
     public Dictionary<string, MatchCardViewSettings> Views { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> DisabledScopes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class MatchCardDefaultsOptions

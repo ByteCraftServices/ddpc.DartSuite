@@ -31,7 +31,8 @@
 			"dotnet watch": true,
 			"Get-Process": true,
 			"ConvertTo-Json": true,
-			"Out-Null": true
+			"Out-Null": true,
+			"git fetch": true
 		},
 		"chat.agent.maxRequests": 100,
 		"workbench.browser.enableChatTools": true

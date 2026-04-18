@@ -309,7 +309,7 @@
         var homeP = participants.FirstOrDefault(p => p.Id == detailMatch.HomeParticipantId);
         var awayP = participants.FirstOrDefault(p => p.Id == detailMatch.AwayParticipantId);
         var assignedBoard = boards.FirstOrDefault(b => b.Id == detailMatch.BoardId);
-        var detailCardSettings = ActiveMatchCardSettings;
+        var detailCardSettings = DetailMatchCardSettings;
         var gameplayText = FormatGameplay(detailMatch);
         var matchListener = matchListeners.FirstOrDefault(l => l.MatchId == detailMatch.Id);
         var showManualResultEditor = !(detailMatchOpenedFromSchedule && IsMatchMonitored(detailMatch));
@@ -322,6 +322,10 @@
                         @if (IsCurrentUserManager)
                         {
                             <div class="d-flex gap-1 me-2 ms-auto align-items-center">
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-secondary"
+                                        title="MatchCard fuer Matchdetails konfigurieren"
+                                        @onclick='() => OpenMatchCardScopeEditor("tournaments::detail")'>⚙</button>
                                 @if (CanStartListener(detailMatch))
                                 {
                                     <button type="button" class="btn btn-sm btn-outline-success" title="Listener starten" @onclick="() => EnsureListenerAsync(detailMatch)" disabled="@isWorking">🎧</button>
@@ -381,8 +385,23 @@
                                        DetailsExpandedByDefault="@(!detailCardSettings.CollapseDetailsOnMobile || !isCompactViewport)"
                                        ForceDetailsExpanded="@forcedMatchDetailsExpanded"
                                        EnableRealtimeConsumer="@(detailMatch.StartedUtc is not null && detailMatch.FinishedUtc is null)" />
-                                    <div id="detailSection-planung" class="mt-2">
-                                        <div class="small fw-semibold text-secondary text-uppercase mb-1">📅 Zeitplan</div>
+                                    <details id="detailSection-statistiken" class="card shadow-sm border-0 mt-2 tournament-detail-expandpanel" open>
+                                        <summary class="card-header py-2 px-3 fw-semibold text-secondary text-uppercase small">📊 Statistiken</summary>
+                                        <div class="card-body py-2 px-3">
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <h6 class="fw-semibold mb-0">Statistiken</h6>
+                                                <button class="btn btn-outline-secondary btn-sm" @onclick="SyncMatchStatisticsAsync" disabled="@isLoadingStats">
+                                                    @if (isLoadingStats) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                                    🔄 Aktualisieren
+                                                </button>
+                                            </div>
+                                            <MatchStatistics Statistics="@detailMatchStatistics" />
+                                        </div>
+                                    </details>
+
+                                    <details id="detailSection-planung" class="card shadow-sm border-0 mt-2 tournament-detail-expandpanel" open>
+                                        <summary class="card-header py-2 px-3 fw-semibold text-secondary text-uppercase small">📅 Zeitplan</summary>
+                                        <div class="card-body py-2 px-3">
                                     @if (detailMatch.PlannedStartUtc is not null)
                                     {
                                         <p class="small text-muted">⏰ Geplante Startzeit:
@@ -410,9 +429,12 @@
                                                 }
                                             </p>
                                         }
-                                    </div>
-                                    <div id="detailSection-allgemein" class="mt-2">
-                                        <div class="small fw-semibold text-secondary text-uppercase mb-1">⚙️ Allgemein</div>
+                                        </div>
+                                    </details>
+
+                                    <details id="detailSection-allgemein" class="card shadow-sm border-0 mt-2 tournament-detail-expandpanel" open>
+                                        <summary class="card-header py-2 px-3 fw-semibold text-secondary text-uppercase small">⚙️ Allgemein</summary>
+                                        <div class="card-body py-2 px-3">
                                         <p class="small text-muted mb-2">🔗 ExternalMatchId: <span class="font-monospace">@(string.IsNullOrWhiteSpace(detailMatch.ExternalMatchId) ? "—" : detailMatch.ExternalMatchId)</span></p>
                                         @if (!string.IsNullOrWhiteSpace(detailMatch.ExternalMatchId) && matchListener is null && detailMatch.StartedUtc is not null && detailMatch.FinishedUtc is null)
                                         {
@@ -507,20 +529,6 @@
                                             </div>
                                         }
 
-                                        @* ─── Match Statistics (#18) ─── *@
-                                        @if (detailMatchStatistics.Count > 0 || isLoadingStats)
-                                        {
-                                            <hr />
-                                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                                <h6 class="fw-semibold mb-0">Statistiken</h6>
-                                                <button class="btn btn-outline-secondary btn-sm" @onclick="SyncMatchStatisticsAsync" disabled="@isLoadingStats">
-                                                    @if (isLoadingStats) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                                                    🔄 Aktualisieren
-                                                </button>
-                                            </div>
-                                            <MatchStatistics Statistics="@detailMatchStatistics" />
-                                        }
-
                                         @if (CanSetWalkover(detailMatch))
                                         {
                                             <div class="d-flex align-items-center gap-2 mt-2 mb-2">
@@ -602,6 +610,7 @@
                                             <div class="alert alert-danger py-2 small">@resultError</div>
                                         }
                                     </div>
+                                    </details>
                                 </div>
                                 <div class="modal-footer">
                                     <button class="btn btn-outline-danger me-auto" @onclick="ResetMatchAsync" disabled="@isWorking"
@@ -2783,12 +2792,12 @@
 
     .tournament-list-rail-item {
         --rail-item-height: 5.2rem;
-        width: 1.9rem;
+        width: 2.35rem;
         min-height: 3.1rem;
         height: var(--rail-item-height);
-        padding: 0.04rem;
+        padding: 0.22rem;
         border: 1px solid rgba(13, 110, 253, 0.25);
-        border-radius: 0.7rem;
+        border-radius: 0.78rem;
         background: rgba(255, 255, 255, 0.95);
         color: #0d6efd;
         display: inline-flex;
@@ -2805,11 +2814,22 @@
 
     .tournament-list-rail-label {
         display: inline-block;
-        transform: rotate(-90deg);
+        writing-mode: vertical-rl;
+        text-orientation: mixed;
         white-space: nowrap;
-        font-size: 0.68rem;
-        line-height: 1;
-        letter-spacing: 0.01em;
+        font-size: 0.72rem;
+        font-weight: 600;
+        line-height: 1.05;
+        letter-spacing: 0.02em;
+    }
+
+    .tournament-detail-expandpanel > summary {
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .tournament-detail-expandpanel > summary::marker {
+        font-size: 0.9em;
     }
 
     .tournament-list-backdrop {

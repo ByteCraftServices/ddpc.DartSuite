@@ -105,6 +105,13 @@ window.dartSuiteUi = window.dartSuiteUi || {
         const delta = Number.isFinite(deltaX) ? deltaX : 0;
         element.scrollBy({ left: delta, behavior: "smooth" });
     },
+    hasHorizontalOverflow: function (element) {
+        if (!element) {
+            return false;
+        }
+
+        return (element.scrollWidth - element.clientWidth) > 1;
+    },
     localStorageGet: function (key) {
         try { return localStorage.getItem(key); } catch (e) { return null; }
     },

@@ -656,6 +656,7 @@ else
     private List<MatchListenerInfoDto> matchListeners = [];
     private MatchCardViewSettings detailMatchCardSettings = MatchCardViewSettings.CreateDefault("matches::detail");
     private readonly Dictionary<string, MatchCardViewSettings> matchCardSettingsByView = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> inactiveMatchCardScopeKeys = new(StringComparer.OrdinalIgnoreCase);
     private bool isSyncingDetailMatch;
     private bool isFollowingDetailMatch;
     private bool isFollowOperationInProgress;
@@ -931,6 +932,9 @@ else
 
         foreach (var candidate in candidates)
         {
+            if (inactiveMatchCardScopeKeys.Contains(NormalizeMatchCardScopeKey(candidate)))
+                continue;
+
             if (matchCardSettingsByView.TryGetValue(candidate, out var found))
                 return found;
         }
@@ -955,6 +959,7 @@ else
     {
         matchCardPreferenceError = null;
         matchCardSettingsByView.Clear();
+        inactiveMatchCardScopeKeys.Clear();
 
         var globalScopeKey = BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll);
         var pageScopeKey = BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll);
@@ -972,7 +977,19 @@ else
                 return;
 
             var payload = JsonSerializer.Deserialize<MatchCardViewPreferencePayload>(preference.SettingsJson);
-            if (payload?.Views is null)
+            if (payload is null)
+                return;
+
+            foreach (var disabledScope in payload.DisabledScopes)
+            {
+                var normalizedDisabledScope = NormalizeMatchCardScopeKey(disabledScope);
+                if (string.Equals(normalizedDisabledScope, BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll), StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                inactiveMatchCardScopeKeys.Add(normalizedDisabledScope);
+            }
+
+            if (payload.Views is null)
                 return;
 
             foreach (var (key, configured) in payload.Views)
@@ -995,6 +1012,7 @@ else
         catch
         {
             matchCardSettingsByView.Clear();
+            inactiveMatchCardScopeKeys.Clear();
             var globalFallbackScopeKey = BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll);
             var pageFallbackScopeKey = BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll);
             matchCardSettingsByView[globalFallbackScopeKey] = MatchCardViewSettings.CreateDefault(globalFallbackScopeKey);
@@ -1012,6 +1030,7 @@ else
         detailMatchCardSettings.Normalize();
         matchCardSettingsByView.Remove(MatchCardLegacyViewKey);
         matchCardSettingsByView[DetailMatchCardScopeKey] = detailMatchCardSettings;
+        inactiveMatchCardScopeKeys.Remove(DetailMatchCardScopeKey);
 
         if (string.IsNullOrWhiteSpace(autodartsDisplayName))
         {
@@ -1028,7 +1047,10 @@ else
                 Views = matchCardSettingsByView.ToDictionary(
                     entry => entry.Key,
                     entry => entry.Value.Clone(),
-                    StringComparer.OrdinalIgnoreCase)
+                    StringComparer.OrdinalIgnoreCase),
+                DisabledScopes = inactiveMatchCardScopeKeys
+                    .Where(scope => !string.Equals(scope, BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll), StringComparison.OrdinalIgnoreCase))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase)
             };
 
             var json = JsonSerializer.Serialize(payload);

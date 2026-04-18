@@ -23,7 +23,11 @@ builder.Services.AddHttpClient<DartSuiteApiService>(client =>
      client.BaseAddress = new Uri(builder?.Configuration["Api:BaseUrl"] ?? throw new NullReferenceException("Api:BaseUrl configuration is missing"));
 });
 
-var matchCardDefaults = builder.Configuration.GetSection("MatchCardDefaults:Scopes").Get<Dictionary<string, MatchCardViewSettings>>();
+var matchCardDefaultsRaw = builder.Configuration.GetSection("MatchCardDefaults:Scopes").Get<Dictionary<string, MatchCardViewSettings>>();
+var matchCardDefaults = matchCardDefaultsRaw?.ToDictionary(
+    kvp => kvp.Key.Replace("--", "::", StringComparison.Ordinal),
+    kvp => kvp.Value,
+    StringComparer.OrdinalIgnoreCase);
 MatchCardViewSettings.ConfigureDefaults(matchCardDefaults);
 
 if (httpsRedirectPort.HasValue)

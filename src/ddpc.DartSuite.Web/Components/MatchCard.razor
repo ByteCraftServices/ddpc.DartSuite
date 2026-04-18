@@ -446,84 +446,115 @@
     <div class="card-body py-2 px-3">
         @if (ShowBodyMetaLine)
         {
-            <div class="d-flex flex-wrap align-items-center gap-1 mb-2 small">
-                @if (ShouldShowBodyStartTimeChip)
+            <div class="match-meta-categories mb-2 small">
+                @if (ShouldShowBodyMatchNumberChip || ShouldShowBodyMatchNameChip)
                 {
-                    <span class="badge text-bg-light border detail-chip-with-lock">
-                        @BodyStartTimeText
-                        @if (BodyStartTimeHasLockOverlay)
-                        {
-                            <span class="detail-chip-lock-overlay" title="Startzeit gesperrt">@StartTimeLockGlyph</span>
-                        }
-                    </span>
+                    <div class="match-meta-category match-meta-category-tournamentplan">
+                        <span class="match-meta-category-title">Turnierplan</span>
+                        <div class="match-meta-stack">
+                            @if (ShouldShowBodyMatchNumberChip)
+                            {
+                                <span class="badge text-bg-secondary">@Label</span>
+                            }
+                            @if (ShouldShowBodyMatchNameChip)
+                            {
+                                <span class="badge text-bg-secondary">@ResolvedMatchName</span>
+                            }
+                        </div>
+                    </div>
                 }
 
-                @if (ShowBodyStandaloneStartTimeLock)
+                @if (ShouldShowBodyStartTimeChip || ShowBodyStandaloneStartTimeLock || (ResolvedShowBodyDelay && HasDelayInformation))
                 {
-                    <span class="badge text-bg-light border" title="Startzeit gesperrt">@StartTimeLockGlyph</span>
+                    <div class="match-meta-category match-meta-category-planning">
+                        <span class="match-meta-category-title">Planung</span>
+                        <div class="match-meta-items">
+                            @if (ShouldShowBodyStartTimeChip)
+                            {
+                                <span class="badge text-bg-light border detail-chip-with-lock">
+                                    @BodyStartTimeText
+                                    @if (BodyStartTimeHasLockOverlay)
+                                    {
+                                        <span class="detail-chip-lock-overlay" title="Startzeit gesperrt">@StartTimeLockGlyph</span>
+                                    }
+                                </span>
+                            }
+
+                            @if (ShowBodyStandaloneStartTimeLock)
+                            {
+                                <span class="badge text-bg-light border" title="Startzeit gesperrt">@StartTimeLockGlyph</span>
+                            }
+
+                            @if (ResolvedShowBodyDelay && HasDelayInformation)
+                            {
+                                <span class="badge @DelayBadgeCss">@DelayBadgeText</span>
+                            }
+                        </div>
+                    </div>
                 }
 
-                @if (ResolvedShowBodyDelay && HasDelayInformation)
+                @if (ShouldShowBodyBoardNameChip || ShowBodyStandaloneBoardLock)
                 {
-                    <span class="badge @DelayBadgeCss">@DelayBadgeText</span>
+                    <div class="match-meta-category match-meta-category-board">
+                        <span class="match-meta-category-title">Board</span>
+                        <div class="match-meta-items">
+                            @if (ShouldShowBodyBoardNameChip)
+                            {
+                                @if (BodyBoardHasLockOverlay)
+                                {
+                                    @if (ResolvedBoardClick.HasDelegate)
+                                    {
+                                        <button type="button"
+                                                class="badge border-0 text-bg-light text-dark board-name-button border detail-chip-with-lock"
+                                                title="Boarddetails anzeigen"
+                                                @onclick="HandleBoardChipClickAsync"
+                                                @onclick:stopPropagation="true">
+                                            @ResolvedBoardName
+                                            <span class="detail-chip-lock-overlay" title="Boardzuordnung gesperrt">@BoardLockGlyph</span>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge text-bg-light text-dark border detail-chip-with-lock" title="Boardzuordnung gesperrt">
+                                            @ResolvedBoardName
+                                            <span class="detail-chip-lock-overlay">@BoardLockGlyph</span>
+                                        </span>
+                                    }
+                                }
+                                else
+                                {
+                                    <BoardName Name="@ResolvedBoardName"
+                                               Status="@MonitoringStatusText"
+                                               Tooltip="Boarddetails anzeigen"
+                                               OnClick="@ResolvedBoardClick"
+                                               BadgeCssClass="text-bg-light text-dark border" />
+                                }
+                            }
+
+                            @if (ShowBodyStandaloneBoardLock)
+                            {
+                                <span class="badge text-bg-light border" title="Boardzuordnung gesperrt">@BoardLockGlyph</span>
+                            }
+                        </div>
+                    </div>
                 }
 
-                @if (ShouldShowBodyMatchNumberChip)
+                @if (ShouldShowBodyMatchStatusChip || ShouldShowBodyLiveBadgeChip)
                 {
-                    <span class="badge text-bg-secondary">@Label</span>
-                }
+                    <div class="match-meta-category match-meta-category-status">
+                        <span class="match-meta-category-title">Status</span>
+                        <div class="match-meta-items">
+                            @if (ShouldShowBodyMatchStatusChip)
+                            {
+                                <span class="badge @MatchStatusBadgeClass">@Match.Status</span>
+                            }
 
-                @if (ShouldShowBodyMatchNameChip)
-                {
-                    <span class="badge text-bg-secondary">@ResolvedMatchName</span>
-                }
-
-                @if (ShouldShowBodyBoardNameChip)
-                {
-                    @if (BodyBoardHasLockOverlay)
-                    {
-                        @if (ResolvedBoardClick.HasDelegate)
-                        {
-                            <button type="button"
-                                    class="badge border-0 text-bg-light text-dark board-name-button border detail-chip-with-lock"
-                                    title="Boarddetails anzeigen"
-                                    @onclick="HandleBoardChipClickAsync"
-                                    @onclick:stopPropagation="true">
-                                @ResolvedBoardName
-                                <span class="detail-chip-lock-overlay" title="Boardzuordnung gesperrt">@BoardLockGlyph</span>
-                            </button>
-                        }
-                        else
-                        {
-                            <span class="badge text-bg-light text-dark border detail-chip-with-lock" title="Boardzuordnung gesperrt">
-                                @ResolvedBoardName
-                                <span class="detail-chip-lock-overlay">@BoardLockGlyph</span>
-                            </span>
-                        }
-                    }
-                    else
-                    {
-                        <BoardName Name="@ResolvedBoardName"
-                                   Status="@MonitoringStatusText"
-                                   Tooltip="Boarddetails anzeigen"
-                                   OnClick="@ResolvedBoardClick"
-                                   BadgeCssClass="text-bg-light text-dark border" />
-                    }
-                }
-
-                @if (ShowBodyStandaloneBoardLock)
-                {
-                    <span class="badge text-bg-light border" title="Boardzuordnung gesperrt">@BoardLockGlyph</span>
-                }
-
-                @if (ShouldShowBodyMatchStatusChip)
-                {
-                    <span class="badge @MatchStatusBadgeClass">@Match.Status</span>
-                }
-
-                @if (ShouldShowBodyLiveBadgeChip)
-                {
-                    <span class="badge text-bg-info">Live</span>
+                            @if (ShouldShowBodyLiveBadgeChip)
+                            {
+                                <span class="badge text-bg-info">Live</span>
+                            }
+                        </div>
+                    </div>
                 }
             </div>
         }

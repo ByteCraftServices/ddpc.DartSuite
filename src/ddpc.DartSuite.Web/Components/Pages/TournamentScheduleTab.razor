@@ -68,14 +68,16 @@
                     @onclick='() => OpenMatchCardScopeEditor.InvokeAsync("tournaments::schedule-boards-upcoming")'>⚙</button>
         </SummaryActions>
         <ChildContent>
-            <div class="schedule-queue-carousel-wrap">
-                <button type="button"
-                        class="btn btn-outline-secondary btn-sm schedule-queue-nav"
-                    aria-label="Voriges Board"
-                        title="Voriges Board"
-                        disabled="@(QueueBoards.Count <= 1)"
-                    @onclick="() => ScrollQueueBoardsAsync(-1)">‹</button>
-                <div class="schedule-queue-carousel" @ref="queueBoardsScrollerRef">
+            <div class="schedule-queue-carousel-wrap @(showQueueNavigation ? string.Empty : "no-nav")">
+                @if (showQueueNavigation)
+                {
+                    <button type="button"
+                            class="btn btn-outline-secondary btn-sm schedule-queue-nav"
+                        aria-label="Voriges Board"
+                            title="Voriges Board"
+                        @onclick="() => ScrollQueueBoardsAsync(-1)">‹</button>
+                }
+                <div class="schedule-queue-carousel @(showQueueNavigation ? "is-scrollable" : "is-fit") @(QueueBoards.Count == 1 ? "single-board" : string.Empty)" @ref="queueBoardsScrollerRef">
                     @foreach (var board in QueueBoards)
                     {
                         var queue = BoardQueues.TryGetValue(board.Id, out var matchesOnBoard) ? matchesOnBoard : [];
@@ -86,8 +88,8 @@
                                  @ondragover="() => MarkScheduleDropTargetBoard.InvokeAsync(board.Id)"
                                  @ondragleave="() => ClearScheduleDropTargetBoard.InvokeAsync(board.Id)"
                                  @ondrop="() => DropOnBoardHeader.InvokeAsync(board.Id)">
-                                <div class="d-flex align-items-center gap-2 min-w-0">
-                                    <span class="badge bg-dark p-2 user-select-none @(DraggedBoardId == board.Id ? "schedule-mobile-source-active" : string.Empty)"
+                                <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
+                                    <span class="badge bg-dark p-2 user-select-none flex-grow-1 @(DraggedBoardId == board.Id ? "schedule-mobile-source-active" : string.Empty)"
                                           draggable="@(CanManageScheduleInteractions && !IsCompactViewport ? "true" : "false")"
                                           @ondragstart="() => HandleBoardDragStartAsync(board.Id)"
                                           @ondragend="HandleBoardDragEndAsync"
@@ -195,12 +197,14 @@
                         </div>
                     }
                 </div>
-                <button type="button"
-                        class="btn btn-outline-secondary btn-sm schedule-queue-nav"
-                        aria-label="Naechstes Board"
-                        title="Nächstes Board"
-                        disabled="@(QueueBoards.Count <= 1)"
-                        @onclick="() => ScrollQueueBoardsAsync(1)">›</button>
+                @if (showQueueNavigation)
+                {
+                    <button type="button"
+                            class="btn btn-outline-secondary btn-sm schedule-queue-nav"
+                            aria-label="Naechstes Board"
+                            title="Nächstes Board"
+                            @onclick="() => ScrollQueueBoardsAsync(1)">›</button>
+                }
             </div>
         </ChildContent>
     </SettingsPanel>
@@ -489,6 +493,7 @@ else
     private bool filtersPanelExpanded = true;
     private bool queuePanelExpanded = true;
     private string queueDisplayLimit = "3";
+    private bool showQueueNavigation;
     private ElementReference queueBoardsScrollerRef;
 
     private IReadOnlyList<BoardDto> QueueBoards
@@ -539,9 +544,43 @@ else
         return Task.CompletedTask;
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await UpdateQueueNavigationVisibilityAsync();
+    }
+
+    private async Task UpdateQueueNavigationVisibilityAsync()
+    {
+        if (!ShouldShowQueues || QueueBoards.Count <= 1)
+        {
+            if (!showQueueNavigation)
+                return;
+
+            showQueueNavigation = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        bool hasOverflow;
+        try
+        {
+            hasOverflow = await JS.InvokeAsync<bool>("dartSuiteUi.hasHorizontalOverflow", queueBoardsScrollerRef);
+        }
+        catch
+        {
+            return;
+        }
+
+        if (showQueueNavigation == hasOverflow)
+            return;
+
+        showQueueNavigation = hasOverflow;
+        await InvokeAsync(StateHasChanged);
+    }
+
     private async Task ScrollQueueBoardsAsync(int direction)
     {
-        if (QueueBoards.Count <= 1)
+        if (!showQueueNavigation || QueueBoards.Count <= 1)
             return;
 
         var delta = direction < 0 ? -420 : 420;
