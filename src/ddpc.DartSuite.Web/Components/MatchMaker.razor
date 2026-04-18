@@ -1,0 +1,694 @@
+@using ddpc.DartSuite.Application.Contracts.Matches
+@using ddpc.DartSuite.Application.Contracts.Tournaments
+@using ddpc.DartSuite.Web.Services
+@using System.Text.Json
+@inject DartSuiteApiService Api
+@inject AppStateService AppState
+
+@if (Match is null || !IsVisible)
+{
+    @* hidden *@
+}
+else
+{
+    <div class="card border-primary shadow-sm mt-3" id="matchmaker-panel">
+        <div class="card-header d-flex justify-content-between align-items-center bg-primary text-white">
+            <span class="fw-bold">⚡ MatchMaker</span>
+            <div class="d-flex gap-2 align-items-center">
+                @if (AppState.IsAdmin)
+                {
+                    <select class="form-select form-select-sm" style="width:auto" value="@_mode" @onchange="OnModeChanged" disabled="@_isRunning">
+                        <option value="Manual">Manuell</option>
+                        <option value="Automatic">Automatisch (x01)</option>
+                    </select>
+                }
+                else
+                {
+                    <span class="badge bg-light text-dark">Manuell</span>
+                }
+                @if (!_isRunning)
+                {
+                    <button class="btn btn-success btn-sm" @onclick="StartMatchAsync" disabled="@_isBusy">
+                        ▶ Match starten
+                    </button>
+                }
+                else
+                {
+                    <span class="badge bg-success">Läuft</span>
+                }
+            </div>
+        </div>
+        <div class="card-body">
+            @if (_errorMessage is not null)
+            {
+                <div class="alert alert-danger py-2 d-flex justify-content-between align-items-center">
+                    <span>@_errorMessage</span>
+                    <button type="button" class="btn-close" @onclick="() => _errorMessage = null"></button>
+                </div>
+            }
+
+            @if (_isRunning && !_matchFinished)
+            {
+                @* ─── Score Board ─── *@
+                <div class="row text-center mb-3">
+                    <div class="col-6">
+                        <div class="@(_currentPlayerSlot == 0 ? "fw-bold text-primary" : "")">
+                            @HomeName
+                        </div>
+                        <div class="display-6">@_playerScores[0]</div>
+                        <div class="small text-muted">Legs: @_playerLegs[0] | Avg: @_playerAvg[0].ToString("F1")</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="@(_currentPlayerSlot == 1 ? "fw-bold text-primary" : "")">
+                            @AwayName
+                        </div>
+                        <div class="display-6">@_playerScores[1]</div>
+                        <div class="small text-muted">Legs: @_playerLegs[1] | Avg: @_playerAvg[1].ToString("F1")</div>
+                    </div>
+                </div>
+
+                @* ─── Current Turn ─── *@
+                <div class="text-center mb-2">
+                    <span class="fw-semibold">Am Zug: @(_currentPlayerSlot == 0 ? HomeName : AwayName)</span>
+                    <span class="ms-2 text-muted small">Wurf @(_currentDartInTurn + 1)/3</span>
+                </div>
+
+                @* ─── Current Darts in Turn ─── *@
+                <div class="d-flex justify-content-center gap-2 mb-3">
+                    @for (int i = 0; i < 3; i++)
+                    {
+                        var idx = i;
+                        <div class="border rounded px-3 py-2 text-center" style="min-width:60px;background:@(idx < _currentDartInTurn ? "#e8f5e9" : idx == _currentDartInTurn ? "#fff9c4" : "#f5f5f5")">
+                            @if (idx < _currentDartInTurn)
+                            {
+                                <span class="text-success fw-bold">@_currentTurnDarts[idx].Label</span>
+                            }
+                            else if (idx == _currentDartInTurn)
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted small">—</span>
+                            }
+                        </div>
+                    }
+                </div>
+
+                @if (_mode == "Manual")
+                {
+                    @* ─── Manual Keypad ─── *@
+                    <div class="mb-2 d-flex gap-2 justify-content-center">
+                        <button class="btn @(_selectedMultiplier == 2 ? "btn-warning" : "btn-outline-warning") btn-sm px-3"
+                                @onclick="() => SelectMultiplier(2)">Double</button>
+                        <button class="btn @(_selectedMultiplier == 3 ? "btn-danger" : "btn-outline-danger") btn-sm px-3"
+                                @onclick="() => SelectMultiplier(3)">Triple</button>
+                        @if (_selectedMultiplier > 1)
+                        {
+                            <span class="badge bg-info align-self-center">
+                                @(_selectedMultiplier == 2 ? "D" : "T") ausgewählt
+                            </span>
+                        }
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-1 justify-content-center mb-2">
+                        @for (int val = 1; val <= 20; val++)
+                        {
+                            var v = val;
+                            <button class="btn btn-outline-secondary btn-sm" style="min-width:42px" @onclick="() => ThrowDartAsync(v)">@v</button>
+                        }
+                        <button class="btn btn-outline-warning btn-sm" style="min-width:42px" @onclick="() => ThrowDartAsync(25)">Bull</button>
+                    </div>
+
+                    <div class="d-flex justify-content-center gap-2 mt-2">
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="UndoLastDartAsync" disabled="@(!CanUndo)">
+                            ↩ Undo
+                        </button>
+                        <button class="btn btn-outline-dark btn-sm" @onclick="ThrowMissAsync">
+                            ✗ Daneben
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    @* ─── Automatic Mode ─── *@
+                    <div class="text-center">
+                        @if (!_autoRunning)
+                        {
+                            <button class="btn btn-warning" @onclick="StartAutoAsync">▶ Auto starten</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-secondary" @onclick="StopAutoAsync">⏹ Auto stoppen</button>
+                            <div class="mt-2 text-muted small">Nächster Wurf in @_autoCountdown s ...</div>
+                        }
+                    </div>
+                }
+            }
+            else if (_matchFinished)
+            {
+                <div class="alert alert-success text-center">
+                    🏆 Match beendet! Sieger: <strong>@_winnerName</strong>
+                </div>
+            }
+            else
+            {
+                <div class="text-muted text-center">Match noch nicht gestartet.</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public MatchDto? Match { get; set; }
+    [Parameter] public string? HomeName { get; set; }
+    [Parameter] public string? AwayName { get; set; }
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public TournamentRoundDto? Round { get; set; }
+
+    private string _mode = "Manual";
+    private bool _isRunning;
+    private bool _isBusy;
+    private bool _matchFinished;
+    private string? _errorMessage;
+    private string? _winnerName;
+
+    // Game state
+    private int _targetScore = 501;
+    private int[] _playerScores = [501, 501];
+    private int[] _playerLegs = [0, 0];
+    private int[] _playerSets = [0, 0];
+    private double[] _playerAvg = [0.0, 0.0];
+    private int[] _playerTotalPoints = [0, 0];
+    private int[] _playerDartsThrown = [0, 0];
+    private int[] _playerCheckoutHits = [0, 0];
+    private int[] _playerCheckoutAttempts = [0, 0];
+    private int[] _playerHighestCheckout = [0, 0];
+    private int[] _player180s = [0, 0];
+    private int[] _player140Plus = [0, 0];
+    private int[] _player100Plus = [0, 0];
+
+    private int _legsPerSet = 3;
+    private int _setsToWin = 1;
+    private bool _isSetMode;
+    private string _outMode = "DoubleOut";
+
+    private int _currentPlayerSlot = 0;
+    private int _currentDartInTurn = 0;
+    private DartRecord[] _currentTurnDarts = [new(), new(), new()];
+
+    // Leg history for undo
+    private List<LegSnapshot> _legHistory = [];
+
+    // Multiplier selection
+    private int _selectedMultiplier = 1;
+
+    // Auto mode
+    private bool _autoRunning;
+    private CancellationTokenSource? _autoCts;
+    private int _autoCountdown;
+
+    private bool CanUndo => _currentDartInTurn > 0 || _legHistory.Count > 0;
+
+    protected override void OnParametersSet()
+    {
+        if (Match is null) return;
+
+        _isRunning = Match.StartedUtc is not null && Match.FinishedUtc is null;
+        _matchFinished = Match.FinishedUtc is not null;
+
+        // Initialize game settings from round
+        if (Round is not null)
+        {
+            _targetScore = Round.BaseScore > 0 ? Round.BaseScore : 501;
+            _legsPerSet = Round.Legs > 0 ? Round.Legs : 3;
+            _setsToWin = Round.Sets.HasValue && Round.Sets.Value > 0 ? Round.Sets.Value : 1;
+            _isSetMode = Round.GameMode == "Sets";
+            _outMode = Round.OutMode ?? "DoubleOut";
+        }
+
+        if (!_isRunning && !_matchFinished)
+            ResetGameState();
+    }
+
+    private void ResetGameState()
+    {
+        _playerScores = [_targetScore, _targetScore];
+        _playerLegs = [0, 0];
+        _playerSets = [0, 0];
+        _playerAvg = [0.0, 0.0];
+        _playerTotalPoints = [0, 0];
+        _playerDartsThrown = [0, 0];
+        _playerCheckoutHits = [0, 0];
+        _playerCheckoutAttempts = [0, 0];
+        _playerHighestCheckout = [0, 0];
+        _player180s = [0, 0];
+        _player140Plus = [0, 0];
+        _player100Plus = [0, 0];
+        _currentPlayerSlot = 0;
+        _currentDartInTurn = 0;
+        _currentTurnDarts = [new(), new(), new()];
+        _legHistory = [];
+        _selectedMultiplier = 1;
+    }
+
+    private void OnModeChanged(ChangeEventArgs e)
+    {
+        _mode = e.Value?.ToString() ?? "Manual";
+        if (_mode != "Automatic")
+            StopAutoAsync();
+    }
+
+    private async Task StartMatchAsync()
+    {
+        if (Match is null) return;
+        _isBusy = true;
+        _errorMessage = null;
+        try
+        {
+            ResetGameState();
+            await Api.MatchMakerStartAsync(Match.Id);
+            _isRunning = true;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private void SelectMultiplier(int mult)
+    {
+        _selectedMultiplier = _selectedMultiplier == mult ? 1 : mult;
+    }
+
+    private async Task ThrowMissAsync()
+    {
+        await ThrowDartAsync(0, 1);
+    }
+
+    private async Task ThrowDartAsync(int value, int? forceMultiplier = null)
+    {
+        if (!_isRunning || _matchFinished) return;
+
+        var mult = forceMultiplier ?? (value == 0 ? 1 : _selectedMultiplier);
+        var points = value == 0 ? 0 : value * mult;
+
+        // Special: Bull = 25 (single) or 50 (double)
+        if (value == 25)
+        {
+            if (mult == 2) points = 50;
+            else { points = 25; mult = 1; }
+        }
+        // Can't triple bull
+        if (value == 25 && mult == 3) { points = 25; mult = 1; }
+
+        var label = FormatDartLabel(value, mult);
+        _currentTurnDarts[_currentDartInTurn] = new DartRecord { Value = value, Multiplier = mult, Points = points, Label = label };
+        _currentDartInTurn++;
+        _selectedMultiplier = 1;
+
+        var newScore = _playerScores[_currentPlayerSlot] - points;
+
+        // Check bust
+        bool isBust = IsBust(newScore, value, mult);
+        bool isCheckout = !isBust && newScore == 0 && IsValidCheckout(value, mult);
+
+        if (_currentDartInTurn == 3 || isCheckout || isBust)
+        {
+            await CommitTurnAsync(isBust, isCheckout);
+        }
+        else
+        {
+            StateHasChanged();
+        }
+    }
+
+    private bool IsBust(int newScore, int value, int mult)
+    {
+        if (newScore < 0) return true;
+        if (newScore == 0) return false;
+        if (newScore == 1 && _outMode != "StraightOut") return true;
+        return false;
+    }
+
+    private bool IsValidCheckout(int value, int mult)
+    {
+        if (_outMode == "StraightOut") return true;
+        if (_outMode == "DoubleOut") return mult == 2 || (value == 25 && mult == 2);
+        if (_outMode == "MasterOut") return mult >= 2;
+        return true;
+    }
+
+    private async Task CommitTurnAsync(bool isBust, bool isCheckout)
+    {
+        var slot = _currentPlayerSlot;
+        var dartCount = _currentDartInTurn;
+        var turnPoints = 0;
+
+        if (!isBust)
+        {
+            for (int i = 0; i < dartCount; i++)
+                turnPoints += _currentTurnDarts[i].Points;
+        }
+
+        // Save snapshot for undo
+        _legHistory.Add(new LegSnapshot
+        {
+            PlayerSlot = slot,
+            DartCount = dartCount,
+            TurnPoints = turnPoints,
+            ScoreBefore = _playerScores[slot],
+            DartRecords = _currentTurnDarts.Take(dartCount).ToArray()
+        });
+
+        if (!isBust)
+        {
+            _playerScores[slot] -= turnPoints;
+            _playerDartsThrown[slot] += dartCount;
+            _playerTotalPoints[slot] += turnPoints;
+
+            if (turnPoints == 180) _player180s[slot]++;
+            else if (turnPoints >= 140) _player140Plus[slot]++;
+            else if (turnPoints >= 100) _player100Plus[slot]++;
+        }
+        else
+        {
+            _playerDartsThrown[slot] += dartCount;
+        }
+
+        // Check checkout attempt
+        if (_playerScores[slot] <= 170 && !isBust)
+        {
+            _playerCheckoutAttempts[slot]++;
+        }
+
+        if (isCheckout)
+        {
+            _playerCheckoutHits[slot]++;
+            int checkout = turnPoints;
+            if (checkout > _playerHighestCheckout[slot])
+                _playerHighestCheckout[slot] = checkout;
+
+            await WinLegAsync(slot);
+            return;
+        }
+
+        // Recalculate average
+        if (_playerDartsThrown[slot] > 0)
+            _playerAvg[slot] = Math.Round((double)_playerTotalPoints[slot] * 3 / _playerDartsThrown[slot], 2);
+
+        // Switch player
+        _currentPlayerSlot = 1 - _currentPlayerSlot;
+        _currentDartInTurn = 0;
+        _currentTurnDarts = [new(), new(), new()];
+
+        await SendMatchStateAsync();
+        StateHasChanged();
+    }
+
+    private async Task WinLegAsync(int winnerSlot)
+    {
+        _playerLegs[winnerSlot]++;
+
+        // Recalculate avg
+        if (_playerDartsThrown[winnerSlot] > 0)
+            _playerAvg[winnerSlot] = Math.Round((double)_playerTotalPoints[winnerSlot] * 3 / _playerDartsThrown[winnerSlot], 2);
+
+        bool matchOver = false;
+
+        if (_isSetMode)
+        {
+            if (_playerLegs[winnerSlot] >= _legsPerSet)
+            {
+                _playerSets[winnerSlot]++;
+                _playerLegs = [0, 0];
+
+                if (_playerSets[winnerSlot] >= _setsToWin)
+                    matchOver = true;
+            }
+        }
+        else
+        {
+            if (_playerLegs[winnerSlot] >= _legsPerSet)
+                matchOver = true;
+        }
+
+        if (matchOver)
+        {
+            _matchFinished = true;
+            _winnerName = winnerSlot == 0 ? HomeName : AwayName;
+            await SendMatchStateAsync(finished: true);
+            StateHasChanged();
+            return;
+        }
+
+        // Start new leg
+        _playerScores = [_targetScore, _targetScore];
+        _currentPlayerSlot = winnerSlot == 0 ? 1 : 0; // loser starts
+        _currentDartInTurn = 0;
+        _currentTurnDarts = [new(), new(), new()];
+
+        await SendMatchStateAsync();
+        StateHasChanged();
+    }
+
+    private async Task UndoLastDartAsync()
+    {
+        if (_currentDartInTurn > 0)
+        {
+            // Undo the last dart in current turn (no API needed, just state)
+            _currentDartInTurn--;
+            _currentTurnDarts[_currentDartInTurn] = new DartRecord();
+            _selectedMultiplier = 1;
+            StateHasChanged();
+            return;
+        }
+
+        // Undo last committed turn
+        if (_legHistory.Count == 0) return;
+
+        var last = _legHistory[^1];
+        _legHistory.RemoveAt(_legHistory.Count - 1);
+
+        // Restore state
+        _playerScores[last.PlayerSlot] = last.ScoreBefore;
+        _playerDartsThrown[last.PlayerSlot] -= last.DartCount;
+        _playerTotalPoints[last.PlayerSlot] -= last.TurnPoints;
+        if (_playerDartsThrown[last.PlayerSlot] > 0)
+            _playerAvg[last.PlayerSlot] = Math.Round((double)_playerTotalPoints[last.PlayerSlot] * 3 / _playerDartsThrown[last.PlayerSlot], 2);
+        else
+            _playerAvg[last.PlayerSlot] = 0;
+
+        _currentPlayerSlot = last.PlayerSlot;
+        _currentDartInTurn = 0;
+        _currentTurnDarts = [new(), new(), new()];
+
+        await SendMatchStateAsync();
+        StateHasChanged();
+    }
+
+    private async Task SendMatchStateAsync(bool finished = false)
+    {
+        if (Match is null) return;
+        try
+        {
+            var payload = BuildAutodartsPayload(finished);
+            await Api.MatchMakerThrowAsync(Match.Id, payload);
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Fehler beim Übertragen: {ex.Message}";
+        }
+    }
+
+    private object BuildAutodartsPayload(bool finished)
+    {
+        var home = HomeName ?? "Player 1";
+        var away = AwayName ?? "Player 2";
+
+        return new
+        {
+            id = Match!.Id.ToString(),
+            variant = "X01",
+            gameMode = "x01",
+            finished,
+            players = new[]
+            {
+                new { name = home, score = _playerScores[0], points = _playerScores[0] },
+                new { name = away, score = _playerScores[1], points = _playerScores[1] }
+            },
+            scores = new[]
+            {
+                new { legs = _playerLegs[0], sets = _playerSets[0] },
+                new { legs = _playerLegs[1], sets = _playerSets[1] }
+            },
+            stats = new[]
+            {
+                new
+                {
+                    matchStats = new
+                    {
+                        dartsThrown = _playerDartsThrown[0],
+                        average = _playerAvg[0],
+                        legsWon = _playerLegs[0],
+                        legsLost = _playerLegs[1],
+                        setsWon = _playerSets[0],
+                        setsLost = _playerSets[1],
+                        checkoutsHit = _playerCheckoutHits[0],
+                        checkoutAttempts = _playerCheckoutAttempts[0],
+                        highestCheckout = _playerHighestCheckout[0],
+                        plus180 = _player180s[0],
+                        plus140 = _player140Plus[0],
+                        plus100 = _player100Plus[0]
+                    }
+                },
+                new
+                {
+                    matchStats = new
+                    {
+                        dartsThrown = _playerDartsThrown[1],
+                        average = _playerAvg[1],
+                        legsWon = _playerLegs[1],
+                        legsLost = _playerLegs[0],
+                        setsWon = _playerSets[1],
+                        setsLost = _playerSets[0],
+                        checkoutsHit = _playerCheckoutHits[1],
+                        checkoutAttempts = _playerCheckoutAttempts[1],
+                        highestCheckout = _playerHighestCheckout[1],
+                        plus180 = _player180s[1],
+                        plus140 = _player140Plus[1],
+                        plus100 = _player100Plus[1]
+                    }
+                }
+            }
+        };
+    }
+
+    // ─── Automatic Mode ───
+
+    private async Task StartAutoAsync()
+    {
+        _autoRunning = true;
+        _autoCts = new CancellationTokenSource();
+        _ = RunAutoAsync(_autoCts.Token);
+        await Task.CompletedTask;
+    }
+
+    private void StopAutoAsync()
+    {
+        _autoCts?.Cancel();
+        _autoRunning = false;
+        StateHasChanged();
+    }
+
+    private async Task RunAutoAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested && _isRunning && !_matchFinished)
+            {
+                _autoCountdown = 2;
+                for (int i = 2; i >= 1 && !ct.IsCancellationRequested; i--)
+                {
+                    _autoCountdown = i;
+                    await InvokeAsync(StateHasChanged);
+                    await Task.Delay(500, ct).ConfigureAwait(false);
+                }
+                if (ct.IsCancellationRequested) break;
+
+                var (val, mult) = SimulateThrow(_playerScores[_currentPlayerSlot]);
+                await InvokeAsync(() => ThrowDartAsync(val, mult));
+                await Task.Delay(300, ct).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when stopped
+        }
+        finally
+        {
+            _autoRunning = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private (int Value, int Multiplier) SimulateThrow(int remaining)
+    {
+        var rng = Random.Shared;
+
+        // Try checkout (simulates ~30% success rate — realistic for amateur play)
+        if (remaining <= 170)
+        {
+            var checkout = TryFindCheckout(remaining, _outMode);
+            if (checkout.HasValue && rng.NextDouble() < 0.3)
+                return checkout.Value;
+        }
+
+        // Random throw with realistic distribution
+        var high20 = rng.NextDouble();
+        int value;
+        int mult;
+
+        if (high20 < 0.35) { value = 20; mult = rng.NextDouble() < 0.5 ? 3 : 1; }
+        else if (high20 < 0.55) { value = rng.Next(18, 21); mult = rng.NextDouble() < 0.3 ? 3 : rng.NextDouble() < 0.3 ? 2 : 1; }
+        else if (high20 < 0.75) { value = rng.Next(10, 21); mult = 1; }
+        else { value = rng.Next(1, 21); mult = 1; }
+
+        // Occasional miss (0)
+        if (rng.NextDouble() < 0.05) return (0, 1);
+
+        return (value, mult);
+    }
+
+    private static (int Value, int Multiplier)? TryFindCheckout(int remaining, string outMode)
+    {
+        if (outMode == "StraightOut")
+        {
+            if (remaining <= 20) return (remaining, 1);
+            if (remaining == 25) return (25, 1);
+            if (remaining == 50) return (25, 2);
+        }
+
+        if (outMode == "DoubleOut" || outMode == "MasterOut")
+        {
+            if (remaining % 2 == 0 && remaining <= 40) return (remaining / 2, 2);
+            if (remaining == 50) return (25, 2);
+        }
+
+        return null;
+    }
+
+    private static string FormatDartLabel(int value, int mult)
+    {
+        if (value == 0) return "Miss";
+        if (value == 25) return mult == 2 ? "Bull" : "S25";
+        return mult switch
+        {
+            1 => $"S{value}",
+            2 => $"D{value}",
+            3 => $"T{value}",
+            _ => $"{value}"
+        };
+    }
+
+    private record DartRecord
+    {
+        public int Value { get; set; }
+        public int Multiplier { get; set; } = 1;
+        public int Points { get; set; }
+        public string Label { get; set; } = "—";
+    }
+
+    private record LegSnapshot
+    {
+        public int PlayerSlot { get; set; }
+        public int DartCount { get; set; }
+        public int TurnPoints { get; set; }
+        public int ScoreBefore { get; set; }
+        public DartRecord[] DartRecords { get; set; } = [];
+    }
+}

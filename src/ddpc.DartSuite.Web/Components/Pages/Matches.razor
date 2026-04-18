@@ -391,6 +391,21 @@ else
                                ForceDetailsExpanded="@forcedMatchDetailsExpanded"
                                EnableRealtimeConsumer="@(detailMatch.StartedUtc is not null && detailMatch.FinishedUtc is null)" />
 
+                    @* ─── MatchMaker (for virtual boards, managers only) ─── *@
+                    @{
+                        var detailBoard = boards.FirstOrDefault(b => b.Id == detailMatch.BoardId);
+                        var homeP2 = participants.FirstOrDefault(p => p.Id == detailMatch.HomeParticipantId);
+                        var awayP2 = participants.FirstOrDefault(p => p.Id == detailMatch.AwayParticipantId);
+                    }
+                    @if (detailBoard?.IsVirtual == true && CanManageSelectedTournament)
+                    {
+                        <MatchMaker Match="@detailMatch"
+                                    HomeName="@(homeP2?.DisplayName ?? homeP2?.AccountName ?? "Spieler 1")"
+                                    AwayName="@(awayP2?.DisplayName ?? awayP2?.AccountName ?? "Spieler 2")"
+                                    IsVisible="true"
+                                    Round="@round" />
+                    }
+
                     @if (!isEditing)
                     {
                         @* ─── Read-only view ─── *@

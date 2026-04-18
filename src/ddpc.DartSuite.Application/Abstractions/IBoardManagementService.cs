@@ -18,4 +18,9 @@ public interface IBoardManagementService
     Task<BoardDto?> UpdateConnectionStateAsync(Guid id, string connectionState, CancellationToken cancellationToken = default);
     Task<BoardDto?> UpdateExtensionStatusAsync(Guid id, string extensionStatus, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<BoardDto>> GetBoardsByTournamentAsync(Guid tournamentId, CancellationToken cancellationToken = default);
+
+    // Virtual Boards
+    Task<BoardDto> CreateVirtualBoardAsync(CreateVirtualBoardRequest request, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<BoardDto>> GetVirtualBoardsAsync(CancellationToken cancellationToken = default);
+    Task<BoardDto?> ChangeVirtualBoardOwnerAsync(Guid id, string? ownerAccountName, CancellationToken cancellationToken = default);
 }
