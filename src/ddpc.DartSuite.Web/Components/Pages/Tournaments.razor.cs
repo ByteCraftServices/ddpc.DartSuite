@@ -5694,7 +5694,6 @@ public partial class Tournaments : IAsyncDisposable
         {
             return detailRoundGroup
                 .Select(r => new RoundSaveTarget(r.Phase, r.RoundNumber))
-                .Distinct()
                 .OrderBy(r => r.Phase)
                 .ThenBy(r => r.RoundNumber)
                 .ToList();
