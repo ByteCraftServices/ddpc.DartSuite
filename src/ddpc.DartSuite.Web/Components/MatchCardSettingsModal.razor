@@ -373,6 +373,7 @@
     private const string MatchCardPreferenceContext = "MatchCardDisplay";
     private const string ScopeDelimiter = "::";
     private const string SplitterWidthStorageKey = "ds-matchcard-settings-split-width";
+    private const string SplitterWidthStorageFormat = "F2";
 
     private bool _isLoading;
     private bool _isSaving;
@@ -690,7 +691,7 @@
     {
         try
         {
-            await JS.InvokeVoidAsync("dartSuiteUi.localStorageSet", SplitterWidthStorageKey, _settingsPanelWidthPct.ToString("F2", CultureInfo.InvariantCulture));
+            await JS.InvokeVoidAsync("dartSuiteUi.localStorageSet", SplitterWidthStorageKey, _settingsPanelWidthPct.ToString(SplitterWidthStorageFormat, CultureInfo.InvariantCulture));
         }
         catch
         {
