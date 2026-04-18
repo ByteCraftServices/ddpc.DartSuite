@@ -27,36 +27,47 @@
     <label class="form-check-label small" for="showCompletedRounds">Abgeschlossene Runden anzeigen</label>
 </div>
 
-@if (RoundSettings.Any())
+@{
+    var visibleRoundGroups = VisibleRoundGroups;
+}
+
+@if (visibleRoundGroups.Any())
 {
-    @foreach (var rnd in RoundSettings.OrderBy(r => r.Phase).ThenBy(r => r.RoundNumber))
+    @foreach (var grp in visibleRoundGroups)
     {
-        var started = IsRoundStarted(rnd);
-        var completed = IsRoundCompleted(rnd);
-        if (!completed || ShowCompletedRounds)
-        {
-            <div class="card mb-2 @(completed ? "border-success" : started ? "border-warning" : "")" style="cursor:pointer" @onclick="() => OnOpenRoundDetail.InvokeAsync(rnd)">
-                <div class="card-body py-2">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <span>
-                            <strong class="small">@RoundDisplayLabel(rnd)</strong>
-                            @if (completed)
-                            {
-                                <span class="badge text-bg-success ms-1">✓ Abgeschlossen</span>
-                            }
-                            else if (started)
-                            {
-                                <span class="badge text-bg-warning ms-1">▶ Gestartet</span>
-                            }
-                        </span>
-                        <span class="badge text-bg-light">First to @rnd.Legs Legs | @rnd.BaseScore @rnd.OutMode</span>
-                    </div>
-                    <div class="small text-muted">
-                        Spielzeit/Leg: @rnd.LegDurationSeconds s | Pause: @rnd.PauseBetweenMatchesMinutes min | Spielerpause: @rnd.MinPlayerPauseMinutes min | Board: @rnd.BoardAssignment
-                    </div>
+        var started = grp.Rounds.Any(IsRoundStarted);
+        var completed = grp.Rounds.All(IsRoundCompleted);
+        <div class="card mb-2 @(completed ? "border-success" : started ? "border-warning" : "")" style="cursor:pointer" @onclick="() => OnOpenRoundGroupDetail.InvokeAsync(grp.Rounds)">
+            <div class="card-body py-2">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span>
+                        <strong class="small">@BuildGroupLabel(grp.Rounds)</strong>
+                        @if (grp.Rounds.Count > 1)
+                        {
+                            <span class="badge text-bg-secondary ms-1">@grp.Rounds.Count Runden</span>
+                        }
+                        @if (completed)
+                        {
+                            <span class="badge text-bg-success ms-1">✓ Abgeschlossen</span>
+                        }
+                        else if (started)
+                        {
+                            <span class="badge text-bg-warning ms-1">▶ Gestartet</span>
+                        }
+                    </span>
+                    <span class="badge text-bg-light">First to @grp.Representative.Legs Legs | @grp.Representative.BaseScore @grp.Representative.OutMode</span>
                 </div>
+                <div class="small text-muted">
+                    Spielzeit/Leg: @grp.Representative.LegDurationSeconds s | Pause: @grp.Representative.PauseBetweenMatchesMinutes min | Spielerpause: @grp.Representative.MinPlayerPauseMinutes min | Board: @grp.Representative.BoardAssignment
+                </div>
+                @if (grp.Rounds.Count > 1)
+                {
+                    <div class="small text-muted mt-1">
+                        Enthaltene Runden: @string.Join(" · ", grp.Rounds.Select(RoundDisplayLabel))
+                    </div>
+                }
             </div>
-        }
+        </div>
     }
 }
 
@@ -235,7 +246,7 @@
     [Parameter] public Func<TournamentRoundDto, bool> IsRoundStarted { get; set; } = _ => false;
     [Parameter] public Func<TournamentRoundDto, bool> IsRoundCompleted { get; set; } = _ => false;
     [Parameter] public Func<TournamentRoundDto, string> RoundDisplayLabel { get; set; } = _ => string.Empty;
-    [Parameter] public EventCallback<TournamentRoundDto> OnOpenRoundDetail { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<TournamentRoundDto>> OnOpenRoundGroupDetail { get; set; }
 
     [Parameter] public bool CanEditTournamentStructure { get; set; }
     [Parameter] public bool IsWorking { get; set; }
@@ -277,6 +288,36 @@
     [Parameter] public IReadOnlyList<BoardDto> Boards { get; set; } = [];
 
     [Parameter] public string? RoundError { get; set; }
+
+    private IReadOnlyList<RoundGroupItem> VisibleRoundGroups =>
+        RoundSettings
+            .Where(r => ShowCompletedRounds || !IsRoundCompleted(r))
+            .GroupBy(r => new RoundGameplayKey(
+                r.BaseScore,
+                r.InMode,
+                r.OutMode,
+                r.GameMode,
+                r.Legs,
+                r.Sets,
+                r.MaxRounds,
+                r.BullMode,
+                r.BullOffMode,
+                r.LegDurationSeconds,
+                r.PauseBetweenMatchesMinutes,
+                r.MinPlayerPauseMinutes,
+                r.BoardAssignment,
+                r.FixedBoardId))
+            .Select(g => new RoundGroupItem(
+                [.. g.OrderBy(r => r.Phase).ThenBy(r => r.RoundNumber)],
+                g.First()))
+            .OrderBy(g => g.Rounds.First().Phase)
+            .ThenBy(g => g.Rounds.First().RoundNumber)
+            .ToList();
+
+    private string BuildGroupLabel(IReadOnlyList<TournamentRoundDto> rounds)
+        => rounds.Count == 1
+            ? RoundDisplayLabel(rounds[0])
+            : string.Join(" + ", rounds.Select(RoundDisplayLabel));
 
     private Task HandleShowCompletedRoundsChanged(ChangeEventArgs args)
         => ShowCompletedRoundsChanged.InvokeAsync(args.Value is bool b && b);
@@ -341,4 +382,22 @@
             ? parsed
             : fallback;
     }
+
+    private sealed record RoundGroupItem(IReadOnlyList<TournamentRoundDto> Rounds, TournamentRoundDto Representative);
+
+    private sealed record RoundGameplayKey(
+        int BaseScore,
+        string InMode,
+        string OutMode,
+        string GameMode,
+        int Legs,
+        int? Sets,
+        int MaxRounds,
+        string BullMode,
+        string BullOffMode,
+        int LegDurationSeconds,
+        int PauseBetweenMatchesMinutes,
+        int MinPlayerPauseMinutes,
+        string BoardAssignment,
+        Guid? FixedBoardId);
 }
