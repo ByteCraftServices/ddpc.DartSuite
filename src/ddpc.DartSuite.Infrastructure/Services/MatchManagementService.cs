@@ -1389,7 +1389,12 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
             prediction.HomeWinProbability,
             prediction.AwayWinProbability,
             Math.Max(1, (int)Math.Round(prediction.EstimatedRemainingDuration.TotalMinutes)),
-            prediction.ExpectedResult);
+            prediction.ExpectedResult,
+            prediction.ExpectedFinalScore,
+            prediction.ExpectedCheckoutPoints,
+            prediction.CheckoutProbability,
+            prediction.ExpectedRemainingDartsInLeg,
+            prediction.ExpectedPpr);
     }
 
     public async Task<MatchDto?> UpdateMatchAsync(UpdateMatchRequest request, CancellationToken cancellationToken = default)

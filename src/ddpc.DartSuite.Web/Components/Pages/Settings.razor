@@ -3,6 +3,7 @@
 @inject IUiHelpService UiHelp
 @inject DartSuiteApiService Api
 @inject NavigationManager Navigation
+@using ddpc.DartSuite.Application.Contracts.Matches
 @using System.Text.Json
 
 <PageTitle>Einstellungen</PageTitle>
@@ -98,6 +99,7 @@
                     <span class="badge text-bg-light border">Layout: @globalResolved.Layout</span>
                     <span class="badge text-bg-light border">Spielstand: @globalResolved.ScoreMode</span>
                     <span class="badge text-bg-light border">Spielernamen: @globalResolved.PlayerNameMode</span>
+                    <span class="badge text-bg-light border">Groesse: @globalResolved.SizeLevel</span>
                     <span class="badge text-bg-light border">LiveScore: @(globalResolved.LiveScoreEnabled ? "An" : "Aus")</span>
                     <span class="badge text-bg-light border">Aktionen: @(globalResolved.ShowActionButtons ? "An" : "Aus")</span>
                     <span class="badge text-bg-light border">Spieler-Link: @(globalResolved.EnablePlayerLinks ? "An" : "Aus")</span>
@@ -126,6 +128,7 @@
                         <span class="badge text-bg-light border">Layout: @resolved.Layout</span>
                         <span class="badge text-bg-light border">Spielstand: @resolved.ScoreMode</span>
                         <span class="badge text-bg-light border">Spielernamen: @resolved.PlayerNameMode</span>
+                        <span class="badge text-bg-light border">Groesse: @resolved.SizeLevel</span>
                         <span class="badge text-bg-light border">LiveScore: @(resolved.LiveScoreEnabled ? "An" : "Aus")</span>
                         <span class="badge text-bg-light border">Aktionen: @(resolved.ShowActionButtons ? "An" : "Aus")</span>
                         <span class="badge text-bg-light border">Spieler-Link: @(resolved.EnablePlayerLinks ? "An" : "Aus")</span>
@@ -189,11 +192,12 @@ else
                             }
                             @if (!isGlobalScope && isExistingOverride)
                             {
-                                <div class="form-check form-switch mb-3 border rounded p-2">
-                                    <input class="form-check-input" type="checkbox" id="settingsModalUseDefaults"
+                                <div class="form-check form-switch mb-3 border rounded p-2 d-flex align-items-start gap-2">
+                                    <input class="form-check-input ms-0 me-1 float-none" type="checkbox" id="settingsModalUseDefaults"
                                            checked="@settingsModalUseDefaults"
+                                         title="Ueberschreibung deaktivieren und geerbte Standardwerte verwenden"
                                            @onchange="args => settingsModalUseDefaults = ParseBoolChangeEvent(args)" />
-                                    <label class="form-check-label fw-semibold" for="settingsModalUseDefaults">Standardwerte verwenden</label>
+                                     <label class="form-check-label fw-semibold" for="settingsModalUseDefaults" title="Setzt diese Sektion auf die vererbten Standardwerte zurueck">Standardwerte verwenden</label>
                                     @if (settingsModalUseDefaults)
                                     {
                                         <div class="small text-muted mt-1">Diese Sektion wird auf die vererbten Einstellungen zurückgesetzt.</div>
@@ -204,21 +208,22 @@ else
                             <fieldset disabled="@settingsModalUseDefaults">
                             <div class="row g-2 small mb-3">
                                 <div class="col-lg-3 col-md-4">
-                                    <label class="form-label mb-1">Anzeige</label>
+                                    <label class="form-label mb-1" title="Waehlt das Layout der MatchCard">Anzeige</label>
                                     <select class="form-select form-select-sm"
                                             value="@settingsModalMatchCard.Layout"
+                                        title="Layouttyp fuer die MatchCard"
                                             @onchange="OnModalMatchCardLayoutChanged">
                                         <option value="Horizontal">Horizontal</option>
                                         <option value="Vertical">Vertikal</option>
                                         <option value="Card">Karte</option>
                                         <option value="List">Liste</option>
-                                        <option value="List">Liste</option>
                                     </select>
                                 </div>
                                 <div class="col-lg-3 col-md-4">
-                                    <label class="form-label mb-1">Spielstand</label>
+                                    <label class="form-label mb-1" title="Waehlt die Darstellung des Spielstands">Spielstand</label>
                                     <select class="form-select form-select-sm"
                                             value="@settingsModalMatchCard.ScoreMode"
+                                        title="Anzeigeoption fuer Live- und Endergebnis"
                                             @onchange="args => settingsModalMatchCard.ScoreMode = MatchCardViewSettings.NormalizeScoreMode(args.Value?.ToString())">
                                         <option value="FinalOnly">Nur Endresultat</option>
                                         <option value="CurrentNoPoints">Aktueller Spielstand</option>
@@ -226,63 +231,82 @@ else
                                     </select>
                                 </div>
                                 <div class="col-lg-3 col-md-4">
-                                    <label class="form-label mb-1">Spielernamen</label>
+                                    <label class="form-label mb-1" title="Steuert, ob Namen mit Zusatzinfos angezeigt werden">Spielernamen</label>
                                     <select class="form-select form-select-sm"
                                             value="@settingsModalMatchCard.PlayerNameMode"
+                                        title="Format fuer Spielernamen in der MatchCard"
                                             @onchange="args => settingsModalMatchCard.PlayerNameMode = MatchCardViewSettings.NormalizePlayerNameMode(args.Value?.ToString())">
                                         <option value="Name">Nur Name</option>
                                         <option value="NameAndPpr">Name und PPR</option>
                                     </select>
                                 </div>
+                                <div class="col-lg-3 col-md-4">
+                                    <label class="form-label mb-1" title="Skaliert die gesamte MatchCard inklusive Schrift und Inhalt">Size Level</label>
+                                    <select class="form-select form-select-sm"
+                                            value="@settingsModalMatchCard.SizeLevel"
+                                            title="Skalierungsstufe fuer die gesamte MatchCard"
+                                            @onchange="args => settingsModalMatchCard.SizeLevel = MatchCardViewSettings.NormalizeSizeLevel(args.Value?.ToString())">
+                                        <option value="50%">50%</option>
+                                        <option value="75%">75%</option>
+                                        <option value="100%">100%</option>
+                                        <option value="150%">150%</option>
+                                        <option value="200%">200%</option>
+                                        <option value="300%">300%</option>
+                                    </select>
+                                </div>
                                 <div class="col-lg-3 col-md-12 d-flex align-items-end">
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalCollapse" checked="@settingsModalMatchCard.CollapseDetailsOnMobile" @onchange="args => settingsModalMatchCard.CollapseDetailsOnMobile = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalCollapse">Mobile eingeklappt</label></div>
+                                    <div class="form-check" title="Startet das Detail-Expandpanel auf schmalen Ansichten eingeklappt"><input class="form-check-input" type="checkbox" id="settingsModalCollapse" checked="@settingsModalMatchCard.CollapseDetailsOnMobile" @onchange="args => settingsModalMatchCard.CollapseDetailsOnMobile = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalCollapse">Mobile eingeklappt</label></div>
                                 </div>
                             </div>
 
                             <div class="border rounded p-2 mb-2">
                                 <div class="fw-semibold small mb-2">Titelleiste</div>
                                 <div class="d-flex flex-wrap gap-3 small">
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderMatchNumber" checked="@settingsModalMatchCard.ShowHeaderMatchNumber" @onchange="args => settingsModalMatchCard.ShowHeaderMatchNumber = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderMatchNumber">Matchnummer</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderMatchName" checked="@settingsModalMatchCard.ShowHeaderMatchName" @onchange="args => settingsModalMatchCard.ShowHeaderMatchName = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderMatchName">Matchname</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderStart" checked="@settingsModalMatchCard.ShowHeaderStartTime" @onchange="args => settingsModalMatchCard.ShowHeaderStartTime = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderStart">Startzeit</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderStartLock" checked="@settingsModalMatchCard.ShowHeaderStartTimeLock" @onchange="args => settingsModalMatchCard.ShowHeaderStartTimeLock = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderStartLock">Startzeit gesperrt</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderBoard" checked="@settingsModalMatchCard.ShowHeaderBoardName" @onchange="args => settingsModalMatchCard.ShowHeaderBoardName = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderBoard">Boardname</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderBoardLock" checked="@settingsModalMatchCard.ShowHeaderBoardLock" @onchange="args => settingsModalMatchCard.ShowHeaderBoardLock = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderBoardLock">Board gesperrt</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderDelay" checked="@settingsModalMatchCard.ShowHeaderDelay" @onchange="args => settingsModalMatchCard.ShowHeaderDelay = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderDelay">Zeitdifferenz</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderStatus" checked="@settingsModalMatchCard.ShowHeaderMatchStatus" @onchange="args => settingsModalMatchCard.ShowHeaderMatchStatus = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderStatus">Matchstatus</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalHeaderLive" checked="@settingsModalMatchCard.ShowHeaderLiveBadge" @onchange="args => settingsModalMatchCard.ShowHeaderLiveBadge = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderLive">Live-Badge</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalRuntimeBadge" checked="@settingsModalMatchCard.ShowRuntimeBadge" @onchange="args => settingsModalMatchCard.ShowRuntimeBadge = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalRuntimeBadge">Spielzeit-Badge</label></div>
+                                    <div class="form-check" title="Zeigt die Matchnummer in der Titelleiste"><input class="form-check-input" type="checkbox" id="settingsModalHeaderMatchNumber" checked="@settingsModalMatchCard.ShowHeaderMatchNumber" @onchange="args => settingsModalMatchCard.ShowHeaderMatchNumber = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderMatchNumber">Matchnummer</label></div>
+                                    <div class="form-check" title="Zeigt den Matchnamen in der Titelleiste"><input class="form-check-input" type="checkbox" id="settingsModalHeaderMatchName" checked="@settingsModalMatchCard.ShowHeaderMatchName" @onchange="args => settingsModalMatchCard.ShowHeaderMatchName = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderMatchName">Matchname</label></div>
+                                    <div class="form-check" title="Zeigt die geplante Startzeit in der Titelleiste"><input class="form-check-input" type="checkbox" id="settingsModalHeaderStart" checked="@settingsModalMatchCard.ShowHeaderStartTime" @onchange="args => settingsModalMatchCard.ShowHeaderStartTime = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderStart">Startzeit</label></div>
+                                    <div class="form-check" title="Markiert gesperrte Startzeiten in der Titelleiste"><input class="form-check-input" type="checkbox" id="settingsModalHeaderStartLock" checked="@settingsModalMatchCard.ShowHeaderStartTimeLock" @onchange="args => settingsModalMatchCard.ShowHeaderStartTimeLock = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderStartLock">Startzeit gesperrt</label></div>
+                                    <div class="form-check" title="Zeigt den Boardnamen in der Titelleiste"><input class="form-check-input" type="checkbox" id="settingsModalHeaderBoard" checked="@settingsModalMatchCard.ShowHeaderBoardName" @onchange="args => settingsModalMatchCard.ShowHeaderBoardName = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderBoard">Boardname</label></div>
+                                    <div class="form-check" title="Zeigt einen Hinweis, wenn das Board gesperrt ist"><input class="form-check-input" type="checkbox" id="settingsModalHeaderBoardLock" checked="@settingsModalMatchCard.ShowHeaderBoardLock" @onchange="args => settingsModalMatchCard.ShowHeaderBoardLock = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderBoardLock">Board gesperrt</label></div>
+                                    <div class="form-check" title="Zeigt die Zeitdifferenz zur Planung"><input class="form-check-input" type="checkbox" id="settingsModalHeaderDelay" checked="@settingsModalMatchCard.ShowHeaderDelay" @onchange="args => settingsModalMatchCard.ShowHeaderDelay = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderDelay">Zeitdifferenz</label></div>
+                                    <div class="form-check" title="Zeigt den aktuellen Matchstatus in der Titelleiste"><input class="form-check-input" type="checkbox" id="settingsModalHeaderStatus" checked="@settingsModalMatchCard.ShowHeaderMatchStatus" @onchange="args => settingsModalMatchCard.ShowHeaderMatchStatus = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderStatus">Matchstatus</label></div>
+                                    <div class="form-check" title="Blendet ein Live-Badge in der Titelleiste ein"><input class="form-check-input" type="checkbox" id="settingsModalHeaderLive" checked="@settingsModalMatchCard.ShowHeaderLiveBadge" @onchange="args => settingsModalMatchCard.ShowHeaderLiveBadge = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalHeaderLive">Live-Badge</label></div>
+                                    <div class="form-check" title="Zeigt ein Badge fuer laufende Spieldauer"><input class="form-check-input" type="checkbox" id="settingsModalRuntimeBadge" checked="@settingsModalMatchCard.ShowRuntimeBadge" @onchange="args => settingsModalMatchCard.ShowRuntimeBadge = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalRuntimeBadge">Spielzeit-Badge</label></div>
                                 </div>
                             </div>
 
                             <div class="border rounded p-2 mb-2">
                                 <div class="fw-semibold small mb-2">Body</div>
                                 <div class="d-flex flex-wrap gap-3 small">
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalBodyStart" checked="@settingsModalMatchCard.ShowBodyStartTime" @onchange="args => settingsModalMatchCard.ShowBodyStartTime = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyStart">Startzeit</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalBodyStartLock" checked="@settingsModalMatchCard.ShowBodyStartTimeLock" @onchange="args => settingsModalMatchCard.ShowBodyStartTimeLock = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyStartLock">Startzeit gesperrt</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalBodyDelay" checked="@settingsModalMatchCard.ShowBodyDelay" @onchange="args => settingsModalMatchCard.ShowBodyDelay = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyDelay">Zeitdifferenz</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalBodyMatchNumber" checked="@settingsModalMatchCard.ShowBodyMatchNumber" @onchange="args => settingsModalMatchCard.ShowBodyMatchNumber = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyMatchNumber">Matchnummer</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalBodyBoard" checked="@settingsModalMatchCard.ShowBodyBoardName" @onchange="args => settingsModalMatchCard.ShowBodyBoardName = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyBoard">Boardname</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalLive" checked="@settingsModalMatchCard.LiveScoreEnabled" @onchange="args => settingsModalMatchCard.LiveScoreEnabled = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalLive">LiveScore aktiv</label></div>
+                                    <div class="form-check" title="Zeigt die Startzeit im Body-Bereich"><input class="form-check-input" type="checkbox" id="settingsModalBodyStart" checked="@settingsModalMatchCard.ShowBodyStartTime" @onchange="args => settingsModalMatchCard.ShowBodyStartTime = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyStart">Startzeit</label></div>
+                                    <div class="form-check" title="Markiert gesperrte Startzeiten im Body-Bereich"><input class="form-check-input" type="checkbox" id="settingsModalBodyStartLock" checked="@settingsModalMatchCard.ShowBodyStartTimeLock" @onchange="args => settingsModalMatchCard.ShowBodyStartTimeLock = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyStartLock">Startzeit gesperrt</label></div>
+                                    <div class="form-check" title="Zeigt die Zeitdifferenz im Body-Bereich"><input class="form-check-input" type="checkbox" id="settingsModalBodyDelay" checked="@settingsModalMatchCard.ShowBodyDelay" @onchange="args => settingsModalMatchCard.ShowBodyDelay = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyDelay">Zeitdifferenz</label></div>
+                                    <div class="form-check" title="Zeigt die Matchnummer im Body-Bereich"><input class="form-check-input" type="checkbox" id="settingsModalBodyMatchNumber" checked="@settingsModalMatchCard.ShowBodyMatchNumber" @onchange="args => settingsModalMatchCard.ShowBodyMatchNumber = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyMatchNumber">Matchnummer</label></div>
+                                    <div class="form-check" title="Zeigt den Matchnamen im Body-Bereich"><input class="form-check-input" type="checkbox" id="settingsModalBodyMatchName" checked="@settingsModalMatchCard.ShowBodyMatchName" @onchange="args => settingsModalMatchCard.ShowBodyMatchName = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyMatchName">Matchname</label></div>
+                                    <div class="form-check" title="Zeigt den Boardnamen im Body-Bereich"><input class="form-check-input" type="checkbox" id="settingsModalBodyBoard" checked="@settingsModalMatchCard.ShowBodyBoardName" @onchange="args => settingsModalMatchCard.ShowBodyBoardName = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyBoard">Boardname</label></div>
+                                    <div class="form-check" title="Zeigt den Board-Lock Status im Body-Bereich"><input class="form-check-input" type="checkbox" id="settingsModalBodyBoardLock" checked="@settingsModalMatchCard.ShowBodyBoardLock" @onchange="args => settingsModalMatchCard.ShowBodyBoardLock = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyBoardLock">Board gesperrt</label></div>
+                                    <div class="form-check" title="Zeigt den Matchstatus im Body-Bereich"><input class="form-check-input" type="checkbox" id="settingsModalBodyMatchStatus" checked="@settingsModalMatchCard.ShowBodyMatchStatus" @onchange="args => settingsModalMatchCard.ShowBodyMatchStatus = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyMatchStatus">Matchstatus</label></div>
+                                    <div class="form-check" title="Zeigt ein Live-Badge im Body-Bereich"><input class="form-check-input" type="checkbox" id="settingsModalBodyLiveBadge" checked="@settingsModalMatchCard.ShowBodyLiveBadge" @onchange="args => settingsModalMatchCard.ShowBodyLiveBadge = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBodyLiveBadge">Live-Badge</label></div>
+                                    <div class="form-check" title="Aktiviert LiveScore-Anzeige in der MatchCard"><input class="form-check-input" type="checkbox" id="settingsModalLive" checked="@settingsModalMatchCard.LiveScoreEnabled" @onchange="args => settingsModalMatchCard.LiveScoreEnabled = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalLive">LiveScore aktiv</label></div>
                                 </div>
                             </div>
 
                             <div class="border rounded p-2 mb-2">
                                 <div class="fw-semibold small mb-2">Buttons / Funktionen</div>
                                 <div class="d-flex flex-wrap gap-3 small">
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalActionBar" checked="@settingsModalMatchCard.ShowActionButtons" @onchange="args => settingsModalMatchCard.ShowActionButtons = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionBar">Action-Leiste</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalActionSync" checked="@settingsModalMatchCard.ShowSyncAction" @onchange="args => settingsModalMatchCard.ShowSyncAction = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionSync">Sync</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalActionFollow" checked="@settingsModalMatchCard.ShowFollowAction" @onchange="args => settingsModalMatchCard.ShowFollowAction = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionFollow">Spiel folgen</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalActionStart" checked="@settingsModalMatchCard.ShowStartMatchAction" @onchange="args => settingsModalMatchCard.ShowStartMatchAction = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionStart">Match starten</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalActionReset" checked="@settingsModalMatchCard.ShowResetAction" @onchange="args => settingsModalMatchCard.ShowResetAction = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionReset">Zuruecksetzen</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalActionListener" checked="@settingsModalMatchCard.ShowListenerAction" @onchange="args => settingsModalMatchCard.ShowListenerAction = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionListener">Listener starten</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalPlayerLinks" checked="@settingsModalMatchCard.EnablePlayerLinks" @onchange="args => settingsModalMatchCard.EnablePlayerLinks = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalPlayerLinks">Spieler-Links</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalBoardLink" checked="@settingsModalMatchCard.EnableBoardLink" @onchange="args => settingsModalMatchCard.EnableBoardLink = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBoardLink">Board-Link</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalSuppressHeader" checked="@settingsModalMatchCard.SuppressHeader" @onchange="args => settingsModalMatchCard.SuppressHeader = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalSuppressHeader">Titelleiste ausblenden</label></div>
+                                    <div class="form-check" title="Blendet die komplette Action-Leiste ein oder aus"><input class="form-check-input" type="checkbox" id="settingsModalActionBar" checked="@settingsModalMatchCard.ShowActionButtons" @onchange="args => settingsModalMatchCard.ShowActionButtons = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionBar">Action-Leiste</label></div>
+                                    <div class="form-check" title="Zeigt den Sync-Button in der Action-Leiste"><input class="form-check-input" type="checkbox" id="settingsModalActionSync" checked="@settingsModalMatchCard.ShowSyncAction" @onchange="args => settingsModalMatchCard.ShowSyncAction = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionSync">Sync</label></div>
+                                    <div class="form-check" title="Zeigt die Aktion Spiel folgen"><input class="form-check-input" type="checkbox" id="settingsModalActionFollow" checked="@settingsModalMatchCard.ShowFollowAction" @onchange="args => settingsModalMatchCard.ShowFollowAction = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionFollow">Spiel folgen</label></div>
+                                    <div class="form-check" title="Zeigt die Aktion Match starten"><input class="form-check-input" type="checkbox" id="settingsModalActionStart" checked="@settingsModalMatchCard.ShowStartMatchAction" @onchange="args => settingsModalMatchCard.ShowStartMatchAction = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionStart">Match starten</label></div>
+                                    <div class="form-check" title="Zeigt die Aktion Zuruecksetzen"><input class="form-check-input" type="checkbox" id="settingsModalActionReset" checked="@settingsModalMatchCard.ShowResetAction" @onchange="args => settingsModalMatchCard.ShowResetAction = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionReset">Zuruecksetzen</label></div>
+                                    <div class="form-check" title="Zeigt die Aktion Listener starten"><input class="form-check-input" type="checkbox" id="settingsModalActionListener" checked="@settingsModalMatchCard.ShowListenerAction" @onchange="args => settingsModalMatchCard.ShowListenerAction = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalActionListener">Listener starten</label></div>
+                                    <div class="form-check" title="Macht Spielernamen in der Karte klickbar"><input class="form-check-input" type="checkbox" id="settingsModalPlayerLinks" checked="@settingsModalMatchCard.EnablePlayerLinks" @onchange="args => settingsModalMatchCard.EnablePlayerLinks = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalPlayerLinks">Spieler-Links</label></div>
+                                    <div class="form-check" title="Macht den Boardnamen in der Karte klickbar"><input class="form-check-input" type="checkbox" id="settingsModalBoardLink" checked="@settingsModalMatchCard.EnableBoardLink" @onchange="args => settingsModalMatchCard.EnableBoardLink = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalBoardLink">Board-Link</label></div>
+                                    <div class="form-check" title="Blendet die gesamte Titelleiste aus"><input class="form-check-input" type="checkbox" id="settingsModalSuppressHeader" checked="@settingsModalMatchCard.SuppressHeader" @onchange="args => settingsModalMatchCard.SuppressHeader = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalSuppressHeader">Titelleiste ausblenden</label></div>
                                 </div>
                                 <div class="d-flex align-items-center gap-2 mt-2 small">
-                                    <label class="form-label mb-0">Buttons Position</label>
-                                    <select class="form-select form-select-sm" style="width:auto" value="@settingsModalMatchCard.ActionButtonsLocation" @onchange="args => settingsModalMatchCard.ActionButtonsLocation = MatchCardViewSettings.NormalizeActionButtonsLocation(args.Value?.ToString())">
+                                    <label class="form-label mb-0" title="Bestimmt, wo die Action-Buttons erscheinen">Buttons Position</label>
+                                    <select class="form-select form-select-sm" style="width:auto" value="@settingsModalMatchCard.ActionButtonsLocation" title="Position der Action-Buttons in der MatchCard" @onchange="args => settingsModalMatchCard.ActionButtonsLocation = MatchCardViewSettings.NormalizeActionButtonsLocation(args.Value?.ToString())">
                                         <option value="Footer">Unten</option>
                                         <option value="Header">Oben (Titelleiste)</option>
                                     </select>
@@ -291,18 +315,302 @@ else
 
                             <div class="border rounded p-2">
                                 <div class="fw-semibold small mb-2">Erweitert / Statistiken</div>
+                                <div class="fw-semibold small mb-2">Details</div>
+                                <div class="d-flex flex-wrap gap-3 small mb-3">
+                                    <div class="form-check" title="Zeigt die Matchnummer im Detail-Tab"><input class="form-check-input" type="checkbox" id="settingsModalDetailsMatchNumber" checked="@settingsModalMatchCard.ShowDetailsMatchNumber" @onchange="args => settingsModalMatchCard.ShowDetailsMatchNumber = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalDetailsMatchNumber">Matchnummer</label></div>
+                                    <div class="form-check" title="Zeigt den Matchnamen im Detail-Tab"><input class="form-check-input" type="checkbox" id="settingsModalDetailsMatchName" checked="@settingsModalMatchCard.ShowDetailsMatchName" @onchange="args => settingsModalMatchCard.ShowDetailsMatchName = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalDetailsMatchName">Matchname</label></div>
+                                    <div class="form-check" title="Zeigt die Startzeit im Detail-Tab"><input class="form-check-input" type="checkbox" id="settingsModalDetailsStartTime" checked="@settingsModalMatchCard.ShowDetailsStartTime" @onchange="args => settingsModalMatchCard.ShowDetailsStartTime = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalDetailsStartTime">Startzeit</label></div>
+                                    <div class="form-check" title="Zeigt den Sperrstatus der Startzeit im Detail-Tab"><input class="form-check-input" type="checkbox" id="settingsModalDetailsStartTimeLock" checked="@settingsModalMatchCard.ShowDetailsStartTimeLock" @onchange="args => settingsModalMatchCard.ShowDetailsStartTimeLock = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalDetailsStartTimeLock">Startzeit gesperrt</label></div>
+                                    <div class="form-check" title="Zeigt den Boardnamen im Detail-Tab"><input class="form-check-input" type="checkbox" id="settingsModalDetailsBoardName" checked="@settingsModalMatchCard.ShowDetailsBoardName" @onchange="args => settingsModalMatchCard.ShowDetailsBoardName = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalDetailsBoardName">Boardname</label></div>
+                                    <div class="form-check" title="Zeigt den Board-Sperrstatus im Detail-Tab"><input class="form-check-input" type="checkbox" id="settingsModalDetailsBoardLock" checked="@settingsModalMatchCard.ShowDetailsBoardLock" @onchange="args => settingsModalMatchCard.ShowDetailsBoardLock = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalDetailsBoardLock">Board gesperrt</label></div>
+                                    <div class="form-check" title="Zeigt die Zeitdifferenz im Detail-Tab"><input class="form-check-input" type="checkbox" id="settingsModalDetailsDelay" checked="@settingsModalMatchCard.ShowDetailsDelay" @onchange="args => settingsModalMatchCard.ShowDetailsDelay = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalDetailsDelay">Zeitdifferenz</label></div>
+                                    <div class="form-check" title="Zeigt den Matchstatus im Detail-Tab"><input class="form-check-input" type="checkbox" id="settingsModalDetailsMatchStatus" checked="@settingsModalMatchCard.ShowDetailsMatchStatus" @onchange="args => settingsModalMatchCard.ShowDetailsMatchStatus = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalDetailsMatchStatus">Matchstatus</label></div>
+                                    <div class="form-check" title="Zeigt einen Live-Hinweis im Detail-Tab"><input class="form-check-input" type="checkbox" id="settingsModalDetailsLiveBadge" checked="@settingsModalMatchCard.ShowDetailsLiveBadge" @onchange="args => settingsModalMatchCard.ShowDetailsLiveBadge = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalDetailsLiveBadge">Live-Badge</label></div>
+                                    <div class="form-check" title="Zeigt die laufende Spielzeit im Detail-Tab"><input class="form-check-input" type="checkbox" id="settingsModalDetailsRuntime" checked="@settingsModalMatchCard.ShowDetailsRuntime" @onchange="args => settingsModalMatchCard.ShowDetailsRuntime = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalDetailsRuntime">Spielzeit</label></div>
+                                    <div class="form-check" title="Zeigt den Monitoring-Status im Detail-Tab"><input class="form-check-input" type="checkbox" id="settingsModalDetailsMonitoring" checked="@settingsModalMatchCard.ShowDetailsMonitoringStatus" @onchange="args => settingsModalMatchCard.ShowDetailsMonitoringStatus = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalDetailsMonitoring">Monitoring</label></div>
+                                    <div class="form-check" title="Zeigt den Scheduling-Status im Detail-Tab"><input class="form-check-input" type="checkbox" id="settingsModalDetailsScheduling" checked="@settingsModalMatchCard.ShowSchedulingStatus" @onchange="args => settingsModalMatchCard.ShowSchedulingStatus = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalDetailsScheduling">SchedulingStatus</label></div>
+                                    <div class="form-check" title="Zeigt eine zusammengefasste Gameplay-Uebersicht des Matches"><input class="form-check-input" type="checkbox" id="settingsModalDetailsGameplay" checked="@settingsModalMatchCard.ShowDetailsGameplay" @onchange="args => settingsModalMatchCard.ShowDetailsGameplay = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalDetailsGameplay">Gameplay</label></div>
+                                </div>
+
+                                <div class="fw-semibold small mb-2">Spielerstatistik</div>
                                 <div class="d-flex flex-wrap gap-3 small">
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalMonitoring" checked="@settingsModalMatchCard.ShowMonitoringStatus" @onchange="args => settingsModalMatchCard.ShowMonitoringStatus = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalMonitoring">Monitoring-Badge</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalStatus" checked="@settingsModalMatchCard.ShowMatchStatus" @onchange="args => settingsModalMatchCard.ShowMatchStatus = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalStatus">MatchStatus</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalScheduling" checked="@settingsModalMatchCard.ShowSchedulingStatus" @onchange="args => settingsModalMatchCard.ShowSchedulingStatus = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalScheduling">SchedulingStatus</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalAverage" checked="@settingsModalMatchCard.ShowAverage" @onchange="args => settingsModalMatchCard.ShowAverage = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalAverage">Average</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalPpr" checked="@settingsModalMatchCard.ShowHighestPpr" @onchange="args => settingsModalMatchCard.ShowHighestPpr = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalPpr">Highest PPR</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalCheckout" checked="@settingsModalMatchCard.ShowHighestCheckout" @onchange="args => settingsModalMatchCard.ShowHighestCheckout = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalCheckout">Highest Checkout</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalAdpl" checked="@settingsModalMatchCard.ShowAverageDartsPerLeg" @onchange="args => settingsModalMatchCard.ShowAverageDartsPerLeg = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalAdpl">Average Darts/Leg</label></div>
-                                    <div class="form-check"><input class="form-check-input" type="checkbox" id="settingsModalMinDarts" checked="@settingsModalMatchCard.ShowMinimalDartsPerLeg" @onchange="args => settingsModalMatchCard.ShowMinimalDartsPerLeg = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalMinDarts">Minimal Darts/Leg</label></div>
+                                    <div class="form-check" title="Zeigt den Average-Wert je Spieler"><input class="form-check-input" type="checkbox" id="settingsModalAverage" checked="@settingsModalMatchCard.ShowAverage" @onchange="args => settingsModalMatchCard.ShowAverage = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalAverage">Average</label></div>
+                                    <div class="form-check" title="Zeigt den hoechsten PPR-Wert je Spieler"><input class="form-check-input" type="checkbox" id="settingsModalPpr" checked="@settingsModalMatchCard.ShowHighestPpr" @onchange="args => settingsModalMatchCard.ShowHighestPpr = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalPpr">Highest PPR</label></div>
+                                    <div class="form-check" title="Zeigt den hoechsten Checkout-Wert je Spieler"><input class="form-check-input" type="checkbox" id="settingsModalCheckout" checked="@settingsModalMatchCard.ShowHighestCheckout" @onchange="args => settingsModalMatchCard.ShowHighestCheckout = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalCheckout">Highest Checkout</label></div>
+                                    <div class="form-check" title="Zeigt den Wert Average Darts per Leg"><input class="form-check-input" type="checkbox" id="settingsModalAdpl" checked="@settingsModalMatchCard.ShowAverageDartsPerLeg" @onchange="args => settingsModalMatchCard.ShowAverageDartsPerLeg = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalAdpl">Average Darts/Leg</label></div>
+                                    <div class="form-check" title="Zeigt den Minimal Darts per Leg Wert"><input class="form-check-input" type="checkbox" id="settingsModalMinDarts" checked="@settingsModalMatchCard.ShowMinimalDartsPerLeg" @onchange="args => settingsModalMatchCard.ShowMinimalDartsPerLeg = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalMinDarts">Minimal Darts/Leg</label></div>
+                                </div>
+
+                                <hr class="my-2" />
+                                <div class="fw-semibold small mb-2">Matchprediction</div>
+                                <div class="d-flex flex-wrap gap-3 small">
+                                    <div class="form-check" title="Aktiviert den Matchprediction-Tab im Detailbereich"><input class="form-check-input" type="checkbox" id="settingsModalPrediction" checked="@settingsModalMatchCard.ShowMatchPrediction" @onchange="args => settingsModalMatchCard.ShowMatchPrediction = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalPrediction">Matchprediction</label></div>
+                                </div>
+
+                                <hr class="my-2" />
+                                <div class="fw-semibold small mb-2">Highlighting</div>
+                                <div class="d-flex flex-wrap gap-3 small mb-2">
+                                    <div class="form-check" title="Aktiviert zustandsbasiertes Highlighting"><input class="form-check-input" type="checkbox" id="settingsModalEnableHighlighting" checked="@settingsModalMatchCard.EnableHighlighting" @onchange="args => settingsModalMatchCard.EnableHighlighting = ParseBoolChangeEvent(args)" /><label class="form-check-label" for="settingsModalEnableHighlighting">Highlighting aktiv</label></div>
+                                </div>
+                                <div class="row g-2 small">
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label mb-1">Checkout-Schwelle</label>
+                                        <input type="number" class="form-control form-control-sm" min="1" max="501" value="@settingsModalMatchCard.HighlightCheckoutThreshold" @onchange="args => settingsModalMatchCard.HighlightCheckoutThreshold = Math.Clamp(int.TryParse(args.Value?.ToString(), out var parsed) ? parsed : 60, 1, 501)" />
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label mb-1">Status Erstellt Rahmen</label>
+                                        <select class="form-select form-select-sm" value="@settingsModalMatchCard.CreatedBorderPreset" @onchange="args => settingsModalMatchCard.CreatedBorderPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                            <option value="secondary">Secondary</option><option value="info">Info</option><option value="success">Success</option><option value="warning">Warning</option><option value="danger">Danger</option><option value="dark">Dark</option><option value="none">None</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label mb-1">Status Erstellt Hintergrund</label>
+                                        <select class="form-select form-select-sm" value="@settingsModalMatchCard.CreatedBackgroundPreset" @onchange="args => settingsModalMatchCard.CreatedBackgroundPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                            <option value="none">None</option><option value="secondary-soft">Secondary Soft</option><option value="info-soft">Info Soft</option><option value="success-soft">Success Soft</option><option value="warning-soft">Warning Soft</option><option value="danger-soft">Danger Soft</option><option value="dark-soft">Dark Soft</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label mb-1">Status Geplant Rahmen</label>
+                                        <select class="form-select form-select-sm" value="@settingsModalMatchCard.PlannedBorderPreset" @onchange="args => settingsModalMatchCard.PlannedBorderPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                            <option value="secondary">Secondary</option><option value="info">Info</option><option value="success">Success</option><option value="warning">Warning</option><option value="danger">Danger</option><option value="dark">Dark</option><option value="none">None</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label mb-1">Status Geplant Hintergrund</label>
+                                        <select class="form-select form-select-sm" value="@settingsModalMatchCard.PlannedBackgroundPreset" @onchange="args => settingsModalMatchCard.PlannedBackgroundPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                            <option value="none">None</option><option value="secondary-soft">Secondary Soft</option><option value="info-soft">Info Soft</option><option value="success-soft">Success Soft</option><option value="warning-soft">Warning Soft</option><option value="danger-soft">Danger Soft</option><option value="dark-soft">Dark Soft</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label mb-1">Status Warten Rahmen</label>
+                                        <select class="form-select form-select-sm" value="@settingsModalMatchCard.WaitingBorderPreset" @onchange="args => settingsModalMatchCard.WaitingBorderPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                            <option value="secondary">Secondary</option><option value="info">Info</option><option value="success">Success</option><option value="warning">Warning</option><option value="danger">Danger</option><option value="dark">Dark</option><option value="none">None</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label mb-1">Status Warten Hintergrund</label>
+                                        <select class="form-select form-select-sm" value="@settingsModalMatchCard.WaitingBackgroundPreset" @onchange="args => settingsModalMatchCard.WaitingBackgroundPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                            <option value="none">None</option><option value="secondary-soft">Secondary Soft</option><option value="info-soft">Info Soft</option><option value="success-soft">Success Soft</option><option value="warning-soft">Warning Soft</option><option value="danger-soft">Danger Soft</option><option value="dark-soft">Dark Soft</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label mb-1">Status Aktiv/Gestartet Rahmen</label>
+                                        <select class="form-select form-select-sm" value="@settingsModalMatchCard.ActiveBorderPreset" @onchange="args => settingsModalMatchCard.ActiveBorderPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                            <option value="secondary">Secondary</option><option value="danger">Danger</option><option value="info">Info</option><option value="success">Success</option><option value="warning">Warning</option><option value="dark">Dark</option><option value="none">None</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label mb-1">Status Aktiv/Gestartet Hintergrund</label>
+                                        <select class="form-select form-select-sm" value="@settingsModalMatchCard.ActiveBackgroundPreset" @onchange="args => settingsModalMatchCard.ActiveBackgroundPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                            <option value="none">None</option><option value="danger-soft">Danger Soft</option><option value="info-soft">Info Soft</option><option value="success-soft">Success Soft</option><option value="warning-soft">Warning Soft</option><option value="secondary-soft">Secondary Soft</option><option value="dark-soft">Dark Soft</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label mb-1">Status Beendet Rahmen</label>
+                                        <select class="form-select form-select-sm" value="@settingsModalMatchCard.CompletedBorderPreset" @onchange="args => settingsModalMatchCard.CompletedBorderPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                            <option value="secondary">Secondary</option><option value="dark">Dark</option><option value="info">Info</option><option value="success">Success</option><option value="warning">Warning</option><option value="danger">Danger</option><option value="none">None</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label mb-1">Status Beendet Hintergrund</label>
+                                        <select class="form-select form-select-sm" value="@settingsModalMatchCard.CompletedBackgroundPreset" @onchange="args => settingsModalMatchCard.CompletedBackgroundPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                            <option value="none">None</option><option value="dark-soft">Dark Soft</option><option value="secondary-soft">Secondary Soft</option><option value="info-soft">Info Soft</option><option value="success-soft">Success Soft</option><option value="warning-soft">Warning Soft</option><option value="danger-soft">Danger Soft</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label mb-1">Status WalkOver Rahmen</label>
+                                        <select class="form-select form-select-sm" value="@settingsModalMatchCard.WalkOverBorderPreset" @onchange="args => settingsModalMatchCard.WalkOverBorderPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                            <option value="secondary">Secondary</option><option value="dark">Dark</option><option value="info">Info</option><option value="success">Success</option><option value="warning">Warning</option><option value="danger">Danger</option><option value="none">None</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label mb-1">Status WalkOver Hintergrund</label>
+                                        <select class="form-select form-select-sm" value="@settingsModalMatchCard.WalkOverBackgroundPreset" @onchange="args => settingsModalMatchCard.WalkOverBackgroundPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                            <option value="none">None</option><option value="dark-soft">Dark Soft</option><option value="secondary-soft">Secondary Soft</option><option value="info-soft">Info Soft</option><option value="success-soft">Success Soft</option><option value="warning-soft">Warning Soft</option><option value="danger-soft">Danger Soft</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label mb-1">Verzögert Rahmen</label>
+                                        <select class="form-select form-select-sm" value="@settingsModalMatchCard.DelayedBorderPreset" @onchange="args => settingsModalMatchCard.DelayedBorderPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                            <option value="danger">Danger</option><option value="warning">Warning</option><option value="info">Info</option><option value="success">Success</option><option value="secondary">Secondary</option><option value="dark">Dark</option><option value="none">None</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label mb-1">Verzögert Hintergrund</label>
+                                        <select class="form-select form-select-sm" value="@settingsModalMatchCard.DelayedBackgroundPreset" @onchange="args => settingsModalMatchCard.DelayedBackgroundPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                            <option value="danger-soft">Danger Soft</option><option value="warning-soft">Warning Soft</option><option value="info-soft">Info Soft</option><option value="success-soft">Success Soft</option><option value="secondary-soft">Secondary Soft</option><option value="dark-soft">Dark Soft</option><option value="none">None</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label mb-1">Highlightphase Rahmen</label>
+                                        <select class="form-select form-select-sm" value="@settingsModalMatchCard.HighlightPhaseBorderPreset" @onchange="args => settingsModalMatchCard.HighlightPhaseBorderPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                            <option value="warning">Warning</option><option value="danger">Danger</option><option value="info">Info</option><option value="success">Success</option><option value="secondary">Secondary</option><option value="dark">Dark</option><option value="none">None</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-lg-3 col-md-6">
+                                        <label class="form-label mb-1">Highlightphase Hintergrund</label>
+                                        <select class="form-select form-select-sm" value="@settingsModalMatchCard.HighlightPhaseBackgroundPreset" @onchange="args => settingsModalMatchCard.HighlightPhaseBackgroundPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                            <option value="warning-soft">Warning Soft</option><option value="danger-soft">Danger Soft</option><option value="info-soft">Info Soft</option><option value="success-soft">Success Soft</option><option value="secondary-soft">Secondary Soft</option><option value="dark-soft">Dark Soft</option><option value="none">None</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                             </fieldset>
+
+                            <div class="border rounded p-2 mt-3" id="settings-modal-matchcard-preview">
+                                <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+                                    <div class="fw-semibold small mb-0">Vorschau</div>
+                                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                                        <span class="small text-muted">Groesse:</span>
+                                        @foreach (var sizeOpt in SettingsPreviewSizeOptions)
+                                        {
+                                            <button type="button"
+                                                    class="btn btn-sm @(settingsModalPreviewSize == sizeOpt.Key ? "btn-primary" : "btn-outline-secondary")"
+                                                    @onclick="() => settingsModalPreviewSize = sizeOpt.Key">@sizeOpt.Label</button>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="border rounded p-2 mb-2">
+                                    <div class="fw-semibold small mb-2">Simulation / Matchdaten</div>
+                                    <div class="row g-2 small">
+                                        <div class="col-md-4">
+                                            <label class="form-label mb-1">Home Spieler</label>
+                                            <input class="form-control form-control-sm"
+                                                   value="@settingsModalDemoMatch.HomeParticipantName"
+                                                   @onchange="args => settingsModalDemoMatch = settingsModalDemoMatch with { HomeParticipantName = args.Value?.ToString() }" />
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label mb-1">Away Spieler</label>
+                                            <input class="form-control form-control-sm"
+                                                   value="@settingsModalDemoMatch.AwayParticipantName"
+                                                   @onchange="args => settingsModalDemoMatch = settingsModalDemoMatch with { AwayParticipantName = args.Value?.ToString() }" />
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label class="form-label mb-1">Boardname</label>
+                                            <input class="form-control form-control-sm"
+                                                   value="@settingsModalDemoMatch.BoardName"
+                                                   @onchange="args => settingsModalDemoMatch = settingsModalDemoMatch with { BoardName = args.Value?.ToString() }" />
+                                        </div>
+
+                                        <div class="col-md-3">
+                                            <label class="form-label mb-1">Status</label>
+                                                <select class="form-select form-select-sm"
+                                                    value="@settingsModalDemoMatch.Status"
+                                                    @onchange='args => settingsModalDemoMatch = settingsModalDemoMatch with { Status = args.Value?.ToString() ?? "Geplant" }'>
+                                                <option value="Geplant">Geplant</option>
+                                                <option value="Aktiv">Aktiv</option>
+                                                <option value="Beendet">Beendet</option>
+                                                <option value="Warten">Warten</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label mb-1">Scheduling</label>
+                                                <select class="form-select form-select-sm"
+                                                    value="@settingsModalDemoMatch.SchedulingStatus"
+                                                    @onchange='args => settingsModalDemoMatch = settingsModalDemoMatch with { SchedulingStatus = args.Value?.ToString() ?? "OnTime" }'>
+                                                <option value="OnTime">OnTime</option>
+                                                <option value="Delayed">Delayed</option>
+                                                <option value="Ahead">Ahead</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label mb-1">Delay (min)</label>
+                                            <input type="number" class="form-control form-control-sm" min="-60" max="120"
+                                                   value="@settingsModalDemoMatch.DelayMinutes"
+                                                   @onchange="args => settingsModalDemoMatch = settingsModalDemoMatch with { DelayMinutes = ParseIntChange(args, settingsModalDemoMatch.DelayMinutes, -60, 120) }" />
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label mb-1">Sets Home</label>
+                                            <input type="number" class="form-control form-control-sm" min="0" max="20"
+                                                   value="@settingsModalDemoMatch.HomeSets"
+                                                   @onchange="args => settingsModalDemoMatch = settingsModalDemoMatch with { HomeSets = ParseIntChange(args, settingsModalDemoMatch.HomeSets, 0, 20) }" />
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label mb-1">Sets Away</label>
+                                            <input type="number" class="form-control form-control-sm" min="0" max="20"
+                                                   value="@settingsModalDemoMatch.AwaySets"
+                                                   @onchange="args => settingsModalDemoMatch = settingsModalDemoMatch with { AwaySets = ParseIntChange(args, settingsModalDemoMatch.AwaySets, 0, 20) }" />
+                                        </div>
+
+                                        <div class="col-md-2">
+                                            <label class="form-label mb-1">Legs Home</label>
+                                            <input type="number" class="form-control form-control-sm" min="0" max="20"
+                                                   value="@settingsModalDemoMatch.HomeLegs"
+                                                   @onchange="args => settingsModalDemoMatch = settingsModalDemoMatch with { HomeLegs = ParseIntChange(args, settingsModalDemoMatch.HomeLegs, 0, 20) }" />
+                                        </div>
+                                        <div class="col-md-2">
+                                            <label class="form-label mb-1">Legs Away</label>
+                                            <input type="number" class="form-control form-control-sm" min="0" max="20"
+                                                   value="@settingsModalDemoMatch.AwayLegs"
+                                                   @onchange="args => settingsModalDemoMatch = settingsModalDemoMatch with { AwayLegs = ParseIntChange(args, settingsModalDemoMatch.AwayLegs, 0, 20) }" />
+                                        </div>
+                                        <div class="col-md-8 d-flex align-items-end gap-3 flex-wrap">
+                                            <div class="form-check mb-0">
+                                                <input class="form-check-input" type="checkbox" id="settingsModalDemoStartLock"
+                                                       checked="@settingsModalDemoMatch.IsStartTimeLocked"
+                                                       @onchange="args => settingsModalDemoMatch = settingsModalDemoMatch with { IsStartTimeLocked = ParseBoolChangeEvent(args) }" />
+                                                <label class="form-check-label" for="settingsModalDemoStartLock">Startzeit gesperrt</label>
+                                            </div>
+                                            <div class="form-check mb-0">
+                                                <input class="form-check-input" type="checkbox" id="settingsModalDemoBoardLock"
+                                                       checked="@settingsModalDemoMatch.IsBoardLocked"
+                                                       @onchange="args => settingsModalDemoMatch = settingsModalDemoMatch with { IsBoardLocked = ParseBoolChangeEvent(args) }" />
+                                                <label class="form-check-label" for="settingsModalDemoBoardLock">Board gesperrt</label>
+                                            </div>
+                                        </div>
+
+                                        <div class="col-12 d-flex flex-wrap gap-2 pt-1">
+                                            <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="SetDemoStatePlanned">Nicht gestartet</button>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="SetDemoStateRunning">Laufend</button>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="SetDemoStateFinished">Beendet</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="width:@GetSettingsPreviewWidth(); max-width:100%">
+                                    <MatchCard Match="@settingsModalDemoMatch"
+                                               ViewSettings="@settingsModalMatchCard"
+                                               Label="@($"M{settingsModalDemoMatch.MatchNumber}")"
+                                               HomeName="@settingsModalDemoMatch.HomeParticipantName"
+                                               AwayName="@settingsModalDemoMatch.AwayParticipantName"
+                                               BoardName="@settingsModalDemoMatch.BoardName"
+                                               SetModeActive="true"
+                                               IsFollowing="@settingsModalDemoIsFollowing"
+                                               ShowRuntimeBadge="@settingsModalMatchCard.ShowRuntimeBadge"
+                                               ShowMonitoringStatus="@settingsModalMatchCard.ShowMonitoringStatus"
+                                               MonitoringStatusText="Online"
+                                               MonitoringStatusCssClass="text-bg-success"
+                                               ShowMatchStatus="@settingsModalMatchCard.ShowMatchStatus"
+                                               ShowSchedulingStatus="@settingsModalMatchCard.ShowSchedulingStatus"
+                                               ShowAverage="@settingsModalMatchCard.ShowAverage"
+                                               ShowHighestPpr="@settingsModalMatchCard.ShowHighestPpr"
+                                               ShowHighestCheckout="@settingsModalMatchCard.ShowHighestCheckout"
+                                               ShowAverageDartsPerLeg="@settingsModalMatchCard.ShowAverageDartsPerLeg"
+                                               ShowMinimalDartsPerLeg="@settingsModalMatchCard.ShowMinimalDartsPerLeg"
+                                               ShowMatchPrediction="@settingsModalMatchCard.ShowMatchPrediction"
+                                               HomeStatistic="@settingsModalDemoHomeStatistic"
+                                               AwayStatistic="@settingsModalDemoAwayStatistic"
+                                               ShowActionButtons="@settingsModalMatchCard.ShowActionButtons"
+                                               ShowSyncAction="@settingsModalMatchCard.ShowSyncAction"
+                                               ShowFollowAction="@settingsModalMatchCard.ShowFollowAction"
+                                               ShowStartMatchAction="@settingsModalMatchCard.ShowStartMatchAction"
+                                               ShowResetAction="@settingsModalMatchCard.ShowResetAction"
+                                               ShowListenerAction="@settingsModalMatchCard.ShowListenerAction"
+                                               EnablePlayerLinks="@settingsModalMatchCard.EnablePlayerLinks"
+                                               EnableBoardLink="@settingsModalMatchCard.EnableBoardLink"
+                                               CanSync="true"
+                                               CanFollow="true"
+                                               CanStartMatch="true"
+                                               CanResetMatch="true"
+                                               CanStartListener="true"
+                                               OnSync="@EventCallback.Factory.Create(this, OnSettingsPreviewSyncAsync)"
+                                               OnFollow="@EventCallback.Factory.Create(this, OnSettingsPreviewFollowAsync)"
+                                               OnStartMatch="@EventCallback.Factory.Create(this, OnSettingsPreviewStartAsync)"
+                                               OnResetMatch="@EventCallback.Factory.Create(this, OnSettingsPreviewResetAsync)"
+                                               OnStartListener="@EventCallback.Factory.Create(this, OnSettingsPreviewListenerAsync)"
+                                               EnableDetailPanel="true"
+                                               DetailsExpandedByDefault="false" />
+                                </div>
+                            </div>
                         </div>
                     }
                     else if (settingsModalKind == "matchcard-add")
@@ -379,6 +687,46 @@ else
     private string settingsModalScopeKey = BuildMatchCardScopeKey(MatchCardScopePageTournaments, MatchCardScopeSectionAll);
     private MatchCardViewSettings settingsModalMatchCard = MatchCardViewSettings.CreateDefault();
     private bool settingsModalUseDefaults;
+    private MatchDto settingsModalDemoMatch = new(
+        Guid.NewGuid(),
+        Guid.NewGuid(),
+        "Group",
+        1,
+        2,
+        5,
+        Guid.NewGuid(),
+        Guid.NewGuid(),
+        Guid.NewGuid(),
+        2,
+        1,
+        0,
+        0,
+        null,
+        DateTimeOffset.UtcNow.AddMinutes(15),
+        false,
+        false,
+        DateTimeOffset.UtcNow.AddMinutes(-3),
+        null,
+        "Aktiv",
+        null,
+        DateTimeOffset.UtcNow.AddMinutes(45),
+        DateTimeOffset.UtcNow.AddMinutes(48),
+        3,
+        "Delayed",
+        null,
+        null,
+        null,
+        "Max Mustermann",
+        "Anna Schmidt",
+        "Board 1");
+    private readonly MatchPlayerStatisticDto settingsModalDemoHomeStatistic = new(
+        Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Max Mustermann", 71.4, 81.2, 42, 2, 1, 0, 0,
+        124, 42.5, 6, 14, 9, 4, 0, 1, 0, 18.2, 14, 27, 1, 41.3, 1234, 180);
+    private readonly MatchPlayerStatisticDto settingsModalDemoAwayStatistic = new(
+        Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Anna Schmidt", 66.8, 77.0, 45, 1, 2, 0, 0,
+        96, 35.1, 4, 11, 7, 3, 0, 0, 0, 20.1, 15, 30, 0, 36.4, 1180, 140);
+    private bool settingsModalDemoIsFollowing;
+    private string settingsModalPreviewSize = "m";
 
     private const string TournamentRealtimePreferenceContext = "TournamentRealtime";
     private const string MatchesRealtimePreferenceContext = "MatchesRealtime";
@@ -402,6 +750,16 @@ else
 
     private sealed record RealtimeSettings(int FallbackPollingSeconds = 5);
     private sealed record MatchCardScopeOption(string ScopeKey, string Label);
+    private sealed record PreviewSizeOption(string Key, string Label, string Width);
+
+    private static readonly IReadOnlyList<PreviewSizeOption> SettingsPreviewSizeOptions =
+    [
+        new("xs", "XS", "300px"),
+        new("s", "S", "500px"),
+        new("m", "M", "800px"),
+        new("l", "L", "1000px"),
+        new("full", "Full", "100%")
+    ];
 
     private static readonly IReadOnlyList<MatchCardScopeOption> MatchCardScopeOptions =
     [
@@ -546,7 +904,8 @@ else
         matchCardSettingsByView.Clear();
         _userOverriddenScopeKeys.Clear();
 
-        matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
+        var globalScopeKey = BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll);
+        matchCardSettingsByView[globalScopeKey] = MatchCardViewSettings.CreateDefault(globalScopeKey);
 
         if (string.IsNullOrWhiteSpace(autodartsDisplayName))
             return;
@@ -605,7 +964,7 @@ else
                 return found;
         }
 
-        return MatchCardViewSettings.CreateDefault();
+        return MatchCardViewSettings.CreateDefault(normalizedScopeKey);
     }
 
     private MatchCardViewSettings GetEditableMatchCardSettings(string scopeKey)
@@ -746,7 +1105,7 @@ else
         settingsModalKind = "matchcard-add";
         settingsModalTitle = "Sektion hinzufügen";
         settingsModalScopeKey = string.Empty;
-        settingsModalMatchCard = MatchCardViewSettings.CreateDefault();
+        settingsModalMatchCard = MatchCardViewSettings.CreateDefault(BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll));
         showSettingsModal = true;
     }
 
@@ -791,10 +1150,15 @@ else
     private void CloseSettingsModal()
     {
         showSettingsModal = false;
+        settingsModalDemoIsFollowing = false;
+        settingsModalPreviewSize = "m";
 
         if (!string.IsNullOrWhiteSpace(QueryEdit))
             Navigation.NavigateTo("/settings?tab=general", replace: true);
     }
+
+    private string GetSettingsPreviewWidth()
+        => SettingsPreviewSizeOptions.FirstOrDefault(x => x.Key == settingsModalPreviewSize)?.Width ?? "100%";
 
     private async Task OnModalMatchCardLayoutChanged(ChangeEventArgs args)
     {
@@ -848,4 +1212,97 @@ else
             string s when bool.TryParse(s, out var parsed) => parsed,
             _ => false
         };
+
+    private static int ParseIntChange(ChangeEventArgs args, int fallback, int min, int max)
+    {
+        if (!int.TryParse(args.Value?.ToString(), out var parsed))
+            return fallback;
+
+        return Math.Clamp(parsed, min, max);
+    }
+
+    private Task SetDemoStatePlanned()
+    {
+        settingsModalDemoMatch = settingsModalDemoMatch with
+        {
+            StartedUtc = null,
+            FinishedUtc = null,
+            Status = "Geplant"
+        };
+        return Task.CompletedTask;
+    }
+
+    private Task SetDemoStateRunning()
+    {
+        var now = DateTimeOffset.UtcNow;
+        settingsModalDemoMatch = settingsModalDemoMatch with
+        {
+            StartedUtc = now.AddMinutes(-4),
+            FinishedUtc = null,
+            Status = "Aktiv"
+        };
+        return Task.CompletedTask;
+    }
+
+    private Task SetDemoStateFinished()
+    {
+        var now = DateTimeOffset.UtcNow;
+        settingsModalDemoMatch = settingsModalDemoMatch with
+        {
+            StartedUtc = now.AddMinutes(-24),
+            FinishedUtc = now,
+            Status = "Beendet"
+        };
+        return Task.CompletedTask;
+    }
+
+    private Task OnSettingsPreviewSyncAsync()
+    {
+        var nextDelay = settingsModalDemoMatch.DelayMinutes > 0 ? 0 : 4;
+        var nextScheduling = nextDelay > 0 ? "Delayed" : "OnTime";
+        settingsModalDemoMatch = settingsModalDemoMatch with { DelayMinutes = nextDelay, SchedulingStatus = nextScheduling };
+        return Task.CompletedTask;
+    }
+
+    private Task OnSettingsPreviewFollowAsync()
+    {
+        settingsModalDemoIsFollowing = !settingsModalDemoIsFollowing;
+        return Task.CompletedTask;
+    }
+
+    private Task OnSettingsPreviewStartAsync()
+    {
+        var now = DateTimeOffset.UtcNow;
+        settingsModalDemoMatch = settingsModalDemoMatch with
+        {
+            StartedUtc = now,
+            FinishedUtc = null,
+            Status = "Aktiv"
+        };
+        return Task.CompletedTask;
+    }
+
+    private Task OnSettingsPreviewResetAsync()
+    {
+        settingsModalDemoMatch = settingsModalDemoMatch with
+        {
+            HomeSets = 0,
+            AwaySets = 0,
+            HomeLegs = 0,
+            AwayLegs = 0,
+            StartedUtc = null,
+            FinishedUtc = null,
+            Status = "Geplant",
+            DelayMinutes = 0,
+            SchedulingStatus = "OnTime"
+        };
+        settingsModalDemoIsFollowing = false;
+        return Task.CompletedTask;
+    }
+
+    private Task OnSettingsPreviewListenerAsync()
+    {
+        settingsModalDemoMatch = settingsModalDemoMatch with { IsBoardLocked = !settingsModalDemoMatch.IsBoardLocked };
+        return Task.CompletedTask;
+    }
 }

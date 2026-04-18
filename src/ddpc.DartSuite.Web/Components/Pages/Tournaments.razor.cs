@@ -315,11 +315,22 @@ public partial class Tournaments : IAsyncDisposable
         }
     }
 
+    private const int TournamentRailLabelMaxLength = 25;
+
     private static string GetTournamentRailItemHeight(TournamentDto tournament)
     {
-        var nameLength = tournament.Name?.Length ?? 0;
-        var heightRem = Math.Clamp(2.8 + (nameLength * 0.24), 4.2, 11.0);
-        return $"{heightRem:0.##}rem";
+        var nameLength = Math.Min(tournament.Name?.Length ?? 0, TournamentRailLabelMaxLength);
+        var heightRem = Math.Clamp(1.9 + (nameLength * 0.2), 3.1, 7.2);
+        return $"{heightRem.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}rem";
+    }
+
+    private static string GetTournamentRailLabel(TournamentDto tournament)
+    {
+        var name = tournament.Name ?? string.Empty;
+        if (name.Length <= TournamentRailLabelMaxLength)
+            return name;
+
+        return $"{name[..TournamentRailLabelMaxLength]}...";
     }
 
     // ─── Autodarts Session ───
@@ -537,6 +548,16 @@ public partial class Tournaments : IAsyncDisposable
 
     private bool CanFollowFromMatchCard(MatchDto match)
         => MatchCardUiPolicy.CanFollowForUser(isAutodartsConnected, autodartsDisplayName, IsFollowOperationBusy(match.Id));
+
+    private bool CanStartMatchFromMatchCard(MatchDto match)
+        => IsCurrentUserManager && !isWorking && CanSendUpcomingMatch(match);
+
+    private bool CanResetFromMatchCard(MatchDto match)
+        => IsCurrentUserManager
+           && !isWorking
+           && (match.StartedUtc is not null
+               || match.FinishedUtc is not null
+               || !string.IsNullOrWhiteSpace(match.ExternalMatchId));
 
     private EventCallback BuildPlayerDetailCallback(Guid? participantId)
     {
@@ -2261,8 +2282,10 @@ public partial class Tournaments : IAsyncDisposable
         matchCardSettingsByView.Clear();
         activeMatchCardConfigScopeKey = BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll);
 
-        matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
-        matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
+        var globalScopeKey = BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll);
+        var pageScopeKey = BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll);
+        matchCardSettingsByView[globalScopeKey] = MatchCardViewSettings.CreateDefault(globalScopeKey);
+        matchCardSettingsByView[pageScopeKey] = MatchCardViewSettings.CreateDefault(pageScopeKey);
 
         if (string.IsNullOrWhiteSpace(autodartsDisplayName))
             return;
@@ -2402,7 +2425,7 @@ public partial class Tournaments : IAsyncDisposable
                 return found;
         }
 
-        return MatchCardViewSettings.CreateDefault();
+        return MatchCardViewSettings.CreateDefault(BuildMatchCardScopeKey(MatchCardScopePage, normalizedSection));
     }
 
     private MatchCardViewSettings GetEditableMatchCardSettings(string scopeKey)
@@ -2417,7 +2440,7 @@ public partial class Tournaments : IAsyncDisposable
             }
             else
             {
-                settings = MatchCardViewSettings.CreateDefault();
+                settings = MatchCardViewSettings.CreateDefault(normalizedScopeKey);
             }
 
             matchCardSettingsByView[normalizedScopeKey] = settings;

@@ -654,7 +654,7 @@ else
     private string? matchCardPreferenceError;
     private List<MatchPlayerStatisticDto> detailMatchStatistics = [];
     private List<MatchListenerInfoDto> matchListeners = [];
-    private MatchCardViewSettings detailMatchCardSettings = MatchCardViewSettings.CreateDefault();
+    private MatchCardViewSettings detailMatchCardSettings = MatchCardViewSettings.CreateDefault("matches::detail");
     private readonly Dictionary<string, MatchCardViewSettings> matchCardSettingsByView = new(StringComparer.OrdinalIgnoreCase);
     private bool isSyncingDetailMatch;
     private bool isFollowingDetailMatch;
@@ -935,7 +935,7 @@ else
                 return found;
         }
 
-        return MatchCardViewSettings.CreateDefault();
+        return MatchCardViewSettings.CreateDefault(DetailMatchCardScopeKey);
     }
 
     private MatchCardViewSettings GetEditableDetailMatchCardSettings()
@@ -956,8 +956,10 @@ else
         matchCardPreferenceError = null;
         matchCardSettingsByView.Clear();
 
-        matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
-        matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
+        var globalScopeKey = BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll);
+        var pageScopeKey = BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll);
+        matchCardSettingsByView[globalScopeKey] = MatchCardViewSettings.CreateDefault(globalScopeKey);
+        matchCardSettingsByView[pageScopeKey] = MatchCardViewSettings.CreateDefault(pageScopeKey);
         detailMatchCardSettings = GetEditableDetailMatchCardSettings();
 
         if (string.IsNullOrWhiteSpace(autodartsDisplayName))
@@ -993,9 +995,11 @@ else
         catch
         {
             matchCardSettingsByView.Clear();
-            matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
-            matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
-            detailMatchCardSettings = MatchCardViewSettings.CreateDefault();
+            var globalFallbackScopeKey = BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll);
+            var pageFallbackScopeKey = BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll);
+            matchCardSettingsByView[globalFallbackScopeKey] = MatchCardViewSettings.CreateDefault(globalFallbackScopeKey);
+            matchCardSettingsByView[pageFallbackScopeKey] = MatchCardViewSettings.CreateDefault(pageFallbackScopeKey);
+            detailMatchCardSettings = MatchCardViewSettings.CreateDefault(DetailMatchCardScopeKey);
             matchCardSettingsByView[DetailMatchCardScopeKey] = detailMatchCardSettings;
         }
     }

@@ -302,6 +302,19 @@ public sealed class DartSuiteApiService
         return (await response.Content.ReadFromJsonAsync<IReadOnlyList<MatchDto>>(cancellationToken: cancellationToken)) ?? Array.Empty<MatchDto>();
     }
 
+    public async Task<MatchPredictionDto?> GetMatchPredictionAsync(
+        int targetLegs,
+        int homeLegs,
+        int awayLegs,
+        int homeScore,
+        int awayScore,
+        int elapsedSeconds,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"api/matches/prediction?targetLegs={targetLegs}&homeLegs={homeLegs}&awayLegs={awayLegs}&homeScore={homeScore}&awayScore={awayScore}&elapsedSeconds={elapsedSeconds}";
+        return await GetFromJsonOrDefaultAsync<MatchPredictionDto>(url, cancellationToken);
+    }
+
     public async Task SwapParticipantsAsync(Guid matchId, Guid participantId, Guid targetMatchId, Guid targetParticipantId, CancellationToken cancellationToken = default)
     {
         var response = await _httpClient.PatchAsync($"api/matches/{matchId}/swap?participantId={participantId}&targetMatchId={targetMatchId}&targetParticipantId={targetParticipantId}", null, cancellationToken);

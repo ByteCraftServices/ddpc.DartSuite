@@ -142,8 +142,254 @@ h1:focus {
     padding: 0.32rem 0.55rem;
 }
 
+.match-score-chip-live-size {
+    font-size: 1.25rem;
+    min-width: 4.2rem;
+    padding: 0.34rem 0.65rem;
+}
+
 .match-score-line {
     line-height: 1;
+}
+
+.match-card-list-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.match-card-list-row > * {
+    flex-shrink: 0;
+}
+
+.match-card-list-row .match-player-name {
+    max-width: 13rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.match-card-list-score {
+    white-space: nowrap;
+}
+
+.match-card-list-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0 0.5rem 0.3rem;
+}
+
+.match-score-horizontal {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.match-score-horizontal-names {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.6rem;
+    align-items: center;
+}
+
+.match-score-horizontal-name {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.match-score-horizontal-name-home {
+    justify-content: flex-end;
+}
+
+.match-score-horizontal-name-away {
+    justify-content: flex-start;
+}
+
+.match-score-horizontal-prematch-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: 0.6rem;
+    align-items: center;
+}
+
+.match-score-horizontal-prematch-name {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.match-score-horizontal-prematch-name-home {
+    text-align: right;
+}
+
+.match-score-horizontal-prematch-name-away {
+    text-align: left;
+}
+
+.match-score-horizontal-prematch-names-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: nowrap;
+    min-width: 0;
+}
+
+.match-score-horizontal-prematch-name {
+    min-width: 0;
+    overflow: hidden;
+    flex: 1;
+}
+
+.match-score-horizontal-prematch-name-home {
+    text-align: right;
+}
+
+.match-score-horizontal-prematch-name-away {
+    text-align: left;
+}
+
+.match-score-horizontal-prematch-name .match-player-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.match-score-horizontal-prematch-vs {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.match-score-horizontal-prematch-actions {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.match-score-horizontal-prematch-info {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 0.35rem;
+}
+
+@media (max-width: 860px) {
+    .match-score-horizontal-prematch-row {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-areas:
+            "home away"
+            "center center";
+    }
+
+    .match-score-horizontal-prematch-name-home {
+        grid-area: home;
+    }
+
+    .match-score-horizontal-prematch-name-away {
+        grid-area: away;
+    }
+
+    .match-score-horizontal-prematch-row .match-score-horizontal-center {
+        grid-area: center;
+        justify-content: center;
+    }
+
+    .match-score-horizontal-center-starttime-board {
+        flex-direction: row;
+        gap: 0.5rem;
+    }
+}
+
+.match-score-horizontal-name .match-player-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.match-score-horizontal {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.match-score-horizontal-names {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.6rem;
+    align-items: center;
+}
+
+.match-score-horizontal-name {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.match-score-horizontal-name-home {
+    justify-content: flex-end;
+}
+
+.match-score-horizontal-name-away {
+    justify-content: flex-start;
+}
+
+.match-score-horizontal-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-width: 0;
+}
+
+.match-score-horizontal-values {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.match-score-horizontal-side {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 2rem;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.match-score-horizontal-side-home {
+    justify-content: flex-end;
+    margin-right: auto;
+}
+
+.match-score-horizontal-side-away {
+    justify-content: flex-start;
+    margin-left: auto;
+}
+
+.match-score-horizontal-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    white-space: nowrap;
+    min-height: 2rem;
+    flex-shrink: 0;
+}
+
+.match-score-horizontal-actions {
+    margin-left: auto;
+    flex-shrink: 0;
 }
 
 .match-player-name {
@@ -187,6 +433,107 @@ h1:focus {
     gap: 0.2rem 0.6rem;
 }
 
+.match-card-expandpanel > summary {
+    cursor: pointer;
+    user-select: none;
+}
+
+.match-action-label {
+    display: inline;
+}
+
+.match-action-menu-button {
+    min-width: 2.4rem;
+    min-height: 2.4rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.35rem 0.55rem;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.match-action-menu-button:hover,
+.match-action-menu-button:active {
+    background: rgba(13, 110, 253, 0.08) !important;
+}
+
+.match-action-menu-glyph {
+    font-size: 1.1rem;
+    line-height: 1;
+    font-weight: 700;
+}
+
+.match-action-menu-button:focus-visible,
+.match-action-menu-item:focus-visible {
+    outline: 2px solid rgba(13, 110, 253, 0.65);
+    outline-offset: 2px;
+}
+
+.match-action-menu-item {
+    min-height: 2.4rem;
+}
+
+.match-action-inline-buttons .btn,
+.match-list-detail-toggle {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.match-action-inline-buttons .btn:hover,
+.match-action-inline-buttons .btn:active,
+.match-list-detail-toggle:hover,
+.match-list-detail-toggle:active {
+    background: rgba(13, 110, 253, 0.08) !important;
+}
+
+.detail-chip-with-lock {
+    position: relative;
+    padding-right: 1rem;
+}
+
+.detail-chip-lock-overlay {
+    position: absolute;
+    top: -0.28rem;
+    right: -0.25rem;
+    font-size: 0.62rem;
+    line-height: 1;
+    border-radius: 999px;
+    padding: 0.02rem 0.2rem;
+    border: 1px solid rgba(0, 0, 0, 0.18);
+    background-color: rgba(255, 255, 255, 0.92);
+}
+
+.prematch-info-action-chip {
+    cursor: pointer;
+}
+
+.match-highlight-border-primary { border: 2px solid rgba(13, 110, 253, 0.8) !important; }
+.match-highlight-border-secondary { border: 2px solid rgba(108, 117, 125, 0.8) !important; }
+.match-highlight-border-success { border: 2px solid rgba(25, 135, 84, 0.8) !important; }
+.match-highlight-border-info { border: 2px solid rgba(13, 202, 240, 0.8) !important; }
+.match-highlight-border-warning { border: 2px solid rgba(255, 193, 7, 0.9) !important; }
+.match-highlight-border-danger { border: 2px solid rgba(220, 53, 69, 0.85) !important; }
+.match-highlight-border-dark { border: 2px solid rgba(33, 37, 41, 0.8) !important; }
+
+.match-highlight-bg-primary-soft { background-color: rgba(13, 110, 253, 0.1) !important; }
+.match-highlight-bg-secondary-soft { background-color: rgba(108, 117, 125, 0.1) !important; }
+.match-highlight-bg-success-soft { background-color: rgba(25, 135, 84, 0.1) !important; }
+.match-highlight-bg-info-soft { background-color: rgba(13, 202, 240, 0.12) !important; }
+.match-highlight-bg-warning-soft { background-color: rgba(255, 193, 7, 0.14) !important; }
+.match-highlight-bg-danger-soft { background-color: rgba(220, 53, 69, 0.12) !important; }
+.match-highlight-bg-dark-soft { background-color: rgba(33, 37, 41, 0.08) !important; }
+
+.match-highlight-bg-primary { background-color: rgba(13, 110, 253, 0.2) !important; }
+.match-highlight-bg-secondary { background-color: rgba(108, 117, 125, 0.2) !important; }
+.match-highlight-bg-success { background-color: rgba(25, 135, 84, 0.2) !important; }
+.match-highlight-bg-info { background-color: rgba(13, 202, 240, 0.22) !important; }
+.match-highlight-bg-warning { background-color: rgba(255, 193, 7, 0.22) !important; }
+.match-highlight-bg-danger { background-color: rgba(220, 53, 69, 0.2) !important; }
+.match-highlight-bg-dark { background-color: rgba(33, 37, 41, 0.16) !important; }
+
 /* ─── Schedule DnD visuals ─── */
 .schedule-dnd-card {
     border-radius: 0.45rem;
@@ -222,9 +569,8 @@ h1:focus {
 
 .schedule-board-queue-header,
 .schedule-board-queue-card > .card-header {
-    position: sticky;
-    top: 3.6rem;
-    z-index: 10;
+    position: static;
+    z-index: auto;
     background-color: var(--bs-card-bg, #fff);
     border-bottom: 1px solid var(--bs-card-border-color, rgba(0,0,0,.125));
 }
@@ -233,7 +579,7 @@ h1:focus {
 @media (max-width: 575.98px) {
     .schedule-board-queue-header,
     .schedule-board-queue-card > .card-header {
-        top: 0;
+        position: static;
     }
 
     .schedule-board-headers-sticky {
@@ -256,8 +602,93 @@ h1:focus {
 }
 
 .schedule-board-sticky-proxy {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.5rem;
+    container-type: inline-size;
     border: 1px solid var(--bs-card-border-color, rgba(0,0,0,.125));
     border-radius: 0.55rem;
+    overflow: hidden;
+}
+
+.schedule-board-sticky-item {
+    min-width: 0;
+}
+
+.schedule-board-sticky-title {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    flex: 1 1 10rem;
+}
+
+.schedule-board-title-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.schedule-board-title-text {
+    display: inline-block;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.schedule-board-sticky-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-left: auto;
+    flex: 0 0 auto;
+}
+
+.schedule-board-sticky-grid {
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: repeat(var(--schedule-sticky-columns, 3), minmax(0, 1fr));
+}
+
+.schedule-queue-carousel-wrap {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.schedule-queue-nav {
+    white-space: nowrap;
+    width: 2.25rem;
+    height: 2.25rem;
+    min-width: 2.25rem;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+.schedule-queue-carousel {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x proximity;
+    padding-bottom: 0.25rem;
+}
+
+.schedule-queue-carousel-item {
+    flex: 0 0 clamp(18rem, 31vw, 24rem);
+    min-width: 18rem;
+    scroll-snap-align: start;
 }
 
 .schedule-queue-item-shell,
@@ -436,6 +867,51 @@ h1:focus {
 .match-status-default {
     background-color: rgba(108, 117, 125, 0.65) !important;
     color: #fff !important;
+
+    .schedule-queue-carousel-wrap {
+        grid-template-columns: 1fr;
+    }
+
+    .schedule-queue-nav {
+        justify-self: stretch;
+        width: 100%;
+        height: 2rem;
+        min-width: 0;
+    }
+
+    .schedule-queue-carousel-item {
+        flex-basis: min(88vw, 22rem);
+        min-width: min(88vw, 22rem);
+    }
+}
+
+@container (max-width: 220px) {
+    .schedule-board-sticky-title {
+        flex-basis: 100%;
+    }
+
+    .schedule-board-title-badge {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .schedule-board-sticky-meta {
+        width: 100%;
+        margin-left: 0;
+        justify-content: flex-end;
+    }
+}
+
+@media (max-width: 991.98px) {
+    .schedule-board-sticky-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 575.98px) {
+    .schedule-board-sticky-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 @keyframes live-pulse {
@@ -475,6 +951,36 @@ h1:focus {
 
     .match-player-name {
         font-size: 0.9rem;
+    }
+
+    .match-score-horizontal {
+        gap: 0.35rem;
+    }
+
+    .match-score-horizontal-names,
+    .match-score-horizontal-values {
+        gap: 0.45rem;
+    }
+
+    .match-score-horizontal-prematch-row {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-areas:
+            "home away"
+            "center center";
+        gap: 0.45rem;
+    }
+
+    .match-card-list-row .match-player-name {
+        max-width: 8.2rem;
+    }
+
+    .match-action-menu-button {
+        min-width: 2.6rem;
+        min-height: 2.6rem;
+    }
+
+    .match-action-label {
+        display: inline;
     }
 }
 
