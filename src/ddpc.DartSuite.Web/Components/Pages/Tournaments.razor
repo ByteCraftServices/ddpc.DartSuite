@@ -1599,7 +1599,7 @@
                                                                                                                IsRoundStarted="@(rnd => IsRoundStarted(rnd.Phase, rnd.RoundNumber))"
                                                                                                                IsRoundCompleted="@(rnd => IsRoundCompleted(rnd.Phase, rnd.RoundNumber))"
                                                                                                                RoundDisplayLabel="@RoundDisplayLabel"
-                                                                                                               OnOpenRoundDetail="OpenRoundDetail"
+                                                                                                               OnOpenRoundGroupDetail="OpenRoundDetail"
                                                                                                                CanEditTournamentStructure="@CanEditTournamentStructure"
                                                                                                                IsWorking="@isWorking"
                                                                                                                OnToggleGameModesLock="ToggleGameModesLockAsync"
@@ -2136,13 +2136,17 @@
 @* ─── Round Detail Modal ─── *@
 @if (detailRound is not null && selectedTournament is not null)
 {
-    var roundStarted = IsRoundStarted(detailRound.Phase, detailRound.RoundNumber);
-    var roundCompleted = IsRoundCompleted(detailRound.Phase, detailRound.RoundNumber);
+    var roundStarted = detailRoundGroup.Any(r => IsRoundStarted(r.Phase, r.RoundNumber));
+    var roundCompleted = detailRoundGroup.Any(r => IsRoundCompleted(r.Phase, r.RoundNumber));
     <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="CloseRoundDetail">
         <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation>
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">@RoundDisplayLabel(detailRound)
+                        @if (detailRoundGroup.Count > 1)
+                        {
+                            <span class="badge text-bg-secondary ms-2">@detailRoundGroup.Count Runden</span>
+                        }
                         @if (roundCompleted) { <span class="badge text-bg-success ms-2">✓ Abgeschlossen</span> }
                         else if (roundStarted) { <span class="badge text-bg-warning ms-2">▶ Gestartet</span> }
                     </h5>
@@ -2156,6 +2160,13 @@
                     else if (roundStarted)
                     {
                         <div class="alert alert-warning py-2 small">⚠ Diese Runde wurde bereits gestartet. Änderungen können laufende Matches beeinflussen.</div>
+                    }
+                    @if (detailRoundGroup.Count > 1)
+                    {
+                        <div class="alert alert-info py-2 small">
+                            Diese Konfiguration gilt für <strong>@detailRoundGroup.Count</strong> Runden:
+                            @string.Join(" · ", detailRoundGroup.Select(RoundDisplayLabel))
+                        </div>
                     }
                     <div class="mb-3">
                         <label class="form-label small fw-semibold">Base Score</label>
@@ -2268,7 +2279,7 @@
                     }
                 </div>
                 <div class="modal-footer">
-                    @if (!roundStarted && !roundCompleted && !editAreGameModesLocked && !selectedTournament.IsLocked && CanEditTournamentStructure)
+                    @if (detailRoundGroup.Count == 1 && !roundStarted && !roundCompleted && !editAreGameModesLocked && !selectedTournament.IsLocked && CanEditTournamentStructure)
                     {
                         <button class="btn btn-outline-danger me-auto" @onclick="DeleteRoundAsync" disabled="@(isWorking || !CanEditTournamentStructure)"
                                 title="Spielrunde löschen">
@@ -2278,7 +2289,7 @@
                     <button class="btn btn-secondary" @onclick="CloseRoundDetail">Abbrechen</button>
                     @if (!roundCompleted && !editAreGameModesLocked && !selectedTournament.IsLocked && CanEditTournamentStructure)
                     {
-                        <button class="btn btn-primary" @onclick="async () => { await SaveRoundAsync(); CloseRoundDetail(); }" disabled="@(isWorking || !CanEditTournamentStructure)">Speichern</button>
+                        <button class="btn btn-primary" @onclick="async () => { await SaveRoundAsync(); CloseRoundDetail(); }" disabled="@(isWorking || !CanEditTournamentStructure)">@(detailRoundGroup.Count > 1 ? "Gruppe speichern" : "Speichern")</button>
                     }
                 </div>
             </div>

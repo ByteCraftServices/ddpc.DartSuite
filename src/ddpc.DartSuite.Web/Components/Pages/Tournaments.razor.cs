@@ -256,6 +256,7 @@ public partial class Tournaments : IAsyncDisposable
 
     // ─── Round Detail Modal ───
     private TournamentRoundDto? detailRound;
+    private List<TournamentRoundDto> detailRoundGroup = [];
 
     // ─── Completed Rounds Filter ───
     private bool showCompletedRounds;
@@ -4556,10 +4557,13 @@ public partial class Tournaments : IAsyncDisposable
             isWorking = true;
             roundError = null;
             ParseBoardAssignment(out var assignment, out var fixedId);
-            await Api.SaveRoundAsync(selectedTournament.Id, new SaveTournamentRoundRequest(
-                selectedTournament.Id, newRoundPhase, newRoundNumber,
-                newRoundBaseScore, newRoundInMode, newRoundOutMode, newRoundGameMode, newRoundLegs, newRoundSets, newRoundMaxRounds, newRoundBullMode, newRoundBullOffMode,
-                newRoundDuration, newRoundPause, newRoundPlayerPause, assignment, fixedId));
+            foreach (var target in ResolveRoundSaveTargets())
+            {
+                await Api.SaveRoundAsync(selectedTournament.Id, new SaveTournamentRoundRequest(
+                    selectedTournament.Id, target.Phase, target.RoundNumber,
+                    newRoundBaseScore, newRoundInMode, newRoundOutMode, newRoundGameMode, newRoundLegs, newRoundSets, newRoundMaxRounds, newRoundBullMode, newRoundBullOffMode,
+                    newRoundDuration, newRoundPause, newRoundPlayerPause, assignment, fixedId));
+            }
             await LoadRoundsAsync();
         }
         catch (Exception ex) { roundError = ex.Message; }
@@ -5651,8 +5655,13 @@ public partial class Tournaments : IAsyncDisposable
     }
 
     // ─── Round Detail Modal ───
-    private void OpenRoundDetail(TournamentRoundDto round)
+    private void OpenRoundDetail(IReadOnlyList<TournamentRoundDto> rounds)
     {
+        if (rounds.Count == 0)
+            return;
+
+        detailRoundGroup = [.. rounds.OrderBy(r => r.Phase).ThenBy(r => r.RoundNumber)];
+        var round = detailRoundGroup[0];
         detailRound = round;
         newRoundPhase = round.Phase;
         newRoundNumber = round.RoundNumber;
@@ -5673,7 +5682,26 @@ public partial class Tournaments : IAsyncDisposable
         _ = InvokeAsync(StateHasChanged);
     }
 
-    private void CloseRoundDetail() => detailRound = null;
+    private void CloseRoundDetail()
+    {
+        detailRound = null;
+        detailRoundGroup = [];
+    }
+
+    private IReadOnlyList<RoundSaveTarget> ResolveRoundSaveTargets()
+    {
+        if (detailRoundGroup.Count > 1)
+        {
+            return detailRoundGroup
+                .Select(r => new RoundSaveTarget(r.Phase, r.RoundNumber))
+                .Distinct()
+                .OrderBy(r => r.Phase)
+                .ThenBy(r => r.RoundNumber)
+                .ToList();
+        }
+
+        return [new RoundSaveTarget(newRoundPhase, newRoundNumber)];
+    }
 
     private async Task DeleteRoundAsync()
     {
@@ -5720,6 +5748,8 @@ public partial class Tournaments : IAsyncDisposable
         }
         await ExecuteUpdateStatusAsync(status);
     }
+
+    private sealed record RoundSaveTarget(string Phase, int RoundNumber);
 
     private async Task ExecuteUpdateStatusAsync(string status)
     {
