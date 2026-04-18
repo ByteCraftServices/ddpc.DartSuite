@@ -22,7 +22,7 @@
 else
 {
     <div class="mb-3">
-        <span class="badge @StatusBadgeClass(AppState.SelectedTournament.Status) me-2">@AppState.SelectedTournament.Status</span>
+        <span class="badge @StatusBadgeClass(AppState.SelectedTournament.Status) me-2" title="Aktueller Status des ausgewaehlten Turniers">@AppState.SelectedTournament.Status</span>
         <strong>@AppState.SelectedTournament.Name</strong>
     </div>
 
@@ -273,7 +273,7 @@ else
                                 }
                             </td>
                             <td @onclick="() => OpenMatchDetail(match)" style="cursor:pointer">
-                                <span class="badge text-bg-secondary">@MatchLabel(match)</span>
+                                <span class="badge text-bg-secondary" title="Matchnummer im Turnierplan">@MatchLabel(match)</span>
                             </td>
                             <td class="@(match.WinnerParticipantId == match.HomeParticipantId ? "fw-bold text-success" : "")"
                                 @onclick="() => OpenMatchDetail(match)" style="cursor:pointer">
@@ -296,11 +296,11 @@ else
                             <td class="d-none d-md-table-cell" @onclick="() => OpenMatchDetail(match)" style="cursor:pointer">
                                 @if (assignedBoard is not null)
                                 {
-                                    <span class="badge text-bg-success">@assignedBoard.Name</span>
+                                    <span class="badge text-bg-success" title="Dem Match zugewiesenes Board">@assignedBoard.Name</span>
                                 }
                                 else if (!isDone)
                                 {
-                                    <span class="badge text-bg-warning">⚠ kein Board</span>
+                                    <span class="badge text-bg-warning" title="Noch kein Board zugewiesen">⚠ kein Board</span>
                                 }
                             </td>
                             <td @onclick="() => OpenMatchDetail(match)" style="cursor:pointer">
@@ -390,6 +390,21 @@ else
                                DetailsExpandedByDefault="@(!DetailMatchCardSettings.CollapseDetailsOnMobile || !isCompactViewport)"
                                ForceDetailsExpanded="@forcedMatchDetailsExpanded"
                                EnableRealtimeConsumer="@(detailMatch.StartedUtc is not null && detailMatch.FinishedUtc is null)" />
+
+                    @* ─── MatchMaker (for virtual boards, managers only) ─── *@
+                    @{
+                        var detailBoard = boards.FirstOrDefault(b => b.Id == detailMatch.BoardId);
+                        var homeP2 = participants.FirstOrDefault(p => p.Id == detailMatch.HomeParticipantId);
+                        var awayP2 = participants.FirstOrDefault(p => p.Id == detailMatch.AwayParticipantId);
+                    }
+                    @if (detailBoard?.IsVirtual == true && CanManageSelectedTournament)
+                    {
+                        <MatchMaker Match="@detailMatch"
+                                    HomeName="@(homeP2?.DisplayName ?? homeP2?.AccountName ?? "Spieler 1")"
+                                    AwayName="@(awayP2?.DisplayName ?? awayP2?.AccountName ?? "Spieler 2")"
+                                    IsVisible="true"
+                                    Round="@round" />
+                    }
 
                     @if (!isEditing)
                     {
@@ -654,8 +669,9 @@ else
     private string? matchCardPreferenceError;
     private List<MatchPlayerStatisticDto> detailMatchStatistics = [];
     private List<MatchListenerInfoDto> matchListeners = [];
-    private MatchCardViewSettings detailMatchCardSettings = MatchCardViewSettings.CreateDefault();
+    private MatchCardViewSettings detailMatchCardSettings = MatchCardViewSettings.CreateDefault("matches::detail");
     private readonly Dictionary<string, MatchCardViewSettings> matchCardSettingsByView = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> inactiveMatchCardScopeKeys = new(StringComparer.OrdinalIgnoreCase);
     private bool isSyncingDetailMatch;
     private bool isFollowingDetailMatch;
     private bool isFollowOperationInProgress;
@@ -931,11 +947,14 @@ else
 
         foreach (var candidate in candidates)
         {
+            if (inactiveMatchCardScopeKeys.Contains(NormalizeMatchCardScopeKey(candidate)))
+                continue;
+
             if (matchCardSettingsByView.TryGetValue(candidate, out var found))
                 return found;
         }
 
-        return MatchCardViewSettings.CreateDefault();
+        return MatchCardViewSettings.CreateDefault(DetailMatchCardScopeKey);
     }
 
     private MatchCardViewSettings GetEditableDetailMatchCardSettings()
@@ -955,9 +974,12 @@ else
     {
         matchCardPreferenceError = null;
         matchCardSettingsByView.Clear();
+        inactiveMatchCardScopeKeys.Clear();
 
-        matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
-        matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
+        var globalScopeKey = BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll);
+        var pageScopeKey = BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll);
+        matchCardSettingsByView[globalScopeKey] = MatchCardViewSettings.CreateDefault(globalScopeKey);
+        matchCardSettingsByView[pageScopeKey] = MatchCardViewSettings.CreateDefault(pageScopeKey);
         detailMatchCardSettings = GetEditableDetailMatchCardSettings();
 
         if (string.IsNullOrWhiteSpace(autodartsDisplayName))
@@ -970,7 +992,19 @@ else
                 return;
 
             var payload = JsonSerializer.Deserialize<MatchCardViewPreferencePayload>(preference.SettingsJson);
-            if (payload?.Views is null)
+            if (payload is null)
+                return;
+
+            foreach (var disabledScope in payload.DisabledScopes)
+            {
+                var normalizedDisabledScope = NormalizeMatchCardScopeKey(disabledScope);
+                if (string.Equals(normalizedDisabledScope, BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll), StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                inactiveMatchCardScopeKeys.Add(normalizedDisabledScope);
+            }
+
+            if (payload.Views is null)
                 return;
 
             foreach (var (key, configured) in payload.Views)
@@ -993,9 +1027,12 @@ else
         catch
         {
             matchCardSettingsByView.Clear();
-            matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
-            matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
-            detailMatchCardSettings = MatchCardViewSettings.CreateDefault();
+            inactiveMatchCardScopeKeys.Clear();
+            var globalFallbackScopeKey = BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll);
+            var pageFallbackScopeKey = BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll);
+            matchCardSettingsByView[globalFallbackScopeKey] = MatchCardViewSettings.CreateDefault(globalFallbackScopeKey);
+            matchCardSettingsByView[pageFallbackScopeKey] = MatchCardViewSettings.CreateDefault(pageFallbackScopeKey);
+            detailMatchCardSettings = MatchCardViewSettings.CreateDefault(DetailMatchCardScopeKey);
             matchCardSettingsByView[DetailMatchCardScopeKey] = detailMatchCardSettings;
         }
     }
@@ -1008,6 +1045,7 @@ else
         detailMatchCardSettings.Normalize();
         matchCardSettingsByView.Remove(MatchCardLegacyViewKey);
         matchCardSettingsByView[DetailMatchCardScopeKey] = detailMatchCardSettings;
+        inactiveMatchCardScopeKeys.Remove(DetailMatchCardScopeKey);
 
         if (string.IsNullOrWhiteSpace(autodartsDisplayName))
         {
@@ -1024,7 +1062,10 @@ else
                 Views = matchCardSettingsByView.ToDictionary(
                     entry => entry.Key,
                     entry => entry.Value.Clone(),
-                    StringComparer.OrdinalIgnoreCase)
+                    StringComparer.OrdinalIgnoreCase),
+                DisabledScopes = inactiveMatchCardScopeKeys
+                    .Where(scope => !string.Equals(scope, BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll), StringComparison.OrdinalIgnoreCase))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase)
             };
 
             var json = JsonSerializer.Serialize(payload);

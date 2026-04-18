@@ -29,8 +29,8 @@
 
                         @if (_isOverride)
                         {
-                            <div class="form-check form-switch mb-3 border rounded p-2">
-                                <input class="form-check-input" type="checkbox" id="mcsmUseDefaults"
+                            <div class="form-check form-switch mb-3 border rounded p-2 d-flex align-items-start gap-2">
+                                <input class="form-check-input ms-0 me-1 float-none" type="checkbox" id="mcsmUseDefaults"
                                        checked="@_useDefaults"
                                        @onchange="args => _useDefaults = ParseBool(args)" />
                                 <label class="form-check-label fw-semibold" for="mcsmUseDefaults">Standardwerte verwenden</label>
@@ -73,8 +73,21 @@
                                     <option value="NameAndPpr">Name und PPR</option>
                                 </select>
                             </div>
+                            <div class="col-lg-3 col-md-4">
+                                <label class="form-label mb-1">Size Level</label>
+                                <select class="form-select form-select-sm"
+                                        value="@_settings.SizeLevel"
+                                        @onchange="args => _settings.SizeLevel = MatchCardViewSettings.NormalizeSizeLevel(args.Value?.ToString())">
+                                    <option value="50%">50%</option>
+                                    <option value="75%">75%</option>
+                                    <option value="100%">100%</option>
+                                    <option value="150%">150%</option>
+                                    <option value="200%">200%</option>
+                                    <option value="300%">300%</option>
+                                </select>
+                            </div>
                             <div class="col-lg-3 col-md-12 d-flex align-items-end">
-                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmCollapse" checked="@_settings.CollapseDetailsOnMobile" @onchange="args => _settings.CollapseDetailsOnMobile = ParseBool(args)" /><label class="form-check-label" for="mcsmCollapse">Mobile eingeklappt</label></div>
+                                <div class="form-check" title="Startet das Detail-Expandpanel auf schmalen Ansichten eingeklappt"><input class="form-check-input" type="checkbox" id="mcsmCollapse" checked="@_settings.CollapseDetailsOnMobile" @onchange="args => _settings.CollapseDetailsOnMobile = ParseBool(args)" /><label class="form-check-label" for="mcsmCollapse">Mobile eingeklappt</label></div>
                             </div>
                         </div>
 
@@ -101,7 +114,11 @@
                                 <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmBodyStartLock" checked="@_settings.ShowBodyStartTimeLock" @onchange="args => _settings.ShowBodyStartTimeLock = ParseBool(args)" /><label class="form-check-label" for="mcsmBodyStartLock">Startzeit gesperrt</label></div>
                                 <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmBodyDelay" checked="@_settings.ShowBodyDelay" @onchange="args => _settings.ShowBodyDelay = ParseBool(args)" /><label class="form-check-label" for="mcsmBodyDelay">Zeitdifferenz</label></div>
                                 <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmBodyNum" checked="@_settings.ShowBodyMatchNumber" @onchange="args => _settings.ShowBodyMatchNumber = ParseBool(args)" /><label class="form-check-label" for="mcsmBodyNum">Matchnummer</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmBodyName" checked="@_settings.ShowBodyMatchName" @onchange="args => _settings.ShowBodyMatchName = ParseBool(args)" /><label class="form-check-label" for="mcsmBodyName">Matchname</label></div>
                                 <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmBodyBoard" checked="@_settings.ShowBodyBoardName" @onchange="args => _settings.ShowBodyBoardName = ParseBool(args)" /><label class="form-check-label" for="mcsmBodyBoard">Boardname</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmBodyBoardLock" checked="@_settings.ShowBodyBoardLock" @onchange="args => _settings.ShowBodyBoardLock = ParseBool(args)" /><label class="form-check-label" for="mcsmBodyBoardLock">Board gesperrt</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmBodyStatus" checked="@_settings.ShowBodyMatchStatus" @onchange="args => _settings.ShowBodyMatchStatus = ParseBool(args)" /><label class="form-check-label" for="mcsmBodyStatus">Matchstatus</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmBodyLiveBadge" checked="@_settings.ShowBodyLiveBadge" @onchange="args => _settings.ShowBodyLiveBadge = ParseBool(args)" /><label class="form-check-label" for="mcsmBodyLiveBadge">Live-Badge</label></div>
                                 <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmBodyLive" checked="@_settings.LiveScoreEnabled" @onchange="args => _settings.LiveScoreEnabled = ParseBool(args)" /><label class="form-check-label" for="mcsmBodyLive">LiveScore aktiv</label></div>
                             </div>
                         </div>
@@ -130,15 +147,144 @@
 
                         <div class="border rounded p-2">
                             <div class="fw-semibold small mb-2">Erweitert / Statistiken</div>
+                            <div class="fw-semibold small mb-2">Details</div>
+                            <div class="d-flex flex-wrap gap-3 small mb-3">
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmDetailsMatchNumber" checked="@_settings.ShowDetailsMatchNumber" @onchange="args => _settings.ShowDetailsMatchNumber = ParseBool(args)" /><label class="form-check-label" for="mcsmDetailsMatchNumber">Matchnummer</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmDetailsMatchName" checked="@_settings.ShowDetailsMatchName" @onchange="args => _settings.ShowDetailsMatchName = ParseBool(args)" /><label class="form-check-label" for="mcsmDetailsMatchName">Matchname</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmDetailsStartTime" checked="@_settings.ShowDetailsStartTime" @onchange="args => _settings.ShowDetailsStartTime = ParseBool(args)" /><label class="form-check-label" for="mcsmDetailsStartTime">Startzeit</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmDetailsStartTimeLock" checked="@_settings.ShowDetailsStartTimeLock" @onchange="args => _settings.ShowDetailsStartTimeLock = ParseBool(args)" /><label class="form-check-label" for="mcsmDetailsStartTimeLock">Startzeit gesperrt</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmDetailsBoardName" checked="@_settings.ShowDetailsBoardName" @onchange="args => _settings.ShowDetailsBoardName = ParseBool(args)" /><label class="form-check-label" for="mcsmDetailsBoardName">Boardname</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmDetailsBoardLock" checked="@_settings.ShowDetailsBoardLock" @onchange="args => _settings.ShowDetailsBoardLock = ParseBool(args)" /><label class="form-check-label" for="mcsmDetailsBoardLock">Board gesperrt</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmDetailsDelay" checked="@_settings.ShowDetailsDelay" @onchange="args => _settings.ShowDetailsDelay = ParseBool(args)" /><label class="form-check-label" for="mcsmDetailsDelay">Zeitdifferenz</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmDetailsMatchStatus" checked="@_settings.ShowDetailsMatchStatus" @onchange="args => _settings.ShowDetailsMatchStatus = ParseBool(args)" /><label class="form-check-label" for="mcsmDetailsMatchStatus">Matchstatus</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmDetailsLiveBadge" checked="@_settings.ShowDetailsLiveBadge" @onchange="args => _settings.ShowDetailsLiveBadge = ParseBool(args)" /><label class="form-check-label" for="mcsmDetailsLiveBadge">Live-Badge</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmDetailsRuntime" checked="@_settings.ShowDetailsRuntime" @onchange="args => _settings.ShowDetailsRuntime = ParseBool(args)" /><label class="form-check-label" for="mcsmDetailsRuntime">Spielzeit</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmDetailsMonitoring" checked="@_settings.ShowDetailsMonitoringStatus" @onchange="args => _settings.ShowDetailsMonitoringStatus = ParseBool(args)" /><label class="form-check-label" for="mcsmDetailsMonitoring">Monitoring</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmDetailsScheduling" checked="@_settings.ShowSchedulingStatus" @onchange="args => _settings.ShowSchedulingStatus = ParseBool(args)" /><label class="form-check-label" for="mcsmDetailsScheduling">SchedulingStatus</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmDetailsGameplay" checked="@_settings.ShowDetailsGameplay" @onchange="args => _settings.ShowDetailsGameplay = ParseBool(args)" /><label class="form-check-label" for="mcsmDetailsGameplay">Gameplay</label></div>
+                            </div>
+
+                            <div class="fw-semibold small mb-2">Spielerstatistik</div>
                             <div class="d-flex flex-wrap gap-3 small">
-                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmMonitoring" checked="@_settings.ShowMonitoringStatus" @onchange="args => _settings.ShowMonitoringStatus = ParseBool(args)" /><label class="form-check-label" for="mcsmMonitoring">Monitoring-Badge</label></div>
-                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmStatus" checked="@_settings.ShowMatchStatus" @onchange="args => _settings.ShowMatchStatus = ParseBool(args)" /><label class="form-check-label" for="mcsmStatus">MatchStatus</label></div>
-                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmScheduling" checked="@_settings.ShowSchedulingStatus" @onchange="args => _settings.ShowSchedulingStatus = ParseBool(args)" /><label class="form-check-label" for="mcsmScheduling">SchedulingStatus</label></div>
                                 <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmAvg" checked="@_settings.ShowAverage" @onchange="args => _settings.ShowAverage = ParseBool(args)" /><label class="form-check-label" for="mcsmAvg">Average</label></div>
                                 <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmPpr" checked="@_settings.ShowHighestPpr" @onchange="args => _settings.ShowHighestPpr = ParseBool(args)" /><label class="form-check-label" for="mcsmPpr">Highest PPR</label></div>
                                 <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmCheckout" checked="@_settings.ShowHighestCheckout" @onchange="args => _settings.ShowHighestCheckout = ParseBool(args)" /><label class="form-check-label" for="mcsmCheckout">Highest Checkout</label></div>
                                 <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmAdpl" checked="@_settings.ShowAverageDartsPerLeg" @onchange="args => _settings.ShowAverageDartsPerLeg = ParseBool(args)" /><label class="form-check-label" for="mcsmAdpl">Average Darts/Leg</label></div>
                                 <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmMinDarts" checked="@_settings.ShowMinimalDartsPerLeg" @onchange="args => _settings.ShowMinimalDartsPerLeg = ParseBool(args)" /><label class="form-check-label" for="mcsmMinDarts">Minimal Darts/Leg</label></div>
+                            </div>
+
+                            <hr class="my-2" />
+                            <div class="fw-semibold small mb-2">Matchprediction</div>
+                            <div class="d-flex flex-wrap gap-3 small">
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmPrediction" checked="@_settings.ShowMatchPrediction" @onchange="args => _settings.ShowMatchPrediction = ParseBool(args)" /><label class="form-check-label" for="mcsmPrediction">Matchprediction</label></div>
+                            </div>
+
+                            <hr class="my-2" />
+                            <div class="fw-semibold small mb-2">Highlighting</div>
+                            <div class="d-flex flex-wrap gap-3 small mb-2">
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmEnableHighlighting" checked="@_settings.EnableHighlighting" @onchange="args => _settings.EnableHighlighting = ParseBool(args)" /><label class="form-check-label" for="mcsmEnableHighlighting">Highlighting aktiv</label></div>
+                            </div>
+                            <div class="row g-2 small">
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label mb-1">Checkout-Schwelle</label>
+                                    <input type="number" class="form-control form-control-sm" min="1" max="501" value="@_settings.HighlightCheckoutThreshold" @onchange="args => _settings.HighlightCheckoutThreshold = Math.Clamp(int.TryParse(args.Value?.ToString(), out var parsed) ? parsed : 60, 1, 501)" />
+                                </div>
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label mb-1">Status Erstellt Rahmen</label>
+                                    <select class="form-select form-select-sm" value="@_settings.CreatedBorderPreset" @onchange="args => _settings.CreatedBorderPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                        <option value="secondary">Secondary</option><option value="info">Info</option><option value="success">Success</option><option value="warning">Warning</option><option value="danger">Danger</option><option value="dark">Dark</option><option value="none">None</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label mb-1">Status Erstellt Hintergrund</label>
+                                    <select class="form-select form-select-sm" value="@_settings.CreatedBackgroundPreset" @onchange="args => _settings.CreatedBackgroundPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                        <option value="none">None</option><option value="secondary-soft">Secondary Soft</option><option value="info-soft">Info Soft</option><option value="success-soft">Success Soft</option><option value="warning-soft">Warning Soft</option><option value="danger-soft">Danger Soft</option><option value="dark-soft">Dark Soft</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label mb-1">Status Geplant Rahmen</label>
+                                    <select class="form-select form-select-sm" value="@_settings.PlannedBorderPreset" @onchange="args => _settings.PlannedBorderPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                        <option value="secondary">Secondary</option><option value="info">Info</option><option value="success">Success</option><option value="warning">Warning</option><option value="danger">Danger</option><option value="dark">Dark</option><option value="none">None</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label mb-1">Status Geplant Hintergrund</label>
+                                    <select class="form-select form-select-sm" value="@_settings.PlannedBackgroundPreset" @onchange="args => _settings.PlannedBackgroundPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                        <option value="none">None</option><option value="secondary-soft">Secondary Soft</option><option value="info-soft">Info Soft</option><option value="success-soft">Success Soft</option><option value="warning-soft">Warning Soft</option><option value="danger-soft">Danger Soft</option><option value="dark-soft">Dark Soft</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label mb-1">Status Warten Rahmen</label>
+                                    <select class="form-select form-select-sm" value="@_settings.WaitingBorderPreset" @onchange="args => _settings.WaitingBorderPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                        <option value="secondary">Secondary</option><option value="info">Info</option><option value="success">Success</option><option value="warning">Warning</option><option value="danger">Danger</option><option value="dark">Dark</option><option value="none">None</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label mb-1">Status Warten Hintergrund</label>
+                                    <select class="form-select form-select-sm" value="@_settings.WaitingBackgroundPreset" @onchange="args => _settings.WaitingBackgroundPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                        <option value="none">None</option><option value="secondary-soft">Secondary Soft</option><option value="info-soft">Info Soft</option><option value="success-soft">Success Soft</option><option value="warning-soft">Warning Soft</option><option value="danger-soft">Danger Soft</option><option value="dark-soft">Dark Soft</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label mb-1">Status Aktiv/Gestartet Rahmen</label>
+                                    <select class="form-select form-select-sm" value="@_settings.ActiveBorderPreset" @onchange="args => _settings.ActiveBorderPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                        <option value="secondary">Secondary</option><option value="danger">Danger</option><option value="info">Info</option><option value="success">Success</option><option value="warning">Warning</option><option value="dark">Dark</option><option value="none">None</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label mb-1">Status Aktiv/Gestartet Hintergrund</label>
+                                    <select class="form-select form-select-sm" value="@_settings.ActiveBackgroundPreset" @onchange="args => _settings.ActiveBackgroundPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                        <option value="none">None</option><option value="danger-soft">Danger Soft</option><option value="info-soft">Info Soft</option><option value="success-soft">Success Soft</option><option value="warning-soft">Warning Soft</option><option value="secondary-soft">Secondary Soft</option><option value="dark-soft">Dark Soft</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label mb-1">Status Beendet Rahmen</label>
+                                    <select class="form-select form-select-sm" value="@_settings.CompletedBorderPreset" @onchange="args => _settings.CompletedBorderPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                        <option value="secondary">Secondary</option><option value="dark">Dark</option><option value="info">Info</option><option value="success">Success</option><option value="warning">Warning</option><option value="danger">Danger</option><option value="none">None</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label mb-1">Status Beendet Hintergrund</label>
+                                    <select class="form-select form-select-sm" value="@_settings.CompletedBackgroundPreset" @onchange="args => _settings.CompletedBackgroundPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                        <option value="none">None</option><option value="dark-soft">Dark Soft</option><option value="secondary-soft">Secondary Soft</option><option value="info-soft">Info Soft</option><option value="success-soft">Success Soft</option><option value="warning-soft">Warning Soft</option><option value="danger-soft">Danger Soft</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label mb-1">Status WalkOver Rahmen</label>
+                                    <select class="form-select form-select-sm" value="@_settings.WalkOverBorderPreset" @onchange="args => _settings.WalkOverBorderPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                        <option value="secondary">Secondary</option><option value="dark">Dark</option><option value="info">Info</option><option value="success">Success</option><option value="warning">Warning</option><option value="danger">Danger</option><option value="none">None</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label mb-1">Status WalkOver Hintergrund</label>
+                                    <select class="form-select form-select-sm" value="@_settings.WalkOverBackgroundPreset" @onchange="args => _settings.WalkOverBackgroundPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                        <option value="none">None</option><option value="dark-soft">Dark Soft</option><option value="secondary-soft">Secondary Soft</option><option value="info-soft">Info Soft</option><option value="success-soft">Success Soft</option><option value="warning-soft">Warning Soft</option><option value="danger-soft">Danger Soft</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label mb-1">Verzögert Rahmen</label>
+                                    <select class="form-select form-select-sm" value="@_settings.DelayedBorderPreset" @onchange="args => _settings.DelayedBorderPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                        <option value="danger">Danger</option><option value="warning">Warning</option><option value="info">Info</option><option value="success">Success</option><option value="secondary">Secondary</option><option value="dark">Dark</option><option value="none">None</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label mb-1">Verzögert Hintergrund</label>
+                                    <select class="form-select form-select-sm" value="@_settings.DelayedBackgroundPreset" @onchange="args => _settings.DelayedBackgroundPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                        <option value="danger-soft">Danger Soft</option><option value="warning-soft">Warning Soft</option><option value="info-soft">Info Soft</option><option value="success-soft">Success Soft</option><option value="secondary-soft">Secondary Soft</option><option value="dark-soft">Dark Soft</option><option value="none">None</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label mb-1">Highlightphase Rahmen</label>
+                                    <select class="form-select form-select-sm" value="@_settings.HighlightPhaseBorderPreset" @onchange="args => _settings.HighlightPhaseBorderPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                        <option value="warning">Warning</option><option value="danger">Danger</option><option value="info">Info</option><option value="success">Success</option><option value="secondary">Secondary</option><option value="dark">Dark</option><option value="none">None</option>
+                                    </select>
+                                </div>
+                                <div class="col-lg-3 col-md-6">
+                                    <label class="form-label mb-1">Highlightphase Hintergrund</label>
+                                    <select class="form-select form-select-sm" value="@_settings.HighlightPhaseBackgroundPreset" @onchange="args => _settings.HighlightPhaseBackgroundPreset = MatchCardViewSettings.NormalizeHighlightPreset(args.Value?.ToString())">
+                                        <option value="warning-soft">Warning Soft</option><option value="danger-soft">Danger Soft</option><option value="info-soft">Info Soft</option><option value="success-soft">Success Soft</option><option value="secondary-soft">Secondary Soft</option><option value="dark-soft">Dark Soft</option><option value="none">None</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
                         </fieldset>
@@ -181,6 +327,7 @@
                                            ShowHighestCheckout="@EffectivePreviewSettings.ShowHighestCheckout"
                                            ShowAverageDartsPerLeg="@EffectivePreviewSettings.ShowAverageDartsPerLeg"
                                            ShowMinimalDartsPerLeg="@EffectivePreviewSettings.ShowMinimalDartsPerLeg"
+                                           ShowMatchPrediction="@EffectivePreviewSettings.ShowMatchPrediction"
                                            HomeStatistic="@_demoHomeStatistic"
                                            AwayStatistic="@_demoAwayStatistic"
                                            ShowActionButtons="@EffectivePreviewSettings.ShowActionButtons"
@@ -202,8 +349,7 @@
                                            OnResetMatch="@EventCallback.Factory.Create(this, () => { })"
                                            OnStartListener="@EventCallback.Factory.Create(this, () => { })"
                                            EnableDetailPanel="true"
-                                           DetailsExpandedByDefault="true"
-                                           ForceDetailsExpanded="true" />
+                                           DetailsExpandedByDefault="false" />
                             </div>
                         </div>
                     </div><!-- end .mcsm-preview-panel -->
@@ -231,7 +377,7 @@
     private bool _useDefaults;
     private string? _error;
     private string? _autodartsDisplayName;
-    private MatchCardViewSettings _settings = MatchCardViewSettings.CreateDefault();
+    private MatchCardViewSettings _settings = MatchCardViewSettings.CreateDefault("all::all");
     private readonly Dictionary<string, MatchCardViewSettings> _allViews = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _overriddenKeys = new(StringComparer.OrdinalIgnoreCase);
 
@@ -306,7 +452,7 @@
     private MatchCardViewSettings ResolveInherited(string normalizedKey)
     {
         if (!TryParseKey(normalizedKey, out var page, out var section))
-            return MatchCardViewSettings.CreateDefault();
+            return MatchCardViewSettings.CreateDefault(normalizedKey);
 
         var candidates = new List<string> { normalizedKey };
 
@@ -322,7 +468,7 @@
                 return found;
         }
 
-        return MatchCardViewSettings.CreateDefault();
+        return MatchCardViewSettings.CreateDefault(normalizedKey);
     }
 
     private async Task SaveAsync()

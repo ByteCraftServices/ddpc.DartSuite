@@ -20,9 +20,19 @@ public sealed class Board
     public DateTimeOffset UpdatedUtc { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastExtensionPollUtc { get; set; }
 
+    /// <summary>When true, this is a virtual board with no physical hardware.</summary>
+    public bool IsVirtual { get; set; }
+
+    /// <summary>The Autodarts account name of the owner for virtual boards.</summary>
+    public string? OwnerAccountName { get; set; }
+
     /// <summary>Computes the overall board status based on individual status fields.</summary>
     public OverallBoardStatus ComputeOverallStatus()
     {
+        // Virtual boards are always treated as ready/online
+        if (IsVirtual)
+            return OverallBoardStatus.Ok;
+
         bool hasActiveMatch = CurrentMatchId is not null;
 
         // Error conditions

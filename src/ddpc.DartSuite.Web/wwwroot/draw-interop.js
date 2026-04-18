@@ -97,6 +97,14 @@ window.dartSuiteUi = window.dartSuiteUi || {
     isCompactViewport: function () {
         return window.matchMedia("(max-width: 640.98px)").matches;
     },
+    scrollElementBy: function (element, deltaX) {
+        if (!element || typeof element.scrollBy !== "function") {
+            return;
+        }
+
+        const delta = Number.isFinite(deltaX) ? deltaX : 0;
+        element.scrollBy({ left: delta, behavior: "smooth" });
+    },
     localStorageGet: function (key) {
         try { return localStorage.getItem(key); } catch (e) { return null; }
     },

@@ -349,8 +349,14 @@
                                        IsFollowing="@IsMatchFollowed(detailMatch.Id)"
                                        CanFollow="@CanFollowFromMatchCard(detailMatch)"
                                        CanSync="@CanSyncFromMatchCard(detailMatch)"
+                                       CanStartMatch="@(CanStartMatchFromMatchCard(detailMatch))"
+                                       CanResetMatch="@(CanResetFromMatchCard(detailMatch))"
+                                       CanStartListener="@(CanStartListener(detailMatch) && !isWorking)"
                                        OnFollow="() => ToggleFollowMatchAsync(detailMatch)"
                                        OnSync="() => SyncMatchFromExternalAsync(detailMatch)"
+                                       OnStartMatch="() => SendUpcomingMatchAsync(detailMatch)"
+                                       OnResetMatch="() => ResetMatchByIdAsync(detailMatch.Id)"
+                                       OnStartListener="() => EnsureListenerAsync(detailMatch)"
                                        EnablePlayerLinks="@detailCardSettings.EnablePlayerLinks"
                                        EnableBoardLink="@detailCardSettings.EnableBoardLink"
                                        OnHomePlayerClick="BuildPlayerDetailCallback(detailMatch.HomeParticipantId)"
@@ -815,7 +821,7 @@
                                                     style="--rail-item-height:@GetTournamentRailItemHeight(t);"
                                                     title="@t.Name"
                                                     @onclick="() => SelectTournamentAsync(t)">
-                                                <span class="tournament-list-rail-label">@t.Name</span>
+                                                <span class="tournament-list-rail-label">@GetTournamentRailLabel(t)</span>
                                             </button>
                                         }
                                     </div>
@@ -2011,8 +2017,14 @@
                                    IsFollowing="@IsMatchFollowed(currentMatch.Id)"
                                    CanFollow="@CanFollowFromMatchCard(currentMatch)"
                                    CanSync="@CanSyncFromMatchCard(currentMatch)"
+                                   CanStartMatch="@(CanStartMatchFromMatchCard(currentMatch))"
+                                   CanResetMatch="@(CanResetFromMatchCard(currentMatch))"
+                                   CanStartListener="@(CanStartListener(currentMatch) && !isWorking)"
                                    OnFollow="() => ToggleFollowMatchAsync(currentMatch)"
                                    OnSync="() => SyncMatchFromExternalAsync(currentMatch)"
+                                   OnStartMatch="() => SendUpcomingMatchAsync(currentMatch)"
+                                   OnResetMatch="() => ResetMatchByIdAsync(currentMatch.Id)"
+                                   OnStartListener="() => EnsureListenerAsync(currentMatch)"
                                    EnablePlayerLinks="@boardCardSettings.EnablePlayerLinks"
                                    EnableBoardLink="@boardCardSettings.EnableBoardLink"
                                    OnHomePlayerClick="BuildPlayerDetailCallback(currentMatch.HomeParticipantId)"
@@ -2104,6 +2116,20 @@
                                            ShowHighestCheckout="@boardQueueCardSettings.ShowHighestCheckout"
                                            ShowAverageDartsPerLeg="@boardQueueCardSettings.ShowAverageDartsPerLeg"
                                            ShowMinimalDartsPerLeg="@boardQueueCardSettings.ShowMinimalDartsPerLeg"
+                                           ShowActionButtons="@ShowMatchCardActionBar(boardQueueCardSettings)"
+                                           ShowSyncAction="@ShowMatchCardSyncAction(boardQueueCardSettings, m)"
+                                           ShowFollowAction="@ShowMatchCardFollowAction(boardQueueCardSettings)"
+                                           IsFollowing="@IsMatchFollowed(m.Id)"
+                                           CanFollow="@CanFollowFromMatchCard(m)"
+                                           CanSync="@CanSyncFromMatchCard(m)"
+                                           CanStartMatch="@(CanStartMatchFromMatchCard(m))"
+                                           CanResetMatch="@(CanResetFromMatchCard(m))"
+                                           CanStartListener="@(CanStartListener(m) && !isWorking)"
+                                           OnFollow="() => ToggleFollowMatchAsync(m)"
+                                           OnSync="() => SyncMatchFromExternalAsync(m)"
+                                           OnStartMatch="() => SendUpcomingMatchAsync(m)"
+                                           OnResetMatch="() => ResetMatchByIdAsync(m.Id)"
+                                           OnStartListener="() => EnsureListenerAsync(m)"
                                            OnHomePlayerClick="BuildPlayerDetailCallback(m.HomeParticipantId)"
                                            OnAwayPlayerClick="BuildPlayerDetailCallback(m.AwayParticipantId)"
                                            EnableDetailPanel="false"
@@ -2769,9 +2795,9 @@
     .tournament-list-rail-item {
         --rail-item-height: 5.2rem;
         width: 1.9rem;
-        min-height: 4.2rem;
+        min-height: 3.1rem;
         height: var(--rail-item-height);
-        padding: 0.1rem;
+        padding: 0.04rem;
         border: 1px solid rgba(13, 110, 253, 0.25);
         border-radius: 0.7rem;
         background: rgba(255, 255, 255, 0.95);

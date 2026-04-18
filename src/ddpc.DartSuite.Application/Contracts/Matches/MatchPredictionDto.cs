@@ -4,4 +4,9 @@ public sealed record MatchPredictionDto(
     double HomeWinProbability,
     double AwayWinProbability,
     int EstimatedRemainingMinutes,
-    string ExpectedResult);
+    string ExpectedResult,
+    string ExpectedFinalScore,
+    double ExpectedCheckoutPoints,
+    double CheckoutProbability,
+    double ExpectedRemainingDartsInLeg,
+    double ExpectedPpr);

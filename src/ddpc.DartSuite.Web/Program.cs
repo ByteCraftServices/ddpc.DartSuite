@@ -17,10 +17,18 @@ builder.Services.AddScoped<AppStateService>();
 builder.Services.AddScoped<BoardHubService>();
 builder.Services.AddScoped<TournamentHubService>();
 builder.Services.AddSingleton<IUiHelpService, UiHelpService>();
+builder.Services.Configure<MatchCardDefaultsOptions>(builder.Configuration.GetSection("MatchCardDefaults"));
 builder.Services.AddHttpClient<DartSuiteApiService>(client =>
 {
      client.BaseAddress = new Uri(builder?.Configuration["Api:BaseUrl"] ?? throw new NullReferenceException("Api:BaseUrl configuration is missing"));
 });
+
+var matchCardDefaultsRaw = builder.Configuration.GetSection("MatchCardDefaults:Scopes").Get<Dictionary<string, MatchCardViewSettings>>();
+var matchCardDefaults = matchCardDefaultsRaw?.ToDictionary(
+    kvp => kvp.Key.Replace("--", "::", StringComparison.Ordinal),
+    kvp => kvp.Value,
+    StringComparer.OrdinalIgnoreCase);
+MatchCardViewSettings.ConfigureDefaults(matchCardDefaults);
 
 if (httpsRedirectPort.HasValue)
 {

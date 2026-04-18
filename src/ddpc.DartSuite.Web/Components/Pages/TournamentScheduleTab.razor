@@ -1,8 +1,9 @@
-﻿@using System.Linq
+@using System.Linq
 @using ddpc.DartSuite.Application.Contracts.Boards
 @using ddpc.DartSuite.Application.Contracts.Matches
 @using ddpc.DartSuite.Web.Components
 @using Microsoft.AspNetCore.Components
+@inject IJSRuntime JS
 
 <div id="section-tournaments-schedule" class="d-flex justify-content-between align-items-center mb-3">
     <h6 class="fw-semibold mb-0">Spielplan — Chronologische Übersicht</h6>
@@ -67,12 +68,19 @@
                     @onclick='() => OpenMatchCardScopeEditor.InvokeAsync("tournaments::schedule-boards-upcoming")'>⚙</button>
         </SummaryActions>
         <ChildContent>
-            <div class="row g-2">
-                @foreach (var board in Boards)
-                {
-                    var queue = BoardQueues.TryGetValue(board.Id, out var matchesOnBoard) ? matchesOnBoard : [];
-                    <div class="col-12 col-md-6 col-xl-4">
-                        <div class="card h-100 schedule-board-queue-card">
+            <div class="schedule-queue-carousel-wrap">
+                <button type="button"
+                        class="btn btn-outline-secondary btn-sm schedule-queue-nav"
+                    aria-label="Voriges Board"
+                        title="Voriges Board"
+                        disabled="@(QueueBoards.Count <= 1)"
+                    @onclick="() => ScrollQueueBoardsAsync(-1)">‹</button>
+                <div class="schedule-queue-carousel" @ref="queueBoardsScrollerRef">
+                    @foreach (var board in QueueBoards)
+                    {
+                        var queue = BoardQueues.TryGetValue(board.Id, out var matchesOnBoard) ? matchesOnBoard : [];
+                        <div class="schedule-queue-carousel-item">
+                            <div class="card h-100 schedule-board-queue-card">
                                <div class="@BuildScheduleBoardHeaderCss(board.Id)"
                                  @ondragover:preventDefault
                                  @ondragover="() => MarkScheduleDropTargetBoard.InvokeAsync(board.Id)"
@@ -151,6 +159,13 @@
                                                                ShowHighestCheckout="@BoardQueueCardSettings.ShowHighestCheckout"
                                                                ShowAverageDartsPerLeg="@BoardQueueCardSettings.ShowAverageDartsPerLeg"
                                                                ShowMinimalDartsPerLeg="@BoardQueueCardSettings.ShowMinimalDartsPerLeg"
+                                                               ShowActionButtons="@IsCurrentUserManager"
+                                                               OnStartMatch="() => SendUpcomingMatch.InvokeAsync(queuedMatch)"
+                                                               CanStartMatch="@(CanSendUpcomingMatch(queuedMatch) && !IsWorking)"
+                                                               OnToggleStartTimeLock="() => ToggleTimeLock.InvokeAsync(queuedMatch)"
+                                                               CanToggleStartTimeLock="@(IsCurrentUserManager && !IsWorking)"
+                                                               OnToggleBoardLock="() => ToggleBoardLock.InvokeAsync(queuedMatch)"
+                                                               CanToggleBoardLock="@(IsCurrentUserManager && !IsWorking)"
                                                                OnHomePlayerClick="BuildPlayerDetailCallback(queuedMatch.HomeParticipantId)"
                                                                OnAwayPlayerClick="BuildPlayerDetailCallback(queuedMatch.AwayParticipantId)"
                                                                OnBoardClick="BuildMatchBoardDetailCallback(queuedMatch)"
@@ -177,8 +192,15 @@
                                 }
                             </div>
                         </div>
-                    </div>
-                }
+                        </div>
+                    }
+                </div>
+                <button type="button"
+                        class="btn btn-outline-secondary btn-sm schedule-queue-nav"
+                        aria-label="Naechstes Board"
+                        title="Nächstes Board"
+                        disabled="@(QueueBoards.Count <= 1)"
+                        @onclick="() => ScrollQueueBoardsAsync(1)">›</button>
             </div>
         </ChildContent>
     </SettingsPanel>
@@ -202,11 +224,11 @@
 @if (Boards.Any())
 {
     <div class="schedule-board-headers-sticky mb-2">
-        <div class="row g-2">
+        <div class="schedule-board-sticky-grid" style="@StickyBoardGridStyle">
             @foreach (var board in Boards)
             {
                 var queueCount = BoardQueues.TryGetValue(board.Id, out var matchesOnBoard) ? matchesOnBoard.Count : 0;
-                <div class="col-12 col-md-6 col-xl-4">
+                <div class="schedule-board-sticky-item">
                     <div class="card-header py-1 d-flex justify-content-between align-items-center schedule-board-sticky-proxy @ScheduleBoardDropZoneCss(board.Id) @(DraggedBoardId == board.Id ? "schedule-mobile-source-active" : string.Empty)"
                          draggable="@(CanManageScheduleInteractions && !IsCompactViewport ? "true" : "false")"
                          @ondragstart="() => HandleBoardDragStartAsync(board.Id)"
@@ -216,14 +238,15 @@
                         @ondragleave="() => ClearScheduleDropTargetBoard.InvokeAsync(board.Id)"
                         @ondrop="() => DropOnBoardHeader.InvokeAsync(board.Id)"
                          style="cursor:@(CanManageScheduleInteractions && !IsCompactViewport ? "grab" : "default")">
-                        <div class="d-flex align-items-center gap-2 min-w-0">
-                            <span class="badge bg-dark p-2 user-select-none @(DraggedBoardId == board.Id ? "schedule-mobile-source-active" : string.Empty)"
+                        <div class="schedule-board-sticky-title min-w-0">
+                            <span class="badge bg-dark p-2 user-select-none schedule-board-title-badge @(DraggedBoardId == board.Id ? "schedule-mobile-source-active" : string.Empty)"
                                   draggable="@(CanManageScheduleInteractions && !IsCompactViewport ? "true" : "false")"
                                   @ondragstart="() => HandleBoardDragStartAsync(board.Id)"
                                   @ondragend="HandleBoardDragEndAsync"
-                                  style="cursor:@(CanManageScheduleInteractions && !IsCompactViewport ? "grab" : "default"); font-size:.85em">
-                                📋 @board.Name
-                                <span class="badge @BoardStatusBadge(board.Status) ms-1" style="font-size:.75em">@board.Status</span>
+                                  style="cursor:@(CanManageScheduleInteractions && !IsCompactViewport ? "grab" : "default"); font-size:.85em"
+                                  title="@board.Name">
+                                <span class="schedule-board-title-icon" aria-hidden="true">📋</span>
+                                <span class="schedule-board-title-text">@board.Name</span>
                             </span>
                             @if (IsCompactViewport && CanManageScheduleInteractions)
                             {
@@ -234,7 +257,10 @@
                                         @onclick:stopPropagation>⇅</button>
                             }
                         </div>
-                        <span class="badge text-bg-light border">@queueCount</span>
+                        <div class="schedule-board-sticky-meta">
+                            <span class="badge @BoardStatusBadge(board.Status)">@board.Status</span>
+                            <span class="badge text-bg-light border">@queueCount</span>
+                        </div>
                     </div>
                 </div>
             }
@@ -311,6 +337,10 @@
                                ShowActionButtons="@IsCurrentUserManager"
                                OnStartMatch="() => SendUpcomingMatch.InvokeAsync(match)"
                                CanStartMatch="@(CanSendUpcomingMatch(match) && !IsWorking)"
+                               OnToggleStartTimeLock="() => ToggleTimeLock.InvokeAsync(match)"
+                               CanToggleStartTimeLock="@(IsCurrentUserManager && !IsWorking)"
+                               OnToggleBoardLock="() => ToggleBoardLock.InvokeAsync(match)"
+                               CanToggleBoardLock="@(IsCurrentUserManager && !IsWorking)"
                                EnableDetailPanel="false"
                                EnableRealtimeConsumer="@(match.StartedUtc is not null && match.FinishedUtc is null)"
                                OnClick="() => OpenMatchDetail.InvokeAsync(match)" />
@@ -459,8 +489,25 @@ else
     private bool filtersPanelExpanded = true;
     private bool queuePanelExpanded = true;
     private string queueDisplayLimit = "3";
+    private ElementReference queueBoardsScrollerRef;
 
-    private bool ShouldShowQueues => !string.Equals(queueDisplayLimit, "none", StringComparison.OrdinalIgnoreCase) && Boards.Any() && Matches.Any();
+    private IReadOnlyList<BoardDto> QueueBoards
+        => Boards
+            .Where(board => BoardQueues.TryGetValue(board.Id, out var queue) && queue.Any())
+            .ToList();
+
+    private bool ShouldShowQueues
+        => !string.Equals(queueDisplayLimit, "none", StringComparison.OrdinalIgnoreCase) && QueueBoards.Any() && Matches.Any();
+
+    private int StickyBoardColumns => Boards.Count switch
+    {
+        <= 0 => 1,
+        <= 5 => Boards.Count,
+        _ => 3
+    };
+
+    private string StickyBoardGridStyle => $"--schedule-sticky-columns:{StickyBoardColumns};";
+
     private bool DragIsMatch => DraggedScheduleMatchId.HasValue;
     private string QueueLimitSummary => queueDisplayLimit switch
     {
@@ -490,6 +537,15 @@ else
     {
         queueDisplayLimit = Convert.ToString(args.Value) ?? "3";
         return Task.CompletedTask;
+    }
+
+    private async Task ScrollQueueBoardsAsync(int direction)
+    {
+        if (QueueBoards.Count <= 1)
+            return;
+
+        var delta = direction < 0 ? -420 : 420;
+        await JS.InvokeVoidAsync("dartSuiteUi.scrollElementBy", queueBoardsScrollerRef, delta);
     }
 
     private Task HandleEndScheduleMatchDragAsync() => EndScheduleMatchDrag.InvokeAsync();
