@@ -52,7 +52,7 @@ $processes = Get-DotnetProcesses |
             }
         }
 
-        $isWatchOrRun = $_.CommandLine -match "\b(watch|run)\b"
+        $isWatchOrRun = $_.CommandLine -match "(^|[\s""'])watch($|[\s""'])|(^|[\s""'])run($|[\s""'])"
         return $targetsApiOrWeb -and $isWatchOrRun
     }
 

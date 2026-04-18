@@ -14,6 +14,10 @@ Hinweis bei lokalen File-Locks (laufendes `dotnet watch`):
 pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/stop-locking-dotnet-processes.ps1
 dotnet build ddpc.DartSuite.slnx
 ```
+Falls `pwsh` nicht installiert ist (z. B. Windows PowerShell 5.1), verwende:
+```bash
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-locking-dotnet-processes.ps1
+```
 
 Das Preflight-Script beendet gezielt `dotnet watch` / `dotnet run` Prozesse für:
 - `src/ddpc.DartSuite.Api`
