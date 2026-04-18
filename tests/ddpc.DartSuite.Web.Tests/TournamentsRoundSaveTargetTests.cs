@@ -66,14 +66,14 @@ public sealed class TournamentsRoundSaveTargetTests
     private static void SetPrivateField(object target, string fieldName, object value)
     {
         var field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
-        field.Should().NotBeNull($"Das Feld '{fieldName}' muss existieren.");
+        field.Should().NotBeNull($"The field '{fieldName}' must exist.");
         field!.SetValue(target, value);
     }
 
     private static List<(string Phase, int RoundNumber)> InvokeResolveRoundSaveTargets(Tournaments sut)
     {
         var method = sut.GetType().GetMethod("ResolveRoundSaveTargets", BindingFlags.Instance | BindingFlags.NonPublic);
-        method.Should().NotBeNull("Die Methode ResolveRoundSaveTargets muss existieren.");
+        method.Should().NotBeNull("The method ResolveRoundSaveTargets must exist.");
 
         var result = method!.Invoke(sut, null) as System.Collections.IEnumerable;
         result.Should().NotBeNull();
