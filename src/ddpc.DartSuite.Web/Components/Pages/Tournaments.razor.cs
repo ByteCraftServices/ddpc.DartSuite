@@ -319,8 +319,17 @@ public partial class Tournaments : IAsyncDisposable
 
     private static string GetTournamentRailItemHeight(TournamentDto tournament)
     {
-        var nameLength = Math.Min(tournament.Name?.Length ?? 0, TournamentRailLabelMaxLength);
-        var heightRem = Math.Clamp(1.9 + (nameLength * 0.2), 3.1, 7.2);
+        // The rail label is rendered rotated by 90 degrees, so available visual height
+        // must track the effective rendered label text (including ellipsis) with extra buffer.
+        var effectiveLabel = GetTournamentRailLabel(tournament);
+        var effectiveLabelLength = effectiveLabel.Length;
+        var uppercaseCount = effectiveLabel.Count(char.IsUpper);
+
+        var heightRem = Math.Clamp(
+            2.35 + (effectiveLabelLength * 0.22) + (uppercaseCount * 0.015),
+            3.4,
+            8.8);
+
         return $"{heightRem.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}rem";
     }
 
@@ -7110,7 +7119,7 @@ public partial class Tournaments : IAsyncDisposable
         var point = await JS.InvokeAsync<RelativePoint?>("dartSuiteDraw.getRelativeCenter", KoDrawContainerId, targetId);
         if (point is null) return;
 
-        koDrawTokenStyle = $"left:{point.Left}px; top:{point.Top}px;";
+        koDrawTokenStyle = $"left:{point.Left.ToString(System.Globalization.CultureInfo.InvariantCulture)}px; top:{point.Top.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;";
         showKoDrawToken = true;
         await InvokeAsync(StateHasChanged);
     }

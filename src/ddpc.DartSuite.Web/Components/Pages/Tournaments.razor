@@ -708,7 +708,7 @@
                                                         @if (played.Count > 0)
                                                         {
                                                             <dt class="col-sm-4">Siegquote</dt>
-                                                            <dd class="col-sm-8">@((wins * 100.0 / played.Count).ToString("F0")) %</dd>
+                                                            <dd class="col-sm-8">@((wins * 100.0 / played.Count).ToString("F0", System.Globalization.CultureInfo.InvariantCulture)) %</dd>
                                                         }
                                                     </dl>
 

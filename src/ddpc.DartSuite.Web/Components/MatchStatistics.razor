@@ -29,15 +29,15 @@
                     {
                         <tr>
                             <td class="fw-semibold">@stat.ParticipantName</td>
-                            <td class="text-end">@stat.Average.ToString("F1")</td>
-                            <td class="text-end">@stat.First9Average.ToString("F1")</td>
+                            <td class="text-end">@stat.Average.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)</td>
+                            <td class="text-end">@stat.First9Average.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)</td>
                             <td class="text-end">@stat.LegsWon:@stat.LegsLost</td>
-                            <td class="text-end">@stat.CheckoutPercent.ToString("F1")%</td>
+                            <td class="text-end">@stat.CheckoutPercent.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%</td>
                             <td class="text-end">@stat.HighestCheckout</td>
                             <td class="text-end">@stat.Plus180</td>
                             <td class="text-end">@stat.Plus140</td>
                             <td class="text-end">@stat.Plus100</td>
-                            <td class="text-end">@stat.AverageDartsPerLeg.ToString("F1")</td>
+                            <td class="text-end">@stat.AverageDartsPerLeg.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)</td>
                             <td class="text-end">@stat.Breaks</td>
                         </tr>
                     }

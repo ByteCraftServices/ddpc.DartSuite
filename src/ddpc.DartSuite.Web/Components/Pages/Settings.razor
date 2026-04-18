@@ -174,16 +174,16 @@ else
 @if (showSettingsModal)
 {
     <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="() => CloseSettingsModal()">
-        <div class="modal-dialog modal-dialog-centered modal-lg" @onclick:stopPropagation>
-            <div class="modal-content">
+        <div class="modal-dialog modal-dialog-centered modal-xl modal-fullscreen-lg-down" @onclick:stopPropagation>
+            <div class="modal-content settings-modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">@settingsModalTitle</h5>
                     <button type="button" class="btn-close" @onclick="() => CloseSettingsModal()"></button>
                 </div>
-                <div class="modal-body">
+                <div class="modal-body settings-modal-body">
                     @if (settingsModalKind == "matchcard")
                     {
-                        <div id="settings-modal-matchcard">
+                        <div id="settings-modal-matchcard" class="settings-matchcard-editor">
                             <div class="small text-muted mb-2">Kontext: @GetScopeLabel(settingsModalScopeKey)</div>
 
                             @{
@@ -457,7 +457,7 @@ else
                             </div>
                             </fieldset>
 
-                            <div class="border rounded p-2 mt-3" id="settings-modal-matchcard-preview">
+                            <div class="border rounded p-2 mt-3 settings-matchcard-preview" id="settings-modal-matchcard-preview">
                                 <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
                                     <div class="fw-semibold small mb-0">Vorschau</div>
                                     <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -639,7 +639,7 @@ else
                         </div>
                     }
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer settings-modal-footer">
                     <button class="btn btn-secondary" @onclick="() => CloseSettingsModal()">Schliessen</button>
                     @if (settingsModalKind == "matchcard")
                     {

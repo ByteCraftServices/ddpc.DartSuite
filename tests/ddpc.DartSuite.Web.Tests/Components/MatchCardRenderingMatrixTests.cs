@@ -1,9 +1,13 @@
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Globalization;
+using System.Reflection;
 using Bunit;
 using ddpc.DartSuite.Application.Contracts.Matches;
+using ddpc.DartSuite.Application.Contracts.Tournaments;
 using ddpc.DartSuite.Web.Components;
+using ddpc.DartSuite.Web.Components.Pages;
 using ddpc.DartSuite.Web.Services;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components;
@@ -83,6 +87,124 @@ public sealed class MatchCardRenderingMatrixTests
         var menuButton = cut.Find("button.match-action-menu-button");
         menuButton.GetAttribute("aria-label").Should().NotBeNullOrWhiteSpace();
         menuButton.GetAttribute("aria-label")!.Should().Contain("Match-Aktionen");
+    }
+
+    [Fact]
+    public void ListLayout_FooterActionLocation_RendersSingleActionMenu()
+    {
+        using var ctx = CreateContext();
+
+        var cut = ctx.RenderComponent<MatchCard>(parameters => parameters
+            .Add(p => p.Match, CreateRunningMatch())
+            .Add(p => p.Layout, "List")
+            .Add(p => p.ShowActionButtons, true)
+            .Add(p => p.ActionButtonsLocation, "Footer")
+            .Add(p => p.ShowSyncAction, true));
+
+        cut.FindAll("button.match-action-menu-button").Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void Highlighting_UsesHighlightPhasePreset_WhenThresholdIsReached()
+    {
+        using var ctx = CreateContext();
+
+        var cut = ctx.RenderComponent<MatchCard>(parameters => parameters
+            .Add(p => p.Match, CreateRunningMatch())
+            .Add(p => p.Layout, "Horizontal")
+            .Add(p => p.ShowActionButtons, false)
+            .Add(p => p.EnableHighlighting, true)
+            .Add(p => p.HighlightCheckoutThreshold, 501)
+            .Add(p => p.HighlightPhaseBorderPreset, "info")
+            .Add(p => p.HighlightPhaseBackgroundPreset, "info-soft"));
+
+        cut.Find("div.match-card").ClassList.Should().Contain("match-highlight-border-info");
+        cut.Find("div.match-card").ClassList.Should().Contain("match-highlight-bg-info-soft");
+    }
+
+    [Fact]
+    public void PlayerName_AverageFormatting_IsCultureInvariant()
+    {
+        using var ctx = CreateContext();
+
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUiCulture = CultureInfo.CurrentUICulture;
+
+        try
+        {
+            var german = CultureInfo.GetCultureInfo("de-DE");
+            CultureInfo.CurrentCulture = german;
+            CultureInfo.CurrentUICulture = german;
+
+            var cut = ctx.RenderComponent<PlayerName>(parameters => parameters
+                .Add(p => p.Name, "Max")
+                .Add(p => p.ShowAverage, true)
+                .Add(p => p.Average, 72.5));
+
+            cut.Markup.Should().Contain("(72.5)");
+            cut.Markup.Should().NotContain("(72,5)");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+            CultureInfo.CurrentUICulture = originalUiCulture;
+        }
+    }
+
+    [Fact]
+    public void TournamentRailHeightFormatting_IsCultureInvariant()
+    {
+        var method = typeof(Tournaments).GetMethod("GetTournamentRailItemHeight", BindingFlags.NonPublic | BindingFlags.Static);
+        method.Should().NotBeNull();
+
+        var tournament = new TournamentDto(
+            Guid.NewGuid(),
+            "PL Test",
+            "doc",
+            "Aktiv",
+            DateOnly.FromDateTime(DateTime.UtcNow),
+            DateOnly.FromDateTime(DateTime.UtcNow),
+            null,
+            "GroupsAndKnockout",
+            "Local",
+            false,
+            false,
+            false,
+            null,
+            16,
+            4,
+            8,
+            2,
+            1,
+            "RoundRobin",
+            "Snake",
+            "Auto",
+            "None",
+            false,
+            1,
+            3,
+            1);
+
+        var originalCulture = CultureInfo.CurrentCulture;
+        var originalUiCulture = CultureInfo.CurrentUICulture;
+
+        try
+        {
+            var german = CultureInfo.GetCultureInfo("de-DE");
+            CultureInfo.CurrentCulture = german;
+            CultureInfo.CurrentUICulture = german;
+
+            var result = (string?)method!.Invoke(null, [tournament]);
+            result.Should().NotBeNull();
+            result!.Should().Contain(".");
+            result.Should().NotContain(",");
+            result.Should().EndWith("rem");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+            CultureInfo.CurrentUICulture = originalUiCulture;
+        }
     }
 
     private static TestContext CreateContext()

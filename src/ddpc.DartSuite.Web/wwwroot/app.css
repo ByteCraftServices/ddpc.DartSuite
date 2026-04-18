@@ -182,6 +182,55 @@ h1:focus {
     padding: 0 0.5rem 0.3rem;
 }
 
+.match-score-vertical-layout {
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 0.7rem;
+}
+
+.match-score-vertical-players {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 0.35rem;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.match-score-vertical-player-row {
+    min-height: 2.1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.match-score-vertical-score-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex: 0 0 auto;
+}
+
+.match-score-vertical-scores {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    align-items: flex-end;
+    min-width: max-content;
+}
+
+.match-score-vertical-score-row {
+    min-height: 2.1rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.35rem;
+    white-space: nowrap;
+}
+
 .match-score-horizontal {
     display: flex;
     flex-direction: column;
@@ -917,6 +966,68 @@ h1:focus {
 @keyframes live-pulse {
     0%, 100% { box-shadow: 0 0 0 0 rgba(13, 202, 240, 0.4); }
     50%      { box-shadow: 0 0 12px 4px rgba(13, 202, 240, 0.2); }
+}
+
+/* Settings page MatchCard modal: global fallback for responsive behavior */
+.settings-modal-content {
+    max-height: 100dvh;
+}
+
+.settings-modal-body {
+    overflow-y: auto;
+    max-height: calc(100dvh - 9.5rem);
+}
+
+.settings-modal-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    background: #fff;
+    border-top: 1px solid #dee2e6;
+}
+
+.settings-matchcard-editor {
+    display: block;
+}
+
+.settings-matchcard-preview {
+    background: #f7f8fa;
+}
+
+@media (min-width: 992px) {
+    .settings-matchcard-editor {
+        display: grid;
+        grid-template-columns: minmax(32rem, 1fr) minmax(24rem, 0.9fr);
+        gap: 1rem;
+        align-items: start;
+    }
+
+    .settings-matchcard-preview {
+        grid-column: 2;
+        grid-row: 1 / span 3;
+        position: sticky;
+        top: 0;
+        margin-top: 0 !important;
+        max-height: calc(100dvh - 14rem);
+        overflow-y: auto;
+    }
+}
+
+@media (max-width: 991px) {
+    .settings-modal-body {
+        max-height: calc(100dvh - 8.5rem);
+    }
+
+    .settings-matchcard-preview {
+        position: sticky;
+        bottom: 0;
+        z-index: 1;
+        border-top: 2px solid #0d6efd;
+        box-shadow: 0 -8px 18px rgba(0, 0, 0, 0.08);
+        background: #eef2f6;
+        max-height: 52vh;
+        overflow-y: auto;
+    }
 }
 
 /* ─── Mobile responsive helpers ─── */
