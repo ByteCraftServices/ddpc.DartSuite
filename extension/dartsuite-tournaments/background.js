@@ -13,6 +13,10 @@ const DEFAULT_API_BASE_URL = "http://localhost:5290";
 let dstStatus = "offline";   // current DST status
 let matchStatus = "available"; // current match status
 let dartsuiteEnabled = true;
+let pendingMatchStatusTimeout = null;
+const MATCH_STATUS_TRANSITION_HOLD_MS = 1200;
+const ACTIVE_MATCH_STATUSES = new Set(["playing", "waitForPlayer", "waitForMatch", "listening"]);
+const PASSIVE_MATCH_STATUSES = new Set(["available", "idle", "scheduled", "ended"]);
 
 function sanitizeOptionsForLog(options) {
     if (!options || typeof options !== "object") return null;
@@ -254,6 +258,27 @@ function setDstStatus(newStatus) {
 }
 
 function setMatchStatus(newStatus) {
+    if (!newStatus || typeof newStatus !== "string") return;
+
+    if (ACTIVE_MATCH_STATUSES.has(matchStatus) && PASSIVE_MATCH_STATUSES.has(newStatus)) {
+        if (pendingMatchStatusTimeout) {
+            clearTimeout(pendingMatchStatusTimeout);
+        }
+        pendingMatchStatusTimeout = setTimeout(() => {
+            pendingMatchStatusTimeout = null;
+            if (matchStatus !== newStatus) {
+                matchStatus = newStatus;
+                updateIcon();
+            }
+        }, MATCH_STATUS_TRANSITION_HOLD_MS);
+        return;
+    }
+
+    if (pendingMatchStatusTimeout) {
+        clearTimeout(pendingMatchStatusTimeout);
+        pendingMatchStatusTimeout = null;
+    }
+
     if (matchStatus === newStatus) return;
     matchStatus = newStatus;
     updateIcon();
@@ -302,7 +327,7 @@ function updateIcon() {
         // Also set tooltip
         const dstLabel = { connected: "Verbunden", ready: "Bereit", offline: "Offline" }[dstStatus] || "Unbekannt";
         const matchLabel = {
-            available: "", idle: "Idle", scheduled: "Geplant", waitForPlayer: "Warte auf Spieler",
+            available: "Warten", idle: "Warten", scheduled: "Geplant", waitForPlayer: "Warte auf Spieler",
             waitForMatch: "Warte auf Match", playing: "Spiel läuft", listening: "Listener aktiv",
             disconnected: "Getrennt", ended: "Beendet"
         }[matchStatus] || "";

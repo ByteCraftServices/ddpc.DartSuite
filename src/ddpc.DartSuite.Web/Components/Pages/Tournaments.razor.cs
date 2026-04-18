@@ -5482,23 +5482,22 @@ public partial class Tournaments : IAsyncDisposable
         }
     }
 
-    private void CloseBoardDetail()
+    private async Task CloseBoardDetailAsync()
     {
+        var detailMatchId = detailMatch?.Id;
         detailBoard = null;
         boardSyncInfo = null;
         boardSyncError = null;
         boardSyncDebug = null;
-        // Refresh detailMatch from in-memory list in case board interaction updated it
-        if (detailMatch is not null)
-        {
-            var freshMatch = matches.FirstOrDefault(m => m.Id == detailMatch.Id);
-            if (freshMatch is not null) detailMatch = freshMatch;
-        }
-        // C2: refresh matches from server after close so any board-side changes are reflected
-        _ = BackgroundRefreshMatchesAsync();
+        // C2: refresh matches from server before restoring parent modal so child-close state is immediately visible.
+        await BackgroundRefreshMatchesAsync();
+        if (detailMatchId.HasValue)
+            detailMatch = matches.FirstOrDefault(m => m.Id == detailMatchId.Value);
         // Refresh detailBoard pointer when navigating back to board from a sub-detail
         if (_modalBackStack.Count > 0)
             _modalBackStack.Pop().Invoke();
+
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task LoadBoardSyncDebugAsync(Guid boardId)

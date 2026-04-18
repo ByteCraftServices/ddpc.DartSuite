@@ -94,6 +94,7 @@ public sealed class MatchCardViewSettings
 
     public bool CollapseDetailsOnMobile { get; set; } = true;
     public bool SuppressHeader { get; set; }
+    public bool EmbedHeader { get; set; }
 
     public MatchCardViewSettings Clone() => new()
     {
@@ -177,6 +178,7 @@ public sealed class MatchCardViewSettings
         CollapseDetailsOnMobile = CollapseDetailsOnMobile,
         ActionButtonsLocation = ActionButtonsLocation,
         SuppressHeader = SuppressHeader,
+        EmbedHeader = EmbedHeader,
     };
 
     public void Normalize()

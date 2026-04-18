@@ -25,6 +25,8 @@ public sealed class TournamentHubService : IAsyncDisposable
     {
         var apiBase = configuration["Api:BaseUrl"]?.TrimEnd('/') ?? throw new InvalidOperationException("Api:BaseUrl not configured");
         _hubUrl = $"{apiBase}/hubs/tournaments";
+        // DS-041/B2 investigation (2026-04-18): client endpoint and subscribed event names match API hub mapping.
+        // No deterministic wiring bug found in TournamentHubService; remaining disconnects are treated by reconnect/fallback logic.
     }
 
     public async Task StartAsync()

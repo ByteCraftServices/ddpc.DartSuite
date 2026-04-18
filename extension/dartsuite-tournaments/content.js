@@ -28,6 +28,10 @@ let lastContextToastKey = "";
 let lastContextToastAtMs = 0;
 let dartsuiteEnabled = true;
 let activeStartNotice = null;
+let pendingMatchStatusTimer = null;
+const MATCH_STATUS_TRANSITION_HOLD_MS = 1200;
+const ACTIVE_MATCH_STATES = new Set(["playing", "waitForPlayer", "waitForMatch", "listening"]);
+const PASSIVE_MATCH_STATES = new Set(["available", "idle", "scheduled", "ended"]);
 
 function logTraffic(direction, message, details) {
     const prefix = `[DartSuite] [${direction}]: ${message}`;
@@ -64,6 +68,31 @@ function sanitizeOptionsForLog(options) {
     }
 
     return safe;
+}
+
+function refreshStatusPresentation() {
+    updateInfoBarStatusTag();
+    refreshInfoBarVisibility();
+    if (debugModeEnabled) {
+        showStatusToast(currentDstStatus, currentMatchStatus);
+    }
+}
+
+function applyIncomingMatchStatus(nextStatus) {
+    if (!nextStatus || typeof nextStatus !== "string") return;
+
+    if (ACTIVE_MATCH_STATES.has(currentMatchStatus) && PASSIVE_MATCH_STATES.has(nextStatus)) {
+        clearTimeout(pendingMatchStatusTimer);
+        pendingMatchStatusTimer = setTimeout(() => {
+            currentMatchStatus = nextStatus;
+            refreshStatusPresentation();
+        }, MATCH_STATUS_TRANSITION_HOLD_MS);
+        return;
+    }
+
+    clearTimeout(pendingMatchStatusTimer);
+    pendingMatchStatusTimer = null;
+    currentMatchStatus = nextStatus;
 }
 
 // Proxy fetch through background script to bypass mixed-content (HTTPS→HTTP)
@@ -282,13 +311,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
         case "dstStatusUpdate":
             currentDstStatus = message.dstStatus || currentDstStatus;
-            currentMatchStatus = message.matchStatus || currentMatchStatus;
+            applyIncomingMatchStatus(message.matchStatus);
             apiReachable = currentDstStatus !== "offline";
-            updateInfoBarStatusTag();
-            refreshInfoBarVisibility();
-            if (debugModeEnabled) {
-                showStatusToast(currentDstStatus, currentMatchStatus);
-            }
+            refreshStatusPresentation();
             sendResponse({ ok: true });
             break;
 
@@ -891,6 +916,8 @@ function updateInfoBarStatusTag() {
 
     // Match status overlay (shown when there is an active match context)
     const matchLabels = {
+        available:      "WARTEN",
+        idle:           "WARTEN",
         scheduled:      "GEPLANT",
         waitForPlayer:  "WARTEN",
         waitForMatch:   "WARTEN",
@@ -899,6 +926,8 @@ function updateInfoBarStatusTag() {
         ended:          "BEENDET"
     };
     const matchColors = {
+        available:      "#7b1fa2",
+        idle:           "#7b1fa2",
         scheduled:      "#1565c0",
         waitForPlayer:  "#7b1fa2",
         waitForMatch:   "#7b1fa2",
