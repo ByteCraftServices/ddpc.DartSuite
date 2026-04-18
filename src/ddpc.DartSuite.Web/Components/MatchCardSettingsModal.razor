@@ -1,3 +1,4 @@
+@using System.Globalization
 @using System.Text.Json
 @using ddpc.DartSuite.Application.Contracts.Matches
 @inject DartSuiteApiService Api
@@ -135,6 +136,7 @@
                                 <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmPlayerLinks" checked="@_settings.EnablePlayerLinks" @onchange="args => _settings.EnablePlayerLinks = ParseBool(args)" /><label class="form-check-label" for="mcsmPlayerLinks">Spieler-Links</label></div>
                                 <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmBoardLink" checked="@_settings.EnableBoardLink" @onchange="args => _settings.EnableBoardLink = ParseBool(args)" /><label class="form-check-label" for="mcsmBoardLink">Board-Link</label></div>
                                 <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmSuppressHeader" checked="@_settings.SuppressHeader" @onchange="args => _settings.SuppressHeader = ParseBool(args)" /><label class="form-check-label" for="mcsmSuppressHeader">Titelleiste ausblenden</label></div>
+                                <div class="form-check"><input class="form-check-input" type="checkbox" id="mcsmEmbedHeader" checked="@_settings.EmbedHeader" @onchange="args => _settings.EmbedHeader = ParseBool(args)" /><label class="form-check-label" for="mcsmEmbedHeader">Titelleiste einbetten</label></div>
                             </div>
                             <div class="d-flex align-items-center gap-2 mt-2 small">
                                 <label class="form-label mb-0">Buttons Position</label>
@@ -370,6 +372,7 @@
 
     private const string MatchCardPreferenceContext = "MatchCardDisplay";
     private const string ScopeDelimiter = "::";
+    private const string SplitterWidthStorageKey = "ds-matchcard-settings-split-width";
 
     private bool _isLoading;
     private bool _isSaving;
@@ -633,7 +636,8 @@
     [JSInvokable]
     public void SetSettingsPanelWidth(double pct)
     {
-        _settingsPanelWidthPct = pct;
+        _settingsPanelWidthPct = Math.Clamp(pct, 15d, 75d);
+        _ = PersistSplitterWidthAsync();
         InvokeAsync(StateHasChanged);
     }
 
@@ -647,6 +651,7 @@
     {
         try
         {
+            await RestoreSplitterWidthAsync();
             _dotNetRef ??= DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("dartSuiteSplitter.init", _splitterRef, _settingsPanelRef, _dotNetRef);
             _splitterInitialized = true;
@@ -665,6 +670,32 @@
             await JS.InvokeVoidAsync("dartSuiteSplitter.dispose");
         }
         catch { }
+    }
+
+    private async Task RestoreSplitterWidthAsync()
+    {
+        try
+        {
+            var stored = await JS.InvokeAsync<string?>("dartSuiteUi.localStorageGet", SplitterWidthStorageKey);
+            if (double.TryParse(stored, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+                _settingsPanelWidthPct = Math.Clamp(parsed, 15d, 75d);
+        }
+        catch
+        {
+            // best-effort persistence only
+        }
+    }
+
+    private async Task PersistSplitterWidthAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("dartSuiteUi.localStorageSet", SplitterWidthStorageKey, _settingsPanelWidthPct.ToString("F2", CultureInfo.InvariantCulture));
+        }
+        catch
+        {
+            // best-effort persistence only
+        }
     }
 
     public async ValueTask DisposeAsync()

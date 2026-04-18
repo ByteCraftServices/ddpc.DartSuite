@@ -46,7 +46,7 @@ async function updateHeaderStatus() {
             const colors = { connected: "#4caf50", ready: "#ff9800", offline: "#f44336" };
             const labels = { connected: "Verbunden", ready: "Bereit", offline: "Offline" };
             const matchLabels = {
-                available: "", idle: "Idle", scheduled: "Geplant",
+                available: "Warten", idle: "Warten", scheduled: "Geplant",
                 waitForPlayer: "Warte auf Spieler", waitForMatch: "Warte auf Match",
                 playing: "Spiel läuft", listening: "Listener", disconnected: "Getrennt", ended: "Beendet"
             };

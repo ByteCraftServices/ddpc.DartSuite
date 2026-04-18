@@ -138,6 +138,22 @@ public sealed class MatchCardRenderingMatrixTests
     }
 
     [Fact]
+    public void ListLayout_HeaderActionLocation_RendersInlineHeaderActions()
+    {
+        using var ctx = CreateContext();
+
+        var cut = ctx.RenderComponent<MatchCard>(parameters => parameters
+            .Add(p => p.Match, CreateRunningMatch())
+            .Add(p => p.Layout, "List")
+            .Add(p => p.ShowActionButtons, true)
+            .Add(p => p.ShowSyncAction, true)
+            .Add(p => p.ActionButtonsLocation, "Header"));
+
+        cut.FindAll("button.match-action-menu-button").Should().BeEmpty();
+        cut.FindAll("div.match-action-inline-buttons button").Should().NotBeEmpty();
+    }
+
+    [Fact]
     public void ListLayout_RendersStableSlotStructure()
     {
         using var ctx = CreateContext();

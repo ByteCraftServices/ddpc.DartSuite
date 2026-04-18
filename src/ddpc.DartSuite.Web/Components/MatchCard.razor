@@ -358,7 +358,7 @@
     {
     @if (!ResolvedSuppressHeader && ShowHeaderSection)
     {
-        <div class="card-header py-1 px-3 d-flex align-items-center gap-2 overflow-hidden">
+        <div class="card-header py-1 px-3 d-flex align-items-center gap-2 overflow-hidden @(ResolvedEmbedHeader ? "border-0 bg-transparent pb-0" : string.Empty)">
             @if (ShowHeaderTitleLine)
             {
                 <span class="fw-semibold small text-nowrap flex-shrink-0" style="overflow:hidden;text-overflow:ellipsis;max-width:50%">@HeaderTitleLine</span>
@@ -1467,6 +1467,7 @@
     [Parameter] public string Layout { get; set; } = "Horizontal";
     [Parameter] public string ActionButtonsLocation { get; set; } = "Footer";
     [Parameter] public bool SuppressHeader { get; set; }
+    [Parameter] public bool EmbedHeader { get; set; }
     [Parameter] public MatchCardViewSettings? ViewSettings { get; set; }
 
     [Parameter] public string? Label { get; set; }
@@ -1617,6 +1618,7 @@
     private string EffectiveSizeLevel => MatchCardViewSettings.NormalizeSizeLevel(ViewSettings?.SizeLevel);
     private string EffectiveActionButtonsLocation => MatchCardViewSettings.NormalizeActionButtonsLocation(ViewSettings?.ActionButtonsLocation ?? ActionButtonsLocation);
     private bool ResolvedSuppressHeader => ViewSettings?.SuppressHeader ?? SuppressHeader;
+    private bool ResolvedEmbedHeader => ViewSettings?.EmbedHeader ?? EmbedHeader;
     private bool ResolvedShowMatchPrediction => ViewSettings?.ShowMatchPrediction ?? ShowMatchPrediction;
     private bool ResolvedShowSchedulingStatus => ViewSettings?.ShowSchedulingStatus ?? ShowSchedulingStatus;
     private bool ResolvedShowDetailsMatchNumber => ViewSettings?.ShowDetailsMatchNumber ?? ShowDetailsMatchNumber;
@@ -1754,7 +1756,7 @@
                || (!ResolvedShowHeaderBoardName && ResolvedShowBodyBoardName && ResolvedShowBodyBoardLock));
 
     private bool ResolvedShowActionButtons => ViewSettings?.ShowActionButtons ?? ShowActionButtons;
-    private bool UseActionMenu => ResolvedShowActionButtons;
+    private bool UseActionMenu => !string.Equals(EffectiveActionButtonsLocation, "Header", StringComparison.Ordinal);
     private bool ResolvedShowSyncAction => ViewSettings?.ShowSyncAction ?? ShowSyncAction;
     private bool ResolvedShowFollowAction => ViewSettings?.ShowFollowAction ?? ShowFollowAction;
     private bool ResolvedShowStartMatchAction => ViewSettings?.ShowStartMatchAction ?? ShowStartMatchAction;
@@ -2467,4 +2469,3 @@
         return ValueTask.CompletedTask;
     }
 }
-

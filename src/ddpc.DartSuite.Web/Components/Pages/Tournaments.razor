@@ -1921,12 +1921,12 @@
     var currentMatch = CurrentMatchOnBoard(detailBoard.Id);
     var upcomingOnBoard = UpcomingMatchesOnBoard(detailBoard.Id);
     var boardMatchListener = currentMatch is not null ? matchListeners.FirstOrDefault(l => l.MatchId == currentMatch.Id) : null;
-    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="CloseBoardDetail">
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="CloseBoardDetailAsync">
         <div class="modal-dialog modal-lg modal-dialog-centered" @onclick:stopPropagation>
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">📋 @detailBoard.Name</h5>
-                    <button type="button" class="btn-close" @onclick="CloseBoardDetail"></button>
+                    <button type="button" class="btn-close" @onclick="CloseBoardDetailAsync"></button>
                 </div>
                 <div class="modal-body">
                     <div class="d-flex align-items-center gap-2 mb-3">
@@ -2046,7 +2046,7 @@
                                    DetailsExpandedByDefault="@(!boardCardSettings.CollapseDetailsOnMobile || !isCompactViewport)"
                                    ForceDetailsExpanded="@forcedMatchDetailsExpanded"
                                    EnableRealtimeConsumer="@(currentMatch.StartedUtc is not null && currentMatch.FinishedUtc is null)"
-                                   OnClick="() => { var m = currentMatch; var b = detailBoard; CloseBoardDetail(); if (b is not null) _modalBackStack.Push(() => OpenBoardDetail(b)); OpenMatchDetail(m); }" />
+                                   OnClick="async () => { var m = currentMatch; var b = detailBoard; await CloseBoardDetailAsync(); if (b is not null) _modalBackStack.Push(() => OpenBoardDetail(b)); OpenMatchDetail(m); }" />
                         <div class="d-flex flex-column gap-1 mb-3">
                             <div class="d-flex align-items-center gap-2">
                                 <span class="badge @GetMonitoringBadgeCss(currentMatch)">@GetMonitoringBadgeText(currentMatch)</span>
@@ -2152,7 +2152,7 @@
                     }
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="CloseBoardDetail">Schließen</button>
+                    <button class="btn btn-secondary" @onclick="CloseBoardDetailAsync">Schließen</button>
                 </div>
             </div>
         </div>
