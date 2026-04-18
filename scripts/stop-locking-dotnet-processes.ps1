@@ -5,9 +5,15 @@ $targetProjects = @(
     "src/ddpc.DartSuite.Api",
     "src/ddpc.DartSuite.Web"
 )
+$isWindowsPlatform = if (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue) {
+    [bool]$IsWindows
+}
+else {
+    $PSVersionTable.PSEdition -eq "Desktop"
+}
 
 function Get-DotnetProcesses {
-    if ($IsWindows) {
+    if ($isWindowsPlatform) {
         return Get-CimInstance Win32_Process -Filter "Name='dotnet.exe'" |
             Select-Object ProcessId, CommandLine
     }
@@ -46,7 +52,7 @@ $processes = Get-DotnetProcesses |
             }
         }
 
-        $isWatchOrRun = $_.CommandLine -match "(^|\s)(watch|run)(\s|$)"
+        $isWatchOrRun = $_.CommandLine -match "\b(watch|run)\b"
         return $targetsApiOrWeb -and $isWatchOrRun
     }
 
