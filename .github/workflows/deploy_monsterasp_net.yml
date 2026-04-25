@@ -32,17 +32,23 @@ jobs:
         run: |
           dotnet publish ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj --configuration Release --output ./publish_output
 
-      - name: Deploy mit msdeploy.exe
+      - name: Deploy mit msdeploy.exe (MonsterASP.NET Standard)
+        # WICHTIG: Secrets müssen exakt wie folgt belegt sein:
+        #   MONSTERASP_NET_SITE = IIS-Site-Name, z.B. site123456
+        #   MONSTERASP_NET_URL  = vollständige MSDeploy-URL inkl. ?site=site123456
+        #   MONSTERASP_NET_USER = site123456
+        #   MONSTERASP_NET_PWD  = Passwort
         env:
-          DEST_URL: ${{ secrets.MONSTERASP_NET_URL }}
+          SOURCE_PATH: publish_output
           DEST_SITE: ${{ secrets.MONSTERASP_NET_SITE }}
+          DEST_URL: ${{ secrets.MONSTERASP_NET_URL }}
           USERNAME: ${{ secrets.MONSTERASP_NET_USER }}
           PASSWORD: ${{ secrets.MONSTERASP_NET_PWD }}
         shell: cmd
         run: |
           "C:\Program Files (x86)\IIS\Microsoft Web Deploy V3\msdeploy.exe" ^
             -verb:sync ^
-            -source:contentPath="publish_output" ^
+            -source:contentPath="%SOURCE_PATH%" ^
             -dest:contentPath="%DEST_SITE%",computerName="%DEST_URL%",userName="%USERNAME%",password="%PASSWORD%",authtype="Basic",includeAcls="False" ^
             -allowUntrusted ^
             -disableLink:AppPoolExtension ^
