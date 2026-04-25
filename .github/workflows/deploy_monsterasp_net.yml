@@ -28,29 +28,21 @@ jobs:
       - name: Build
         run: dotnet build ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj --configuration Release --no-restore
 
-
-
-      - name: Prepare Publish Profile
-        env:
-          DEPLOY_PASSWORD: ${{ secrets.MONSTERASP_NET_DEPLOY }}
-        shell: pwsh
+      - name: Publish and Deploy to MonsterASP.NET
         run: |
-          $xml = @"
-<?xml version="1.0" encoding="utf-8"?>
-<publishData>
-  <publishProfile
-    profileName="site65398-WebDeploy"
-    publishMethod="MSDeploy"
-    publishUrl="site65398.siteasp.net"
-    msdeploySite="site65398"
-    userName="site65398"
-    userPWD="$env:DEPLOY_PASSWORD"
-    destinationAppUrl="http://ddpc.runasp.net/"
-  />
-</publishData>
-"@
-          mkdir ./src/ddpc.DartSuite.Web/Properties/PublishProfiles -Force
-          $xml | Out-File -FilePath ./src/ddpc.DartSuite.Web/Properties/PublishProfiles/MonsterAspNet.pubxml -Encoding utf8
+          dotnet publish ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj `
+            --configuration Release `
+            --output ./publish_output `
+            /p:DeployOnBuild=true `
+            /p:PublishProfile=FolderProfile `
+            /p:PublishMethod=MSDeploy `
+            /p:MSDeployPublishMethod=RemoteAgent `
+            /p:MSDeployServiceUrl="${{ secrets.MONSTERASP_NET_URL }}" `
+            /p:DeployIisAppPath="${{ secrets.MONSTERASP_NET_SITE }}" `
+            /p:UserName="${{ secrets.MONSTERASP_NET_USER }}" `
+            /p:Password="${{ secrets.MONSTERASP_NET_PWD }}"
+        env:
+          DOTNET_CLI_HOME: ${{ runner.temp }}
 
       - name: Upload Publish Profile (pre-deploy)
         uses: actions/upload-artifact@v4
