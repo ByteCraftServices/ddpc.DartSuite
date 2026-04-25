@@ -28,32 +28,27 @@ jobs:
       - name: Build
         run: dotnet build ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj --configuration Release --no-restore
 
-      - name: Publish and Deploy to MonsterASP.NET
-        env:
-          DOTNET_CLI_HOME: ${{ runner.temp }}
-          MONSTERASP_NET_URL: ${{ secrets.MONSTERASP_NET_URL }}
-          MONSTERASP_NET_SITE: ${{ secrets.MONSTERASP_NET_SITE }}
-          MONSTERASP_NET_USER: ${{ secrets.MONSTERASP_NET_USER }}
-          MONSTERASP_NET_PWD: ${{ secrets.MONSTERASP_NET_PWD }}
+      - name: Publish (nur Build)
         run: |
-          dotnet publish ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj `
-            --configuration Release `
-            --output ./publish_output `
-            /p:AuthType=Basic `
-            /p:IncludeAcls=False `
-            /p:AllowUntrustedCertificate=True `
-            /p:PublishMethod=MSDeploy `
-            /p:MSDeployPublishMethod=RemoteAgent `
-            /p:MSDeployServiceUrl="$env:MONSTERASP_NET_URL" `
-            /p:DeployIisAppPath="$env:MONSTERASP_NET_SITE" `
-            /p:UserName="$env:MONSTERASP_NET_USER" `
-            /p:Password="$env:MONSTERASP_NET_PWD"
+          dotnet publish ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj --configuration Release --output ./publish_output
 
-      - name: Upload MSDeploy Log
-        uses: actions/upload-artifact@v4
-        with:
-          name: msdeploy-log
-          path: msdeploy-detailed.log
+      - name: Deploy mit msdeploy.exe
+        env:
+          DEST_URL: ${{ secrets.MONSTERASP_NET_URL }}
+          DEST_SITE: ${{ secrets.MONSTERASP_NET_SITE }}
+          USERNAME: ${{ secrets.MONSTERASP_NET_USER }}
+          PASSWORD: ${{ secrets.MONSTERASP_NET_PWD }}
+        shell: cmd
+        run: |
+          "C:\Program Files (x86)\IIS\Microsoft Web Deploy V3\msdeploy.exe" ^
+            -verb:sync ^
+            -source:contentPath="publish_output" ^
+            -dest:contentPath="%DEST_SITE%",computerName="%DEST_URL%",userName="%USERNAME%",password="%PASSWORD%",authtype="Basic",includeAcls="False" ^
+            -allowUntrusted ^
+            -disableLink:AppPoolExtension ^
+            -disableLink:ContentExtension ^
+            -disableLink:CertificateExtension ^
+            -verbose
 
       - name: Upload Published Output
         uses: actions/upload-artifact@v4
