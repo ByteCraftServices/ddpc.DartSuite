@@ -37,7 +37,7 @@ jobs:
         # site65398 ist der IIS-Site-Name (dest)
         # https://site65398.siteasp.net:8172/msdeploy.axd?site=site65398 ist die vollständige MSDeploy-URL
         env:
-          SOURCE_PATH: publish_output
+          SOURCE_PATH: ./publish_output
           DEST_SITE: site65398
           DEST_URL: https://site65398.siteasp.net:8172/msdeploy.axd?site=site65398
           USERNAME: site65398
