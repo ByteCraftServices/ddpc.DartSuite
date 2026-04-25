@@ -32,7 +32,7 @@ jobs:
       - name: Prepare Publish Profile
         run: |
           mkdir -p ./src/ddpc.DartSuite.Web/Properties/PublishProfiles
-          echo "${{ secrets.MONSTERASP_NET_DEPLOY }}" > ./src/ddpc.DartSuite.Web/Properties/PublishProfiles/MonsterAspNet.pubxml
+          printf "%s" "${{ secrets.MONSTERASP_NET_DEPLOY }}" > ./src/ddpc.DartSuite.Web/Properties/PublishProfiles/MonsterAspNet.pubxml
 
       - name: Publish
         run: |
