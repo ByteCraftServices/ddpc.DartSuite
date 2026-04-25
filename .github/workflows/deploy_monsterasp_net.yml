@@ -28,10 +28,10 @@ jobs:
       - name: Publish
         run: |
           echo "${{ secrets.MONSTERASP_NET_DEPLOY }}" > publish-profile.xml
-          dotnet publish ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj \
-            --configuration Release \
-            --output ./publish_output \
-            /p:DeployOnBuild=true \
+          dotnet publish ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj `
+            --configuration Release `
+            --output ./publish_output `
+            /p:DeployOnBuild=true `
             /p:PublishProfile=publish-profile.xml
         env:
           DOTNET_CLI_HOME: ${{ runner.temp }}
