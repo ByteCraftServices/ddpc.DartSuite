@@ -47,11 +47,7 @@ jobs:
             /p:MSDeployServiceUrl="$env:MONSTERASP_NET_URL" `
             /p:DeployIisAppPath="$env:MONSTERASP_NET_SITE" `
             /p:UserName="$env:MONSTERASP_NET_USER" `
-            /p:Password="$env:MONSTERASP_NET_PWD" `
-            /v:diag `
-            /p:EnableMsDeployTrace=True `
-            /fl `
-            /flp:logfile=msdeploy-detailed.log;verbosity=diagnostic
+            /p:Password="$env:MONSTERASP_NET_PWD"
 
       - name: Upload MSDeploy Log
         uses: actions/upload-artifact@v4
