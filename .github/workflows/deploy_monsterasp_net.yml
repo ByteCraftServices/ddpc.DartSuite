@@ -31,9 +31,16 @@ jobs:
           dotnet publish ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj `
             --configuration Release `
             --output ./publish_output `
-            /p:PublishProfile=publish-profile.xml
+            /p:PublishProfile=publish-profile.xml `
+            /bl:publish.binlog
         env:
           DOTNET_CLI_HOME: ${{ runner.temp }}
+
+      - name: Upload Publish Log
+        uses: actions/upload-artifact@v4
+        with:
+          name: publish-log
+          path: publish.binlog
 
       - name: Clean up publish profile
         run: Remove-Item publish-profile.xml
