@@ -2,7 +2,7 @@ name: Build, publish and deploy to MonsterASP.NET
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "release-web" ]
   workflow_dispatch:
 
 jobs:
@@ -38,4 +38,3 @@ jobs:
           server-computer-name: ${{ secrets.MONSTERASP_NET_URL }}
           server-username: ${{ secrets.MONSTERASP_NET_USER }}
           server-password: ${{ secrets.MONSTERASP_NET_PWD }}
-``
