@@ -2,10 +2,10 @@
 name: Deploy ddpc.DartSuite.Web to MonsterASP.NET
 
 on:
-	workflow_dispatch:
-	push:
-		branches:
-			- publish-web
+  workflow_dispatch:
+  push:
+    branches:
+      - publish-web
 
 jobs:
   deploy:
