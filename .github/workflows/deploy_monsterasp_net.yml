@@ -47,7 +47,7 @@ jobs:
           "C:\Program Files (x86)\IIS\Microsoft Web Deploy V3\msdeploy.exe" ^
             -verb:sync ^
             -source:contentPath="%SOURCE_PATH%" ^
-            -dest:contentPath="%DEST_SITE%",computerName="%DEST_URL%",userName="%USERNAME%",password="%PASSWORD%",authtype="Basic",includeAcls="False" ^
+            -dest:contentPath="publish_output",computerName="%DEST_URL%",userName="%USERNAME%",password="%PASSWORD%",authtype="Basic",includeAcls="False" ^
             -allowUntrusted ^
             -disableLink:AppPoolExtension ^
             -disableLink:ContentExtension ^
