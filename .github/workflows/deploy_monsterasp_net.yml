@@ -33,10 +33,13 @@ jobs:
           dotnet publish ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj --configuration Release --output ./publish_output
 
       - name: Deploy mit msdeploy.exe (Klartext)
+        # publish_output ist der lokale Build-Ordner (source)
+        # site65398 ist der IIS-Site-Name (dest)
+        # https://site65398.siteasp.net:8172/msdeploy.axd?site=site65398 ist die vollständige MSDeploy-URL
         env:
           SOURCE_PATH: publish_output
           DEST_SITE: site65398
-          DEST_URL: https:/site65398.siteasp.net:8172/msdeploy.axd?site=site65398
+          DEST_URL: https://site65398.siteasp.net:8172/msdeploy.axd?site=site65398
           USERNAME: site65398
           PASSWORD: Xe6+9A!b-3kR
         shell: cmd
