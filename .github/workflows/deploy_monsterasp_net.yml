@@ -22,6 +22,9 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj
 
+      - name: Install MSDeploy
+        run: choco install webdeploy --no-progress -y
+
       - name: Build
         run: dotnet build ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj --configuration Release --no-restore
 
