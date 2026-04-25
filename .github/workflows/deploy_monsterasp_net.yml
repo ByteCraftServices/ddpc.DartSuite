@@ -1,0 +1,40 @@
+
+name: Deploy ddpc.DartSuite.Web to MonsterASP.NET
+
+on:
+	workflow_dispatch:
+	push:
+		branches:
+			- publish-web
+
+jobs:
+  deploy:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj
+
+      - name: Build
+        run: dotnet build ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj --configuration Release --no-restore
+
+      - name: Publish
+        run: |
+          echo "${{ secrets.MONSTERASP_NET_DEPLOY }}" > publish-profile.xml
+          dotnet publish ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj \
+            --configuration Release \
+            --output ./publish_output \
+            /p:DeployOnBuild=true \
+            /p:PublishProfile=publish-profile.xml
+        env:
+          DOTNET_CLI_HOME: ${{ runner.temp }}
+
+      - name: Clean up publish profile
+        run: Remove-Item publish-profile.xml
