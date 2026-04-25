@@ -29,10 +29,17 @@ jobs:
         run: dotnet build ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj --configuration Release --no-restore
 
 
+
       - name: Prepare Publish Profile
         run: |
           mkdir -p ./src/ddpc.DartSuite.Web/Properties/PublishProfiles
           printf "%s" "${{ secrets.MONSTERASP_NET_DEPLOY }}" > ./src/ddpc.DartSuite.Web/Properties/PublishProfiles/MonsterAspNet.pubxml
+
+      - name: Upload Publish Profile (pre-deploy)
+        uses: actions/upload-artifact@v4
+        with:
+          name: publish-profile-predeploy
+          path: src/ddpc.DartSuite.Web/Properties/PublishProfiles/MonsterAspNet.pubxml
 
       - name: Publish
         run: |
