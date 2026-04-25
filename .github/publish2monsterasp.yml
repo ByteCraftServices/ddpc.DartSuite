@@ -1,0 +1,41 @@
+name: Build, publish and deploy to MonsterASP.NET
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build_and_deploy:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build (Release)
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --configuration Release --no-build --verbosity normal
+
+      # Passe hier den Pfad zu deinem Web-Projekt an!
+      - name: Publish
+        run: dotnet publish ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj --configuration Release --output ./publish --runtime win-x86
+
+      - name: Deploy to MonsterASP.NET via WebDeploy
+        uses: rasmusbuchholdt/simply-web-deploy@2.1.0
+        with:
+          website-name: ${{ secrets.MONSTERASP_NET_SITE }}
+          server-computer-name: ${{ secrets.MONSTERASP_NET_URL }}
+          server-username: ${{ secrets.MONSTERASP_NET_USER }}
+          server-password: ${{ secrets.MONSTERASP_NET_PWD }}
+``
