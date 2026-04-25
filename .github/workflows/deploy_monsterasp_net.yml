@@ -44,29 +44,17 @@ jobs:
             /p:MSDeployServiceUrl="$env:MONSTERASP_NET_URL" `
             /p:DeployIisAppPath="$env:MONSTERASP_NET_SITE" `
             /p:UserName="$env:MONSTERASP_NET_USER" `
-            /p:Password="$env:MONSTERASP_NET_PWD"
+            /p:Password="$env:MONSTERASP_NET_PWD" `
+            /v:diag `
+            /p:EnableMsDeployTrace=True `
+            /fl `
+            /flp:logfile=msdeploy-detailed.log;verbosity=diagnostic
 
-      - name: Upload Publish Profile (pre-deploy)
+      - name: Upload MSDeploy Log
         uses: actions/upload-artifact@v4
         with:
-          name: publish-profile-predeploy
-          path: src/ddpc.DartSuite.Web/Properties/PublishProfiles/MonsterAspNet.pubxml
-
-      - name: Publish
-        run: |
-          dotnet publish ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj `
-            --configuration Release `
-            --output ./publish_output `
-            /p:PublishProfile=MonsterAspNet `
-            /bl:publish.binlog
-        env:
-          DOTNET_CLI_HOME: ${{ runner.temp }}
-
-      - name: Upload Publish Log
-        uses: actions/upload-artifact@v4
-        with:
-          name: publish-log
-          path: publish.binlog
+          name: msdeploy-log
+          path: msdeploy-detailed.log
 
       - name: Upload Published Output
         uses: actions/upload-artifact@v4
@@ -74,12 +62,3 @@ jobs:
           name: publish-output
           path: publish_output/
 
-
-      - name: Upload Publish Profile
-        uses: actions/upload-artifact@v4
-        with:
-          name: publish-profile
-          path: src/ddpc.DartSuite.Web/Properties/PublishProfiles/MonsterAspNet.pubxml
-
-      - name: Clean up publish profile
-        run: Remove-Item ./src/ddpc.DartSuite.Web/Properties/PublishProfiles/MonsterAspNet.pubxml
