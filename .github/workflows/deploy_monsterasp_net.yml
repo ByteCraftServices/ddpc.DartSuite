@@ -46,7 +46,7 @@ jobs:
         run: |
           "C:\Program Files (x86)\IIS\Microsoft Web Deploy V3\msdeploy.exe" ^
             -verb:sync ^
-            -source:contentPath="%SOURCE_PATH%" ^
+            -source:contentPath="./publish_output" ^
             -dest:contentPath="%DEST_SITE%",computerName="%DEST_URL%",userName="%USERNAME%",password="%PASSWORD%",authtype="Basic",includeAcls="False" ^
             -allowUntrusted ^
             -disableLink:AppPoolExtension ^
