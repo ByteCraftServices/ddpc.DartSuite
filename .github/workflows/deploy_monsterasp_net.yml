@@ -39,6 +39,9 @@ jobs:
           dotnet publish ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj `
             --configuration Release `
             --output ./publish_output `
+            /p:AuthType=Basic `
+            /p:IncludeAcls=False `
+            /p:AllowUntrustedCertificate=True `
             /p:PublishMethod=MSDeploy `
             /p:MSDeployPublishMethod=RemoteAgent `
             /p:MSDeployServiceUrl="$env:MONSTERASP_NET_URL" `
