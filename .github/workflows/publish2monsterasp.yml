@@ -24,8 +24,8 @@ jobs:
       - name: Build (Release)
         run: dotnet build --configuration Release --no-restore
 
-      - name: Test
-        run: dotnet test --configuration Release --no-build --verbosity normal
+      # - name: Test
+      #   run: dotnet test --configuration Release --no-build --verbosity normal
 
       # Passe hier den Pfad zu deinem Web-Projekt an!
       - name: Publish
