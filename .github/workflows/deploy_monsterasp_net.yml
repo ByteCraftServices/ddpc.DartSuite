@@ -29,20 +29,22 @@ jobs:
         run: dotnet build ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj --configuration Release --no-restore
 
       - name: Publish and Deploy to MonsterASP.NET
+        env:
+          DOTNET_CLI_HOME: ${{ runner.temp }}
+          MONSTERASP_NET_URL: ${{ secrets.MONSTERASP_NET_URL }}
+          MONSTERASP_NET_SITE: ${{ secrets.MONSTERASP_NET_SITE }}
+          MONSTERASP_NET_USER: ${{ secrets.MONSTERASP_NET_USER }}
+          MONSTERASP_NET_PWD: ${{ secrets.MONSTERASP_NET_PWD }}
         run: |
           dotnet publish ./src/ddpc.DartSuite.Web/ddpc.DartSuite.Web.csproj `
             --configuration Release `
             --output ./publish_output `
-            /p:DeployOnBuild=true `
-            /p:PublishProfile=FolderProfile `
             /p:PublishMethod=MSDeploy `
             /p:MSDeployPublishMethod=RemoteAgent `
-            /p:MSDeployServiceUrl="${{ secrets.MONSTERASP_NET_URL }}" `
-            /p:DeployIisAppPath="${{ secrets.MONSTERASP_NET_SITE }}" `
-            /p:UserName="${{ secrets.MONSTERASP_NET_USER }}" `
-            /p:Password="${{ secrets.MONSTERASP_NET_PWD }}"
-        env:
-          DOTNET_CLI_HOME: ${{ runner.temp }}
+            /p:MSDeployServiceUrl="$env:MONSTERASP_NET_URL" `
+            /p:DeployIisAppPath="$env:MONSTERASP_NET_SITE" `
+            /p:UserName="$env:MONSTERASP_NET_USER" `
+            /p:Password="$env:MONSTERASP_NET_PWD"
 
       - name: Upload Publish Profile (pre-deploy)
         uses: actions/upload-artifact@v4
