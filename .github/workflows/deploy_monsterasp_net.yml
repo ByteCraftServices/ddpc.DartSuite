@@ -42,5 +42,11 @@ jobs:
           name: publish-log
           path: publish.binlog
 
+      - name: Upload Published Output
+        uses: actions/upload-artifact@v4
+        with:
+          name: publish-output
+          path: publish_output/
+
       - name: Clean up publish profile
         run: Remove-Item publish-profile.xml
