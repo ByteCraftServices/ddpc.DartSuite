@@ -44,7 +44,7 @@ jobs:
     publishUrl="site65398.siteasp.net"
     msdeploySite="site65398"
     userName="site65398"
-    userPWD=\"$env:DEPLOY_PASSWORD\"
+    userPWD="$env:DEPLOY_PASSWORD"
     destinationAppUrl="http://ddpc.runasp.net/"
   />
 </publishData>
