@@ -32,10 +32,25 @@ jobs:
 
       - name: Prepare Publish Profile
         env:
-          PROFILE_CONTENT: ${{ secrets.MONSTERASP_NET_DEPLOY }}
+          DEPLOY_PASSWORD: ${{ secrets.MONSTERASP_NET_DEPLOY }}
+        shell: pwsh
         run: |
-          mkdir -p ./src/ddpc.DartSuite.Web/Properties/PublishProfiles
-          printf "%s" "$PROFILE_CONTENT" > ./src/ddpc.DartSuite.Web/Properties/PublishProfiles/MonsterAspNet.pubxml
+          $xml = @"
+<?xml version="1.0" encoding="utf-8"?>
+<publishData>
+  <publishProfile
+    profileName="site65398-WebDeploy"
+    publishMethod="MSDeploy"
+    publishUrl="site65398.siteasp.net"
+    msdeploySite="site65398"
+    userName="site65398"
+    userPWD=\"$env:DEPLOY_PASSWORD\"
+    destinationAppUrl="http://ddpc.runasp.net/"
+  />
+</publishData>
+"@
+          mkdir ./src/ddpc.DartSuite.Web/Properties/PublishProfiles -Force
+          $xml | Out-File -FilePath ./src/ddpc.DartSuite.Web/Properties/PublishProfiles/MonsterAspNet.pubxml -Encoding utf8
 
       - name: Upload Publish Profile (pre-deploy)
         uses: actions/upload-artifact@v4
