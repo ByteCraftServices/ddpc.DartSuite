@@ -27,36 +27,47 @@
     <label class="form-check-label small" for="showCompletedRounds">Abgeschlossene Runden anzeigen</label>
 </div>
 
-@if (RoundSettings.Any())
+@{
+    var visibleRoundGroups = VisibleRoundGroups;
+}
+
+@if (visibleRoundGroups.Any())
 {
-    @foreach (var rnd in RoundSettings.OrderBy(r => r.Phase).ThenBy(r => r.RoundNumber))
+    @foreach (var grp in visibleRoundGroups)
     {
-        var started = IsRoundStarted(rnd);
-        var completed = IsRoundCompleted(rnd);
-        if (!completed || ShowCompletedRounds)
-        {
-            <div class="card mb-2 @(completed ? "border-success" : started ? "border-warning" : "")" style="cursor:pointer" @onclick="() => OnOpenRoundDetail.InvokeAsync(rnd)">
-                <div class="card-body py-2">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <span>
-                            <strong class="small">@RoundDisplayLabel(rnd)</strong>
-                            @if (completed)
-                            {
-                                <span class="badge text-bg-success ms-1">✓ Abgeschlossen</span>
-                            }
-                            else if (started)
-                            {
-                                <span class="badge text-bg-warning ms-1">▶ Gestartet</span>
-                            }
-                        </span>
-                        <span class="badge text-bg-light">First to @rnd.Legs Legs | @rnd.BaseScore @rnd.OutMode</span>
-                    </div>
-                    <div class="small text-muted">
-                        Spielzeit/Leg: @rnd.LegDurationSeconds s | Pause: @rnd.PauseBetweenMatchesMinutes min | Spielerpause: @rnd.MinPlayerPauseMinutes min | Board: @rnd.BoardAssignment
-                    </div>
+        var started = grp.Rounds.Any(IsRoundStarted);
+        var completed = grp.Rounds.All(IsRoundCompleted);
+        <div class="card mb-2 @(completed ? "border-success" : started ? "border-warning" : "")" style="cursor:pointer" @onclick="() => OnOpenRoundGroupDetail.InvokeAsync(grp.Rounds)">
+            <div class="card-body py-2">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span>
+                        <strong class="small">@BuildGroupLabel(grp.Rounds)</strong>
+                        @if (grp.Rounds.Count > 1)
+                        {
+                            <span class="badge text-bg-secondary ms-1">@grp.Rounds.Count Runden</span>
+                        }
+                        @if (completed)
+                        {
+                            <span class="badge text-bg-success ms-1">✓ Abgeschlossen</span>
+                        }
+                        else if (started)
+                        {
+                            <span class="badge text-bg-warning ms-1">▶ Gestartet</span>
+                        }
+                    </span>
+                    <span class="badge text-bg-light">First to @grp.Representative.Legs Legs | @grp.Representative.BaseScore @grp.Representative.OutMode</span>
                 </div>
+                <div class="small text-muted">
+                    Spielzeit/Leg: @grp.Representative.LegDurationSeconds s | Pause: @grp.Representative.PauseBetweenMatchesMinutes min | Spielerpause: @grp.Representative.MinPlayerPauseMinutes min | Board: @grp.Representative.BoardAssignment
+                </div>
+                @if (grp.Rounds.Count > 1)
+                {
+                    <div class="small text-muted mt-1">
+                        Enthaltene Runden: @string.Join(" · ", grp.Rounds.Select(RoundDisplayLabel))
+                    </div>
+                }
             </div>
-        }
+        </div>
     }
 }
 
@@ -67,118 +78,148 @@
         <div class="card-body">
             <div class="row g-2 mb-2">
                 <div class="col-md-3">
-                    <label class="form-label small">Phase</label>
-                    <select class="form-select form-select-sm" value="@NewRoundPhase" @onchange="HandleNewRoundPhaseChanged">
-                        <option value="Knockout">Knockout</option>
-                        <option value="Group">Gruppe</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small">Rundennr.</label>
-                    <input type="number" class="form-control form-control-sm" value="@NewRoundNumber" @onchange="HandleNewRoundNumberChanged" min="1" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small">Base Score</label>
-                    <select class="form-select form-select-sm" value="@NewRoundBaseScore" @onchange="HandleNewRoundBaseScoreChanged">
-                        <option value="121">121</option>
-                        <option value="170">170</option>
-                        <option value="301">301</option>
-                        <option value="501">501</option>
-                        <option value="701">701</option>
-                        <option value="901">901</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small">Spielmodus</label>
-                    <select class="form-select form-select-sm" value="@NewRoundGameMode" @onchange="HandleNewRoundGameModeChanged">
-                        <option value="Legs">Legs</option>
-                        <option value="Sets">Sets</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label small">Legs (First to)</label>
-                    @if (NewRoundGameMode == "Sets")
-                    {
-                        <select class="form-select form-select-sm" value="@NewRoundLegs" @onchange="HandleNewRoundLegsChanged">
-                            <option value="2">2</option>
-                            <option value="3">3</option>
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundPhase" @onchange="HandleNewRoundPhaseChanged">
+                            <option value="Knockout">Knockout</option>
+                            <option value="Group">Gruppe</option>
                         </select>
-                    }
-                    else
-                    {
-                        <input type="number" class="form-control form-control-sm" value="@NewRoundLegs" @onchange="HandleNewRoundLegsChanged" min="1" max="11" />
-                    }
+                        <label>Phase</label>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="form-floating">
+                        <input type="number" class="form-control form-control-sm" value="@NewRoundNumber" @onchange="HandleNewRoundNumberChanged" min="1" placeholder=" " />
+                        <label>Rundennr.</label>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundBaseScore" @onchange="HandleNewRoundBaseScoreChanged">
+                            <option value="121">121</option>
+                            <option value="170">170</option>
+                            <option value="301">301</option>
+                            <option value="501">501</option>
+                            <option value="701">701</option>
+                            <option value="901">901</option>
+                        </select>
+                        <label>Base Score</label>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundGameMode" @onchange="HandleNewRoundGameModeChanged">
+                            <option value="Legs">Legs</option>
+                            <option value="Sets">Sets</option>
+                        </select>
+                        <label>Spielmodus</label>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <div class="form-floating">
+                        @if (NewRoundGameMode == "Sets")
+                        {
+                            <select class="form-select form-select-sm" value="@NewRoundLegs" @onchange="HandleNewRoundLegsChanged">
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                            </select>
+                        }
+                        else
+                        {
+                            <input type="number" class="form-control form-control-sm" value="@NewRoundLegs" @onchange="HandleNewRoundLegsChanged" min="1" max="11" placeholder=" " />
+                        }
+                        <label>Legs (First to)</label>
+                    </div>
                 </div>
                 @if (NewRoundGameMode == "Sets")
                 {
                     <div class="col-md-2">
-                        <label class="form-label small">Sets (First to)</label>
-                        <input type="number" class="form-control form-control-sm" value="@NewRoundSets" @onchange="HandleNewRoundSetsChanged" min="2" max="7" />
+                        <div class="form-floating">
+                            <input type="number" class="form-control form-control-sm" value="@NewRoundSets" @onchange="HandleNewRoundSetsChanged" min="2" max="7" placeholder=" " />
+                            <label>Sets (First to)</label>
+                        </div>
                     </div>
                 }
                 <div class="col-md-2">
-                    <label class="form-label small">In-Modus</label>
-                    <select class="form-select form-select-sm" value="@NewRoundInMode" @onchange="HandleNewRoundInModeChanged">
-                        <option value="Straight">Straight In (SI)</option>
-                        <option value="Double">Double In (DI)</option>
-                        <option value="Master">Master In (MI)</option>
-                    </select>
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundInMode" @onchange="HandleNewRoundInModeChanged">
+                            <option value="Straight">Straight In (SI)</option>
+                            <option value="Double">Double In (DI)</option>
+                            <option value="Master">Master In (MI)</option>
+                        </select>
+                        <label>In-Modus</label>
+                    </div>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small">Out-Modus</label>
-                    <select class="form-select form-select-sm" value="@NewRoundOutMode" @onchange="HandleNewRoundOutModeChanged">
-                        <option value="Straight">Straight Out (SO)</option>
-                        <option value="Double">Double Out (DO)</option>
-                        <option value="Master">Master Out (MO)</option>
-                    </select>
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundOutMode" @onchange="HandleNewRoundOutModeChanged">
+                            <option value="Straight">Straight Out (SO)</option>
+                            <option value="Double">Double Out (DO)</option>
+                            <option value="Master">Master Out (MO)</option>
+                        </select>
+                        <label>Out-Modus</label>
+                    </div>
                 </div>
             </div>
             <div class="row g-2 mb-2">
                 <div class="col-md-2">
-                    <label class="form-label small">Max Runden</label>
-                    <select class="form-select form-select-sm" value="@NewRoundMaxRounds" @onchange="HandleNewRoundMaxRoundsChanged">
-                        <option value="15">15</option>
-                        <option value="20">20</option>
-                        <option value="50">50</option>
-                        <option value="80">80</option>
-                    </select>
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundMaxRounds" @onchange="HandleNewRoundMaxRoundsChanged">
+                            <option value="15">15</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                            <option value="80">80</option>
+                        </select>
+                        <label>Max Runden</label>
+                    </div>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label small">Bull Mode</label>
-                    <select class="form-select form-select-sm" value="@NewRoundBullMode" @onchange="HandleNewRoundBullModeChanged">
-                        <option value="25/50">25/50</option>
-                        <option value="50/50">50/50</option>
-                    </select>
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundBullMode" @onchange="HandleNewRoundBullModeChanged">
+                            <option value="25/50">25/50</option>
+                            <option value="50/50">50/50</option>
+                        </select>
+                        <label>Bull Mode</label>
+                    </div>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label small">Bull-off</label>
-                    <select class="form-select form-select-sm" value="@NewRoundBullOffMode" @onchange="HandleNewRoundBullOffModeChanged">
-                        <option value="Off">Off</option>
-                        <option value="Normal">Normal</option>
-                        <option value="Official">Official</option>
-                    </select>
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundBullOffMode" @onchange="HandleNewRoundBullOffModeChanged">
+                            <option value="Off">Off</option>
+                            <option value="Normal">Normal</option>
+                            <option value="Official">Official</option>
+                        </select>
+                        <label>Bull-off</label>
+                    </div>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small">Spielzeit pro Leg (s)</label>
-                    <input type="number" class="form-control form-control-sm" value="@NewRoundDuration" @onchange="HandleNewRoundDurationChanged" min="0" />
+                    <div class="form-floating">
+                        <input type="number" class="form-control form-control-sm" value="@NewRoundDuration" @onchange="HandleNewRoundDurationChanged" min="0" placeholder=" " />
+                        <label>Spielzeit pro Leg (s)</label>
+                    </div>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small">Pause (min)</label>
-                    <input type="number" class="form-control form-control-sm" value="@NewRoundPause" @onchange="HandleNewRoundPauseChanged" min="0" />
+                    <div class="form-floating">
+                        <input type="number" class="form-control form-control-sm" value="@NewRoundPause" @onchange="HandleNewRoundPauseChanged" min="0" placeholder=" " />
+                        <label>Pause (min)</label>
+                    </div>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small">Min. Spielerpause (min)</label>
-                    <input type="number" class="form-control form-control-sm" value="@NewRoundPlayerPause" @onchange="HandleNewRoundPlayerPauseChanged" min="0" />
+                    <div class="form-floating">
+                        <input type="number" class="form-control form-control-sm" value="@NewRoundPlayerPause" @onchange="HandleNewRoundPlayerPauseChanged" min="0" placeholder=" " />
+                        <label>Min. Spielerpause (min)</label>
+                    </div>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label small">Boardauswahl</label>
-                    <select class="form-select form-select-sm" value="@NewRoundBoardAssignment" @onchange="HandleNewRoundBoardAssignmentChanged">
-                        <option value="Dynamic">Dynamisch</option>
-                        @foreach (var b in Boards)
-                        {
-                            <option value="Fixed:@b.Id">@b.Name (fix)</option>
-                        }
-                    </select>
+                    <div class="form-floating">
+                        <select class="form-select form-select-sm" value="@NewRoundBoardAssignment" @onchange="HandleNewRoundBoardAssignmentChanged">
+                            <option value="Dynamic">Dynamisch</option>
+                            @foreach (var b in Boards)
+                            {
+                                <option value="Fixed:@b.Id">@b.Name (fix)</option>
+                            }
+                        </select>
+                        <label>Boardauswahl</label>
+                    </div>
                 </div>
             </div>
             <div class="d-flex gap-2 flex-wrap">
@@ -205,7 +246,7 @@
     [Parameter] public Func<TournamentRoundDto, bool> IsRoundStarted { get; set; } = _ => false;
     [Parameter] public Func<TournamentRoundDto, bool> IsRoundCompleted { get; set; } = _ => false;
     [Parameter] public Func<TournamentRoundDto, string> RoundDisplayLabel { get; set; } = _ => string.Empty;
-    [Parameter] public EventCallback<TournamentRoundDto> OnOpenRoundDetail { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<TournamentRoundDto>> OnOpenRoundGroupDetail { get; set; }
 
     [Parameter] public bool CanEditTournamentStructure { get; set; }
     [Parameter] public bool IsWorking { get; set; }
@@ -247,6 +288,36 @@
     [Parameter] public IReadOnlyList<BoardDto> Boards { get; set; } = [];
 
     [Parameter] public string? RoundError { get; set; }
+
+    private IReadOnlyList<RoundGroupItem> VisibleRoundGroups =>
+        RoundSettings
+            .Where(r => ShowCompletedRounds || !IsRoundCompleted(r))
+            .GroupBy(r => new RoundGameplayKey(
+                r.BaseScore,
+                r.InMode,
+                r.OutMode,
+                r.GameMode,
+                r.Legs,
+                r.Sets,
+                r.MaxRounds,
+                r.BullMode,
+                r.BullOffMode,
+                r.LegDurationSeconds,
+                r.PauseBetweenMatchesMinutes,
+                r.MinPlayerPauseMinutes,
+                r.BoardAssignment,
+                r.FixedBoardId))
+            .Select(g => new RoundGroupItem(
+                [.. g.OrderBy(r => r.Phase).ThenBy(r => r.RoundNumber)],
+                g.First()))
+            .OrderBy(g => g.Rounds.First().Phase)
+            .ThenBy(g => g.Rounds.First().RoundNumber)
+            .ToList();
+
+    private string BuildGroupLabel(IReadOnlyList<TournamentRoundDto> rounds)
+        => rounds.Count == 1
+            ? RoundDisplayLabel(rounds[0])
+            : string.Join(" + ", rounds.Select(RoundDisplayLabel));
 
     private Task HandleShowCompletedRoundsChanged(ChangeEventArgs args)
         => ShowCompletedRoundsChanged.InvokeAsync(args.Value is bool b && b);
@@ -311,4 +382,22 @@
             ? parsed
             : fallback;
     }
+
+    private sealed record RoundGroupItem(IReadOnlyList<TournamentRoundDto> Rounds, TournamentRoundDto Representative);
+
+    private sealed record RoundGameplayKey(
+        int BaseScore,
+        string InMode,
+        string OutMode,
+        string GameMode,
+        int Legs,
+        int? Sets,
+        int MaxRounds,
+        string BullMode,
+        string BullOffMode,
+        int LegDurationSeconds,
+        int PauseBetweenMatchesMinutes,
+        int MinPlayerPauseMinutes,
+        string BoardAssignment,
+        Guid? FixedBoardId);
 }

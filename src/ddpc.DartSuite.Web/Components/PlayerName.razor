@@ -16,7 +16,7 @@
 
     @if (ShowAverage && Average is not null)
     {
-        <span class="text-muted small ms-1">(@Average.Value.ToString("0.0"))</span>
+        <span class="text-muted small ms-1">(@Average.Value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))</span>
     }
 </span>
 

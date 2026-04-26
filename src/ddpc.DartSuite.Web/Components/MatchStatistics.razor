@@ -11,34 +11,34 @@
             <table class="table table-sm table-striped align-middle">
                 <thead class="table-dark">
                     <tr>
-                        <th>Spieler</th>
-                        <th class="text-end">Avg</th>
-                        <th class="text-end">1st9</th>
-                        <th class="text-end">Legs</th>
-                        <th class="text-end">CO%</th>
-                        <th class="text-end">HCO</th>
-                        <th class="text-end">180s</th>
-                        <th class="text-end">140+</th>
-                        <th class="text-end">100+</th>
-                        <th class="text-end">Darts/Leg</th>
-                        <th class="text-end">Breaks</th>
+                        <th title="Name des Spielers laut Match-Statistik.">Spieler</th>
+                        <th class="text-end" title="Avg (3-Dart-Average): durchschnittliche Punkte pro 3 Darts ueber alle Aufnahmen.">Avg</th>
+                        <th class="text-end" title="1st9: 3-Dart-Average aus den ersten 9 Darts eines Legs (Scoring-Startphase).">1st9</th>
+                        <th class="text-end" title="Leg-Bilanz: gewonnene Legs : verlorene Legs.">Legs</th>
+                        <th class="text-end" title="CO% (Checkout-Quote): erfolgreiche Checkouts in Prozent laut Autodarts.">CO%</th>
+                        <th class="text-end" title="HCO (Highest Checkout): hoechster gecheckter Score in einem Leg.">HCO</th>
+                        <th class="text-end" title="Anzahl der Aufnahmen mit exakt 180 Punkten.">180s</th>
+                        <th class="text-end" title="Anzahl der Aufnahmen mit mindestens 140 Punkten.">140+</th>
+                        <th class="text-end" title="Anzahl der Aufnahmen mit mindestens 100 Punkten.">100+</th>
+                        <th class="text-end" title="Durchschnittlich benoetigte Darts pro gewonnenem Leg.">Darts/Leg</th>
+                        <th class="text-end" title="Anzahl gewonnener Legs als Anwurfgegner (Breaks).">Breaks</th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach (var stat in Statistics)
                     {
                         <tr>
-                            <td class="fw-semibold">@stat.ParticipantName</td>
-                            <td class="text-end">@stat.Average.ToString("F1")</td>
-                            <td class="text-end">@stat.First9Average.ToString("F1")</td>
-                            <td class="text-end">@stat.LegsWon:@stat.LegsLost</td>
-                            <td class="text-end">@stat.CheckoutPercent.ToString("F1")%</td>
-                            <td class="text-end">@stat.HighestCheckout</td>
-                            <td class="text-end">@stat.Plus180</td>
-                            <td class="text-end">@stat.Plus140</td>
-                            <td class="text-end">@stat.Plus100</td>
-                            <td class="text-end">@stat.AverageDartsPerLeg.ToString("F1")</td>
-                            <td class="text-end">@stat.Breaks</td>
+                            <td class="fw-semibold" title="@BuildPlayerTooltip(stat)">@stat.ParticipantName</td>
+                            <td class="text-end" title="@BuildAverageTooltip(stat)">@stat.Average.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)</td>
+                            <td class="text-end" title="@BuildFirst9Tooltip(stat)">@stat.First9Average.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)</td>
+                            <td class="text-end" title="@BuildLegsTooltip(stat)">@stat.LegsWon:@stat.LegsLost</td>
+                            <td class="text-end" title="@BuildCheckoutTooltip(stat)">@stat.CheckoutPercent.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)%</td>
+                            <td class="text-end" title="@BuildHighestCheckoutTooltip(stat)">@stat.HighestCheckout</td>
+                            <td class="text-end" title="@BuildPlus180Tooltip(stat)">@stat.Plus180</td>
+                            <td class="text-end" title="@BuildPlus140Tooltip(stat)">@stat.Plus140</td>
+                            <td class="text-end" title="@BuildPlus100Tooltip(stat)">@stat.Plus100</td>
+                            <td class="text-end" title="@BuildDartsPerLegTooltip(stat)">@stat.AverageDartsPerLeg.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)</td>
+                            <td class="text-end" title="@BuildBreaksTooltip(stat)">@stat.Breaks</td>
                         </tr>
                     }
                 </tbody>
@@ -49,4 +49,37 @@
 
 @code {
     [Parameter] public IReadOnlyList<MatchPlayerStatisticDto>? Statistics { get; set; }
+
+    private static string BuildPlayerTooltip(MatchPlayerStatisticDto stat)
+        => $"Spieler: {stat.ParticipantName}. Alle Werte beziehen sich auf dieses Match.";
+
+    private static string BuildAverageTooltip(MatchPlayerStatisticDto stat)
+        => $"3-Dart-Average fuer das gesamte Match. Angezeigter Wert: {stat.Average.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}.";
+
+    private static string BuildFirst9Tooltip(MatchPlayerStatisticDto stat)
+        => $"3-Dart-Average nur aus den ersten 9 Darts je Leg. Angezeigter Wert: {stat.First9Average.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}.";
+
+    private static string BuildLegsTooltip(MatchPlayerStatisticDto stat)
+        => $"Leg-Bilanz (Gewonnen:Verloren) = {stat.LegsWon}:{stat.LegsLost}.";
+
+    private static string BuildCheckoutTooltip(MatchPlayerStatisticDto stat)
+        => $"Checkout-Quote (erfolgreiche Finishes in %) laut Autodarts. Angezeigter Wert: {stat.CheckoutPercent.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}%.";
+
+    private static string BuildHighestCheckoutTooltip(MatchPlayerStatisticDto stat)
+        => $"Hoechstes erfolgreiches Finish in einem Leg. Angezeigter Wert: {stat.HighestCheckout}.";
+
+    private static string BuildPlus180Tooltip(MatchPlayerStatisticDto stat)
+        => $"Anzahl 180er-Aufnahmen. Angezeigter Wert: {stat.Plus180}.";
+
+    private static string BuildPlus140Tooltip(MatchPlayerStatisticDto stat)
+        => $"Anzahl Aufnahmen mit mindestens 140 Punkten. Angezeigter Wert: {stat.Plus140}.";
+
+    private static string BuildPlus100Tooltip(MatchPlayerStatisticDto stat)
+        => $"Anzahl Aufnahmen mit mindestens 100 Punkten. Angezeigter Wert: {stat.Plus100}.";
+
+    private static string BuildDartsPerLegTooltip(MatchPlayerStatisticDto stat)
+        => $"Durchschnittlich benoetigte Darts pro gewonnenem Leg. Angezeigter Wert: {stat.AverageDartsPerLeg.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}.";
+
+    private static string BuildBreaksTooltip(MatchPlayerStatisticDto stat)
+        => $"Gewonnene Legs gegen den Anwurf (Breaks). Angezeigter Wert: {stat.Breaks}.";
 }

@@ -66,6 +66,7 @@ public partial class Tournaments : IAsyncDisposable
     private string activeTab = "general";
     private string activeBoardsParticipantsSubTab = "spieler";
     private bool isWorking;
+    private bool showAdminTeamMembers;
     private bool showStatusDropdown;
     private bool showPageSettingsDropdown;
     private bool showPageSettingsModal;
@@ -193,6 +194,10 @@ public partial class Tournaments : IAsyncDisposable
     private string confirmationMessage = string.Empty;
     private Func<Task>? confirmationAction;
 
+    // ─── Registration-Draw Confirmation Dialog ───
+    private bool showRegistrationDrawConfirmation;
+    private Func<Task>? registrationDrawContinuation;
+
     // ─── Spielplan: Collapsed Groups ───
     private bool showGroupMatches;
     private string groupMatchesViewMode = "vertical"; // vertical | horizontal
@@ -251,6 +256,7 @@ public partial class Tournaments : IAsyncDisposable
 
     // ─── Round Detail Modal ───
     private TournamentRoundDto? detailRound;
+    private List<TournamentRoundDto> detailRoundGroup = [];
 
     // ─── Completed Rounds Filter ───
     private bool showCompletedRounds;
@@ -310,11 +316,22 @@ public partial class Tournaments : IAsyncDisposable
         }
     }
 
+    private const int TournamentRailLabelMaxLength = 25;
+
     private static string GetTournamentRailItemHeight(TournamentDto tournament)
     {
-        var nameLength = tournament.Name?.Length ?? 0;
-        var heightRem = Math.Clamp(2.8 + (nameLength * 0.24), 4.2, 11.0);
+        var nameLength = Math.Min(tournament.Name?.Length ?? 0, TournamentRailLabelMaxLength);
+        var heightRem = Math.Clamp(1.9 + (nameLength * 0.2), 3.1, 7.2);
         return $"{heightRem:0.##}rem";
+    }
+
+    private static string GetTournamentRailLabel(TournamentDto tournament)
+    {
+        var name = tournament.Name ?? string.Empty;
+        if (name.Length <= TournamentRailLabelMaxLength)
+            return name;
+
+        return $"{name[..TournamentRailLabelMaxLength]}...";
     }
 
     // ─── Autodarts Session ───
@@ -374,12 +391,20 @@ public partial class Tournaments : IAsyncDisposable
         "DirectDuel"
     ];
 
-    /// <summary>True if the current user is a Spielleiter for the selected tournament.</summary>
+    /// <summary>True if the current user has manager-level rights for the selected tournament.</summary>
     private bool IsCurrentUserManager =>
-        selectedTournament is not null && autodartsDisplayName is not null &&
+        AppState.IsAdmin
+        || selectedTournament is not null && autodartsDisplayName is not null &&
         (string.Equals(selectedTournament.OrganizerAccount, autodartsDisplayName, StringComparison.OrdinalIgnoreCase)
          || participants.Any(p => p.IsManager && string.Equals(p.AccountName, autodartsDisplayName, StringComparison.OrdinalIgnoreCase))
          || participants.Any(p => p.IsManager && string.Equals(p.DisplayName, autodartsDisplayName, StringComparison.OrdinalIgnoreCase)));
+
+    private string CurrentUserTournamentRoleLabel
+        => AppState.IsAdmin
+            ? "Admin"
+            : IsCurrentUserManager
+                ? "Spielleiter"
+                : "Teilnehmer";
 
     private MatchListenerInfoDto? GetMatchListener(Guid matchId)
         => matchListeners.FirstOrDefault(l => l.MatchId == matchId);
@@ -461,7 +486,7 @@ public partial class Tournaments : IAsyncDisposable
         .FirstOrDefault(x => x.ScopeKey == activeMatchCardConfigScopeKey)
         ?.Label ?? activeMatchCardConfigScopeKey;
 
-    private bool RequiresBoardRealtime => activeTab is "boards-participants" or "schedule" || detailBoard is not null;
+    private bool RequiresBoardRealtime => activeTab is "boards" or "participants" or "schedule" || detailBoard is not null;
 
     private bool IsRealtimeFallbackActive => !isTournamentHubConnected || (RequiresBoardRealtime && !isBoardHubConnected);
 
@@ -524,6 +549,16 @@ public partial class Tournaments : IAsyncDisposable
 
     private bool CanFollowFromMatchCard(MatchDto match)
         => MatchCardUiPolicy.CanFollowForUser(isAutodartsConnected, autodartsDisplayName, IsFollowOperationBusy(match.Id));
+
+    private bool CanStartMatchFromMatchCard(MatchDto match)
+        => IsCurrentUserManager && !isWorking && CanSendUpcomingMatch(match);
+
+    private bool CanResetFromMatchCard(MatchDto match)
+        => IsCurrentUserManager
+           && !isWorking
+           && (match.StartedUtc is not null
+               || match.FinishedUtc is not null
+               || !string.IsNullOrWhiteSpace(match.ExternalMatchId));
 
     private EventCallback BuildPlayerDetailCallback(Guid? participantId)
     {
@@ -605,6 +640,9 @@ public partial class Tournaments : IAsyncDisposable
 
     /// <summary>True when at least one non-walkover match has started or finished.</summary>
     private bool HasProgressedMatches => matches.Any(m => !IsWalkOverMatch(m) && (m.StartedUtc is not null || m.FinishedUtc is not null));
+
+    /// <summary>Returns true when the selected tournament has its registration currently open.</summary>
+    private bool IsRegistrationOpen => selectedTournament?.IsRegistrationOpen == true;
 
     /// <summary>Structure edits are allowed only before first active/finished match and while status is planned/created.</summary>
     private bool CanEditTournamentStructure =>
@@ -976,20 +1014,6 @@ public partial class Tournaments : IAsyncDisposable
                 ? "text-bg-warning"
                 : "text-bg-danger";
 
-    private string DrawStatusIconCss
-        => matches.Any()
-            ? "bi-check2-square"
-            : IsDrawCompleted
-                ? "bi-diagram-3-fill"
-                : "bi-hand-index-thumb-fill";
-
-    private string DrawStatusTitle
-        => matches.Any()
-            ? "Auslosung und Turnierplan abgeschlossen"
-            : IsDrawCompleted
-                ? "Auslosung abgeschlossen, Turnierplan wurde noch nicht erstellt."
-                : $"Auslosung noch nicht abgeschlossen: Noch {UnassignedDrawCount} {(IsTeamplayActive ? "Teams" : "Teilnehmer")} ohne Zuordnung ({DrawProgressPercent}%).";
-
     private int UnassignedDrawCount
         => selectedTournament?.Mode == "GroupAndKnockout"
             ? UnassignedParticipants.Count
@@ -1072,6 +1096,9 @@ public partial class Tournaments : IAsyncDisposable
     private bool hasUnsavedTeamDraftChanges;
     private string? teamDraftError;
     private const string TeamSeedGridId = "team-seed-grid";
+
+    /// <summary>Sentinel date used as "no automatic close" when registration is opened manually (= open until explicitly closed).</summary>
+    private static readonly DateTime MaxRegistrationDate = new DateTime(9999, 12, 31, 23, 59, 59);
     private const int TeamSeedLongPressMs = 380;
 
     private List<KnockoutDrawCard> knockoutDrawCards = [];
@@ -1410,7 +1437,7 @@ public partial class Tournaments : IAsyncDisposable
         if (tab == "schedule")
             await LoadMatchListenersAsync();
 
-        if (tab is "groups" or "knockout" or "schedule" or "boards-participants")
+        if (tab is "groups" or "knockout" or "schedule" or "boards" or "participants")
             await ReconcileTournamentMonitoringForViewAsync();
 
         if (tab == "rounds")
@@ -1429,12 +1456,14 @@ public partial class Tournaments : IAsyncDisposable
             // GroupAndKnockout: groups → schedule → knockout gives the DS-024 special flow
             // (Gruppenphase → Spielplan one-click, then Spielplan → K.O. for the final phase).
             if (selectedTournament?.Mode == "GroupAndKnockout")
-                return ["general", "boards-participants", "draw", "rounds", "groups", "schedule", "knockout"];
-            return ["general", "boards-participants", "draw", "rounds", "knockout", "schedule"];
+                return ["general", "boards", "participants", "draw", "rounds", "groups", "schedule", "knockout"];
+            return ["general", "boards", "participants", "draw", "rounds", "knockout", "schedule"];
         }
     }
 
     private int ActiveTabSequenceIndex => GetVisibleTabIndex(activeTab);
+
+    private bool IsFirstVisibleTab => selectedTournament is not null && ActiveTabSequenceIndex == 0;
 
     private bool CanGoToPreviousTab => selectedTournament is not null && ActiveTabSequenceIndex > 0;
 
@@ -1442,7 +1471,7 @@ public partial class Tournaments : IAsyncDisposable
         => selectedTournament is not null && (!tournamentListCollapsed || tournamentListMobileOpen);
 
     private bool CanUsePreviousFooterAction
-        => selectedTournament is not null && (CanGoToPreviousTab || !IsTournamentListPanelOpen);
+        => selectedTournament is not null && (CanGoToPreviousTab || (IsFirstVisibleTab && !IsTournamentListPanelOpen));
 
     private bool CanGoToNextTab => selectedTournament is not null && ActiveTabSequenceIndex >= 0 && ActiveTabSequenceIndex < VisibleTabSequence.Count - 1;
 
@@ -1462,9 +1491,11 @@ public partial class Tournaments : IAsyncDisposable
         };
 
     private string PreviousTabDisplayName
-        => IsTournamentListPanelOpen
-            ? (CanGoToPreviousTab ? TabDisplayName(VisibleTabSequence[ActiveTabSequenceIndex - 1]) : "Vorheriger Tab")
-            : "Turnierliste";
+        => CanGoToPreviousTab
+            ? TabDisplayName(VisibleTabSequence[ActiveTabSequenceIndex - 1])
+            : IsFirstVisibleTab
+                ? "Turnierliste"
+                : "Vorheriger Tab";
 
     private string NextTabDisplayName
         => CanGoToNextTab ? TabDisplayName(VisibleTabSequence[ActiveTabSequenceIndex + 1]) : "Nächster Tab";
@@ -1498,10 +1529,10 @@ public partial class Tournaments : IAsyncDisposable
             : "btn btn-primary btn-sm";
 
     private string PreviousTabButtonTitle
-        => !IsTournamentListPanelOpen
-            ? "Turnierliste einblenden"
-            : PreviousTabIsSchedule
-                ? ScheduleNavButtonTitle
+        => CanGoToPreviousTab
+            ? (PreviousTabIsSchedule ? ScheduleNavButtonTitle : "Zum vorherigen Tab wechseln")
+            : IsFirstVisibleTab
+                ? "Turnierliste einblenden"
                 : "Zum vorherigen Tab wechseln";
 
     private string NextTabButtonTitle
@@ -1529,7 +1560,8 @@ public partial class Tournaments : IAsyncDisposable
         => tab switch
         {
             "general" => "Allgemein",
-            "boards-participants" => "Boards & Teilnehmer",
+            "boards" => "Boards",
+            "participants" => "Teilnehmer",
             "draw" => "Auslosung",
             "rounds" => "Spielmodus",
             "groups" => "Gruppenphase",
@@ -1552,14 +1584,14 @@ public partial class Tournaments : IAsyncDisposable
 
     private async Task HandlePreviousFooterActionAsync()
     {
-        if (!IsTournamentListPanelOpen)
+        if (CanGoToPreviousTab)
         {
-            await SetTournamentListCollapsedAsync(false);
+            await NavigateTabRelativeAsync(-1);
             return;
         }
 
-        if (CanGoToPreviousTab)
-            await NavigateTabRelativeAsync(-1);
+        if (IsFirstVisibleTab && !IsTournamentListPanelOpen)
+            await SetTournamentListCollapsedAsync(false);
     }
 
     private Task GoToPreviousTabAsync() => NavigateTabRelativeAsync(-1);
@@ -2251,8 +2283,10 @@ public partial class Tournaments : IAsyncDisposable
         matchCardSettingsByView.Clear();
         activeMatchCardConfigScopeKey = BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll);
 
-        matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
-        matchCardSettingsByView[BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll)] = MatchCardViewSettings.CreateDefault();
+        var globalScopeKey = BuildMatchCardScopeKey(MatchCardScopeGlobalPage, MatchCardScopeSectionAll);
+        var pageScopeKey = BuildMatchCardScopeKey(MatchCardScopePage, MatchCardScopeSectionAll);
+        matchCardSettingsByView[globalScopeKey] = MatchCardViewSettings.CreateDefault(globalScopeKey);
+        matchCardSettingsByView[pageScopeKey] = MatchCardViewSettings.CreateDefault(pageScopeKey);
 
         if (string.IsNullOrWhiteSpace(autodartsDisplayName))
             return;
@@ -2392,7 +2426,7 @@ public partial class Tournaments : IAsyncDisposable
                 return found;
         }
 
-        return MatchCardViewSettings.CreateDefault();
+        return MatchCardViewSettings.CreateDefault(BuildMatchCardScopeKey(MatchCardScopePage, normalizedSection));
     }
 
     private MatchCardViewSettings GetEditableMatchCardSettings(string scopeKey)
@@ -2407,7 +2441,7 @@ public partial class Tournaments : IAsyncDisposable
             }
             else
             {
-                settings = MatchCardViewSettings.CreateDefault();
+                settings = MatchCardViewSettings.CreateDefault(normalizedScopeKey);
             }
 
             matchCardSettingsByView[normalizedScopeKey] = settings;
@@ -2970,8 +3004,8 @@ public partial class Tournaments : IAsyncDisposable
             await InvokeAsync(async () =>
             {
                 var forceVisibleRefresh = hasPendingVisibilityRefresh;
-                var shouldRefreshBoards = forceVisibleRefresh || activeTab is "boards-participants" or "schedule" or "knockout" || detailBoard is not null;
-                var shouldRefreshParticipants = forceVisibleRefresh || activeTab is "boards-participants" or "draw" or "groups" || detailMatch is not null;
+                var shouldRefreshBoards = forceVisibleRefresh || activeTab is "boards" or "participants" or "schedule" or "knockout" || detailBoard is not null;
+                var shouldRefreshParticipants = forceVisibleRefresh || activeTab is "boards" or "participants" or "draw" or "groups" || detailMatch is not null;
                 var shouldRefreshMatches = forceVisibleRefresh || activeTab is "schedule" or "knockout" or "groups" || detailMatch is not null || detailBoard is not null;
                 var shouldRefreshGroupStandings = forceVisibleRefresh || activeTab == "groups";
 
@@ -3485,6 +3519,43 @@ public partial class Tournaments : IAsyncDisposable
     private async Task AutoSaveSettingAsync()
     {
         await SaveTournamentAsync();
+    }
+
+    /// <summary>Fired when the "Registrierung offen" checkbox changes.
+    /// Auto-fills start = now and end = MaxDate when registration is activated.</summary>
+    private async Task OnRegistrationOpenChangedAsync()
+    {
+        if (editIsRegistrationOpen)
+        {
+            editRegistrationStart = DateTime.Now;
+            editRegistrationEnd = MaxRegistrationDate;
+        }
+        await AutoSaveSettingAsync();
+    }
+
+    /// <summary>Closes the registration (sets IsRegistrationOpen = false) and auto-saves.</summary>
+    private async Task CloseRegistrationAsync()
+    {
+        editIsRegistrationOpen = false;
+        await AutoSaveSettingAsync();
+    }
+
+    /// <summary>User accepted the registration-close confirmation before proceeding with draw/plan.</summary>
+    private async Task AcceptRegistrationDrawConfirmationAsync()
+    {
+        showRegistrationDrawConfirmation = false;
+        var continuation = registrationDrawContinuation;
+        registrationDrawContinuation = null;
+        await CloseRegistrationAsync();
+        if (continuation is not null)
+            await continuation();
+    }
+
+    /// <summary>User rejected the registration-close confirmation (cancelled the draw/plan action).</summary>
+    private void RejectRegistrationDrawConfirmation()
+    {
+        showRegistrationDrawConfirmation = false;
+        registrationDrawContinuation = null;
     }
 
     private async Task OnSeedingEnabledChangedAsync()
@@ -4509,10 +4580,13 @@ public partial class Tournaments : IAsyncDisposable
             isWorking = true;
             roundError = null;
             ParseBoardAssignment(out var assignment, out var fixedId);
-            await Api.SaveRoundAsync(selectedTournament.Id, new SaveTournamentRoundRequest(
-                selectedTournament.Id, newRoundPhase, newRoundNumber,
-                newRoundBaseScore, newRoundInMode, newRoundOutMode, newRoundGameMode, newRoundLegs, newRoundSets, newRoundMaxRounds, newRoundBullMode, newRoundBullOffMode,
-                newRoundDuration, newRoundPause, newRoundPlayerPause, assignment, fixedId));
+            foreach (var target in ResolveRoundSaveTargets())
+            {
+                await Api.SaveRoundAsync(selectedTournament.Id, new SaveTournamentRoundRequest(
+                    selectedTournament.Id, target.Phase, target.RoundNumber,
+                    newRoundBaseScore, newRoundInMode, newRoundOutMode, newRoundGameMode, newRoundLegs, newRoundSets, newRoundMaxRounds, newRoundBullMode, newRoundBullOffMode,
+                    newRoundDuration, newRoundPause, newRoundPlayerPause, assignment, fixedId));
+            }
             await LoadRoundsAsync();
         }
         catch (Exception ex) { roundError = ex.Message; }
@@ -5408,23 +5482,22 @@ public partial class Tournaments : IAsyncDisposable
         }
     }
 
-    private void CloseBoardDetail()
+    private async Task CloseBoardDetailAsync()
     {
+        var detailMatchId = detailMatch?.Id;
         detailBoard = null;
         boardSyncInfo = null;
         boardSyncError = null;
         boardSyncDebug = null;
-        // Refresh detailMatch from in-memory list in case board interaction updated it
-        if (detailMatch is not null)
-        {
-            var freshMatch = matches.FirstOrDefault(m => m.Id == detailMatch.Id);
-            if (freshMatch is not null) detailMatch = freshMatch;
-        }
-        // C2: refresh matches from server after close so any board-side changes are reflected
-        _ = BackgroundRefreshMatchesAsync();
+        // C2: refresh matches from server before restoring parent modal so child-close state is immediately visible.
+        await BackgroundRefreshMatchesAsync();
+        if (detailMatchId.HasValue)
+            detailMatch = matches.FirstOrDefault(m => m.Id == detailMatchId.Value);
         // Refresh detailBoard pointer when navigating back to board from a sub-detail
         if (_modalBackStack.Count > 0)
             _modalBackStack.Pop().Invoke();
+
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task LoadBoardSyncDebugAsync(Guid boardId)
@@ -5604,8 +5677,13 @@ public partial class Tournaments : IAsyncDisposable
     }
 
     // ─── Round Detail Modal ───
-    private void OpenRoundDetail(TournamentRoundDto round)
+    private void OpenRoundDetail(IReadOnlyList<TournamentRoundDto> rounds)
     {
+        if (rounds.Count == 0)
+            return;
+
+        detailRoundGroup = [.. OrderRounds(rounds)];
+        var round = detailRoundGroup[0];
         detailRound = round;
         newRoundPhase = round.Phase;
         newRoundNumber = round.RoundNumber;
@@ -5626,7 +5704,26 @@ public partial class Tournaments : IAsyncDisposable
         _ = InvokeAsync(StateHasChanged);
     }
 
-    private void CloseRoundDetail() => detailRound = null;
+    private void CloseRoundDetail()
+    {
+        detailRound = null;
+        detailRoundGroup = [];
+    }
+
+    private IReadOnlyList<RoundSaveTarget> ResolveRoundSaveTargets()
+    {
+        if (detailRoundGroup.Count > 1)
+        {
+            return detailRoundGroup
+                .Select(r => new RoundSaveTarget(r.Phase, r.RoundNumber))
+                .ToList();
+        }
+
+        return [new RoundSaveTarget(newRoundPhase, newRoundNumber)];
+    }
+
+    private static IEnumerable<TournamentRoundDto> OrderRounds(IEnumerable<TournamentRoundDto> rounds)
+        => rounds.OrderBy(r => r.Phase).ThenBy(r => r.RoundNumber);
 
     private async Task DeleteRoundAsync()
     {
@@ -5674,6 +5771,8 @@ public partial class Tournaments : IAsyncDisposable
         await ExecuteUpdateStatusAsync(status);
     }
 
+    private sealed record RoundSaveTarget(string Phase, int RoundNumber);
+
     private async Task ExecuteUpdateStatusAsync(string status)
     {
         if (selectedTournament is null) return;
@@ -5683,6 +5782,17 @@ public partial class Tournaments : IAsyncDisposable
             var updated = await Api.UpdateTournamentStatusAsync(selectedTournament.Id, status);
             if (updated is not null)
             {
+                // Collapse all settings panels when transitioning to "Geplant" or higher
+                if (!string.Equals(status, "Erstellt", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        await JS.InvokeVoidAsync("dartSuiteUi.collapseAllTournamentSettingsPanels",
+                            selectedTournament.Id.ToString("N"));
+                    }
+                    catch { /* best-effort */ }
+                }
+
                 await LoadTournamentsAsync();
                 selectedTournament = tournaments.FirstOrDefault(x => x.Id == updated.Id) ?? updated;
                 PopulateEditFields(selectedTournament);
@@ -6161,6 +6271,12 @@ public partial class Tournaments : IAsyncDisposable
         if (!EnsureTournamentStructureEditable(message => teamDraftError = message))
             return;
 
+        if (IsRegistrationOpen)
+        {
+            teamDraftError = "Die Registrierung ist noch geöffnet. Bitte zuerst die Registrierung schließen, bevor Teams gebildet werden.";
+            return;
+        }
+
         if (!TeamSizeDividesParticipants)
         {
             teamDraftError = "Die Teamgröße passt nicht zur Teilnehmeranzahl. Bitte Teilnehmer oder Spieler/Team anpassen.";
@@ -6308,6 +6424,9 @@ public partial class Tournaments : IAsyncDisposable
             return;
         if (!EnsureTournamentStructureEditable(message => teamDraftError = message))
             return;
+
+        if (IsRegistrationOpen)
+            return; // Block saving while registration is open; UI warning explains this to the user.
 
         if (!TeamSizeDividesParticipants)
         {
@@ -7456,6 +7575,14 @@ public partial class Tournaments : IAsyncDisposable
         if (selectedTournament.Mode != "Knockout" && editGroupCount < 1) return;
         if (!EnsureTournamentStructureEditable(message => editError = message)) return;
 
+        if (IsRegistrationOpen)
+        {
+            registrationDrawContinuation = AutoDrawAsync;
+            showRegistrationDrawConfirmation = true;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
         if (selectedTournament.Mode == "Knockout")
         {
             await BeginViewportLockAsync();
@@ -7566,6 +7693,14 @@ public partial class Tournaments : IAsyncDisposable
         if (!CanExecuteDrawCreatePlan)
         {
             ShowInactiveActionInfo(DrawCreatePlanDisabledReason, "Turnierplan erstellen nicht möglich");
+            return;
+        }
+
+        if (IsRegistrationOpen)
+        {
+            registrationDrawContinuation = CreateTournamentPlanAsync;
+            showRegistrationDrawConfirmation = true;
+            await InvokeAsync(StateHasChanged);
             return;
         }
 

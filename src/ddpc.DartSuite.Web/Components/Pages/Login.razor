@@ -145,6 +145,16 @@
         try
         {
             var response = await Api.LoginAutodartsAsync(emailInput, passwordInput);
+            if (!IsProfileComplete(response.Profile))
+            {
+                profile = null;
+                boards = new();
+                connectionStatus = "Login unvollständig: Profildaten (Name/E-Mail) fehlen. Bitte erneut anmelden.";
+                statusAlertClass = "alert-warning";
+                AppState.SetAutodartsProfile(null, false);
+                return;
+            }
+
             profile = response.Profile;
             boards = response.Boards.ToList();
             connectionStatus = "Verbindung hergestellt";
@@ -191,7 +201,7 @@
             }
 
             var status = await Api.GetAutodartsStatusAsync();
-            if (status.IsConnected && status.Profile is not null)
+            if (status.IsConnected && status.Profile is not null && IsProfileComplete(status.Profile))
             {
                 profile = status.Profile;
                 connectionStatus = "Sitzung wiederhergestellt";
@@ -200,6 +210,15 @@
 
                 try { boards = (await Api.GetAutodartsBoardsAsync()).ToList(); }
                 catch { /* boards optional */ }
+            }
+            else if (status.IsConnected && status.Profile is not null)
+            {
+                // A technically connected state with missing profile fields is not acceptable for UI usage.
+                profile = null;
+                boards = new();
+                connectionStatus = "Sitzung unvollständig. Bitte erneut anmelden.";
+                statusAlertClass = "alert-warning";
+                AppState.SetAutodartsProfile(null, false);
             }
 
             var storedEmail = await LocalStorage.GetAsync<string>(StorageKeyEmail);
@@ -216,15 +235,30 @@
                     try
                     {
                         var response = await Api.LoginAutodartsAsync(emailInput, storedPassword.Value);
-                        profile = response.Profile;
-                        boards = response.Boards.ToList();
-                        connectionStatus = "Sitzung automatisch wiederhergestellt";
-                        statusAlertClass = "alert-success";
-                        AppState.SetAutodartsProfile(profile, true);
+                        if (IsProfileComplete(response.Profile))
+                        {
+                            profile = response.Profile;
+                            boards = response.Boards.ToList();
+                            connectionStatus = "Sitzung automatisch wiederhergestellt";
+                            statusAlertClass = "alert-success";
+                            AppState.SetAutodartsProfile(profile, true);
+                        }
+                        else
+                        {
+                            profile = null;
+                            boards = new();
+                            connectionStatus = "Automatische Anmeldung fehlgeschlagen: Profildaten unvollständig. Bitte Zugangsdaten erneut eingeben.";
+                            statusAlertClass = "alert-warning";
+                            AppState.SetAutodartsProfile(null, false);
+                        }
                     }
                     catch
                     {
-                        // Stored credentials might be outdated; keep login page interactive.
+                        profile = null;
+                        boards = new();
+                        connectionStatus = "Automatische Anmeldung fehlgeschlagen. Bitte erneut anmelden.";
+                        statusAlertClass = "alert-warning";
+                        AppState.SetAutodartsProfile(null, false);
                     }
                 }
             }
@@ -262,4 +296,9 @@
         statusAlertClass = "alert-info";
         AppState.SetAutodartsProfile(null, false);
     }
+
+    private static bool IsProfileComplete(AutodartsProfileDto? candidate)
+        => candidate is not null
+           && !string.IsNullOrWhiteSpace(candidate.DisplayName)
+           && !string.IsNullOrWhiteSpace(candidate.Email);
 }

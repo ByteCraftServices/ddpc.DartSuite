@@ -16,6 +16,7 @@ public sealed class DartSuiteDbContext(DbContextOptions<DartSuiteDbContext> opti
     public DbSet<NotificationSubscription> NotificationSubscriptions => Set<NotificationSubscription>();
     public DbSet<MatchFollower> MatchFollowers => Set<MatchFollower>();
     public DbSet<UserViewPreference> UserViewPreferences => Set<UserViewPreference>();
+    public DbSet<Admin> Admins => Set<Admin>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -100,6 +101,12 @@ public sealed class DartSuiteDbContext(DbContextOptions<DartSuiteDbContext> opti
             entity.HasIndex(x => new { x.UserAccountName, x.ViewContext }).IsUnique();
             entity.Property(x => x.UserAccountName).HasMaxLength(128);
             entity.Property(x => x.ViewContext).HasMaxLength(128);
+        });
+
+        modelBuilder.Entity<Admin>(entity =>
+        {
+            entity.HasIndex(x => x.AccountName).IsUnique();
+            entity.Property(x => x.AccountName).HasMaxLength(128).IsRequired();
         });
     }
 }

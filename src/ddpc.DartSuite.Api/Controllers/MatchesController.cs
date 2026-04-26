@@ -5,10 +5,12 @@ using ddpc.DartSuite.ApiClient;
 using ddpc.DartSuite.ApiClient.Contracts;
 using ddpc.DartSuite.Api.Hubs;
 using ddpc.DartSuite.Api.Services;
+using ddpc.DartSuite.Domain.Enums;
 using ddpc.DartSuite.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
+using System.Text.Json;
 
 namespace ddpc.DartSuite.Api.Controllers;
 
@@ -612,6 +614,158 @@ public sealed class MatchesController(
     private Task NotifyTournamentAsync(Guid tournamentId, string method)
     {
         return tournamentHub.Clients.Group($"tournament-{tournamentId}").SendAsync(method, tournamentId.ToString());
+    }
+
+    // ─── MatchMaker (Virtual Boards) ───
+
+    /// <summary>
+    /// Starts a match on a virtual board (replaces Chrome Extension "StartMatch").
+    /// Marks the match as started and notifies all subscribers via SignalR.
+    /// </summary>
+    [HttpPost("{matchId:guid}/matchmaker/start")]
+    public async Task<ActionResult<MatchDto>> MatchMakerStart(Guid matchId, CancellationToken cancellationToken)
+    {
+        var access = await RequireManagerForMatchAsync(matchId, cancellationToken);
+        if (access.Denied is not null) return access.Denied;
+
+        var match = access.Match!;
+
+        // Validate the board is virtual
+        if (match.BoardId.HasValue)
+        {
+            var board = await dbContext.Boards.AsNoTracking()
+                .FirstOrDefaultAsync(b => b.Id == match.BoardId.Value, cancellationToken);
+            if (board is not null && !board.IsVirtual)
+                return BadRequest(new { message = "MatchMaker ist nur für virtuelle Boards verfügbar." });
+        }
+
+        if (match.FinishedUtc.HasValue)
+            return Conflict(new { message = "Match ist bereits beendet." });
+
+        var result = await matchService.SyncMatchFromExternalAsync(
+            matchId,
+            match.HomeLegs, match.AwayLegs,
+            match.HomeSets, match.AwaySets,
+            false,
+            cancellationToken);
+
+        // Mark as started if not already
+        if (result is not null && result.StartedUtc is null)
+        {
+            var entity = await dbContext.Matches.FirstOrDefaultAsync(m => m.Id == matchId, cancellationToken);
+            if (entity is not null)
+            {
+                entity.StartedUtc = DateTimeOffset.UtcNow;
+                entity.Status = Domain.Enums.MatchStatus.Aktiv;
+                await dbContext.SaveChangesAsync(cancellationToken);
+                result = await matchService.GetMatchAsync(matchId, cancellationToken);
+            }
+        }
+
+        if (result is not null)
+            await NotifyTournamentAsync(result.TournamentId, "MatchUpdated");
+
+        return result is null ? NotFound() : Ok(result);
+    }
+
+    /// <summary>
+    /// Receives a MatchMaker throw/state update (payload mirroring Autodarts API format).
+    /// Updates match scores, statistics, and propagates changes via SignalR.
+    /// </summary>
+    [HttpPost("{matchId:guid}/matchmaker/throw")]
+    public async Task<IActionResult> MatchMakerThrow(Guid matchId, [FromBody] JsonElement payload, CancellationToken cancellationToken)
+    {
+        var access = await RequireManagerForMatchAsync(matchId, cancellationToken);
+        if (access.Denied is not null) return access.Denied;
+
+        var match = access.Match!;
+
+        // Validate the board is virtual
+        if (match.BoardId.HasValue)
+        {
+            var board = await dbContext.Boards.AsNoTracking()
+                .FirstOrDefaultAsync(b => b.Id == match.BoardId.Value, cancellationToken);
+            if (board is not null && !board.IsVirtual)
+                return BadRequest(new { message = "MatchMaker ist nur für virtuelle Boards verfügbar." });
+        }
+
+        if (match.FinishedUtc.HasValue)
+            return Conflict(new { message = "Match ist bereits beendet." });
+
+        // Extract score data from payload
+        bool finished = false;
+        if (payload.TryGetProperty("finished", out var finishedEl))
+        {
+            finished = finishedEl.ValueKind == JsonValueKind.True
+                || (finishedEl.ValueKind == JsonValueKind.String && string.Equals(finishedEl.GetString(), "true", StringComparison.OrdinalIgnoreCase))
+                || (finishedEl.ValueKind == JsonValueKind.Number && finishedEl.TryGetInt32(out var n) && n != 0);
+        }
+
+        var adMatch = new AutodartsMatchDetail(
+            Id: matchId.ToString(),
+            Variant: payload.TryGetProperty("variant", out var v) ? v.GetString() : null,
+            GameMode: payload.TryGetProperty("gameMode", out var gm) ? gm.GetString() : null,
+            Finished: finished,
+            Players: payload.TryGetProperty("players", out var pl) ? pl : null,
+            Turns: payload.TryGetProperty("turns", out var t) ? t : null,
+            Legs: payload.TryGetProperty("legs", out var lg) ? lg : null,
+            Sets: payload.TryGetProperty("sets", out var st) ? st : null,
+            Stats: payload.TryGetProperty("stats", out var s) ? s : null,
+            RawJson: payload);
+
+        var participants = await dbContext.Participants
+            .AsNoTracking()
+            .Where(x => x.Id == match.HomeParticipantId || x.Id == match.AwayParticipantId)
+            .ToListAsync(cancellationToken);
+        var homeParticipant = participants.FirstOrDefault(x => x.Id == match.HomeParticipantId);
+        var awayParticipant = participants.FirstOrDefault(x => x.Id == match.AwayParticipantId);
+
+        var mappedScores = AutodartsMatchScoreMapper.MapScores(
+            adMatch,
+            homeParticipant?.DisplayName ?? homeParticipant?.AccountName,
+            awayParticipant?.DisplayName ?? awayParticipant?.AccountName);
+
+        var result = await matchService.SyncMatchFromExternalAsync(
+            matchId,
+            mappedScores.HomeLegs,
+            mappedScores.AwayLegs,
+            mappedScores.HomeSets,
+            mappedScores.AwaySets,
+            finished,
+            cancellationToken);
+
+        if (result is not null)
+        {
+            // Sync statistics
+            var syncResult = await AutodartsMatchStatisticsSyncService.UpsertFromRawAsync(
+                dbContext,
+                matchId,
+                match.HomeParticipantId,
+                match.AwayParticipantId,
+                payload,
+                AutodartsMatchStatisticsSyncService.ResolveSenderUtc(payload, DateTimeOffset.UtcNow),
+                match.HomeParticipantName,
+                match.AwayParticipantName,
+                cancellationToken);
+
+            await NotifyTournamentAsync(result.TournamentId, "MatchUpdated");
+
+            if (syncResult.Changed)
+            {
+                await tournamentHub.Clients.Group($"tournament-{result.TournamentId}").SendAsync(
+                    "MatchStatisticsUpdated",
+                    new
+                    {
+                        tournamentId = result.TournamentId,
+                        matchId,
+                        sourceTimestamp = syncResult.SenderUtc,
+                        timestamp = DateTimeOffset.UtcNow
+                    },
+                    cancellationToken);
+            }
+        }
+
+        return Ok(new { processed = true });
     }
 
     private async Task<ActionResult?> RequireManagerAccessAsync(Guid tournamentId, CancellationToken cancellationToken)

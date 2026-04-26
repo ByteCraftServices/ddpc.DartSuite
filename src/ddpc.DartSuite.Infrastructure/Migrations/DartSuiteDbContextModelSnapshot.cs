@@ -22,6 +22,31 @@ namespace ddpc.DartSuite.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("ddpc.DartSuite.Domain.Entities.Admin", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AccountName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateOnly>("ValidFromDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateOnly>("ValidToDate")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountName")
+                        .IsUnique();
+
+                    b.ToTable("Admins");
+                });
+
             modelBuilder.Entity("ddpc.DartSuite.Domain.Entities.Board", b =>
                 {
                     b.Property<Guid>("Id")
@@ -48,6 +73,9 @@ namespace ddpc.DartSuite.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<bool>("IsVirtual")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTimeOffset?>("LastExtensionPollUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -61,6 +89,9 @@ namespace ddpc.DartSuite.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
+
+                    b.Property<string>("OwnerAccountName")
+                        .HasColumnType("text");
 
                     b.Property<int>("SchedulingStatus")
                         .HasColumnType("integer");

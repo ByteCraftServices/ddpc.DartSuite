@@ -16,4 +16,6 @@ public sealed record BoardDto(
     string ManagedMode,
     Guid? TournamentId,
     DateTimeOffset UpdatedUtc,
-    bool IsExtensionConnected);
+    bool IsExtensionConnected,
+    bool IsVirtual = false,
+    string? OwnerAccountName = null);

@@ -1,0 +1,120 @@
+.api-offline-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background-color: rgba(0, 0, 0, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+    animation: api-offline-fade-in 0.3s ease-in-out;
+}
+
+.api-offline-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.25rem;
+    background-color: #fff;
+    border-radius: 0.75rem;
+    padding: 2.5rem 3rem;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    max-width: 420px;
+    width: 90%;
+    text-align: center;
+    animation: api-offline-slide-up 0.4s cubic-bezier(0.05, 0.89, 0.25, 1.02);
+}
+
+.api-offline-title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #212529;
+}
+
+.api-offline-description {
+    margin: 0;
+    color: #6c757d;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.api-offline-retry-info {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #adb5bd;
+}
+
+/* ─── Ripple spinner ─── */
+.api-offline-spinner {
+    position: relative;
+    width: 80px;
+    height: 80px;
+    flex-shrink: 0;
+}
+
+    .api-offline-spinner div {
+        position: absolute;
+        border: 3px solid #0d6efd;
+        opacity: 1;
+        border-radius: 50%;
+        animation: api-offline-ripple 1.5s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+    }
+
+    .api-offline-spinner div:nth-child(2) {
+        animation-delay: -0.75s;
+    }
+
+@keyframes api-offline-ripple {
+    0% {
+        top: 40px;
+        left: 40px;
+        width: 0;
+        height: 0;
+        opacity: 0;
+    }
+
+    4.9% {
+        top: 40px;
+        left: 40px;
+        width: 0;
+        height: 0;
+        opacity: 0;
+    }
+
+    5% {
+        top: 40px;
+        left: 40px;
+        width: 0;
+        height: 0;
+        opacity: 1;
+    }
+
+    100% {
+        top: 0;
+        left: 0;
+        width: 80px;
+        height: 80px;
+        opacity: 0;
+    }
+}
+
+@keyframes api-offline-fade-in {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes api-offline-slide-up {
+    0% {
+        transform: translateY(30px) scale(0.95);
+    }
+
+    100% {
+        transform: translateY(0) scale(1);
+    }
+}

@@ -1,3 +1,4 @@
+using ddpc.DartSuite.Application.Contracts.Admins;
 using ddpc.DartSuite.Application.Contracts.Autodarts;
 using ddpc.DartSuite.Application.Contracts.Boards;
 using ddpc.DartSuite.Application.Contracts.Matches;
@@ -95,9 +96,40 @@ public sealed class DartSuiteApiService
     public async Task<IReadOnlyList<BoardDto>> GetBoardsAsync(CancellationToken cancellationToken = default)
         => await GetFromJsonOrDefaultAsync<IReadOnlyList<BoardDto>>("api/boards", cancellationToken) ?? Array.Empty<BoardDto>();
 
+    public async Task<IReadOnlyList<BoardDto>> GetVirtualBoardsAsync(CancellationToken cancellationToken = default)
+        => await GetFromJsonOrDefaultAsync<IReadOnlyList<BoardDto>>("api/boards/virtual", cancellationToken) ?? Array.Empty<BoardDto>();
+
     public async Task<BoardDto> AddBoardAsync(CreateBoardRequest request, CancellationToken cancellationToken = default)
     {
         var response = await _httpClient.PostAsJsonAsync("api/boards", request, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<BoardDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task<BoardDto> CreateVirtualBoardAsync(CreateVirtualBoardRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsJsonAsync("api/boards/virtual", request, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<BoardDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task<BoardDto> ChangeVirtualBoardOwnerAsync(Guid boardId, string? ownerAccountName, CancellationToken cancellationToken = default)
+    {
+        var url = $"api/boards/{boardId}/owner";
+        if (!string.IsNullOrWhiteSpace(ownerAccountName))
+            url += $"?ownerAccountName={Uri.EscapeDataString(ownerAccountName)}";
+        var response = await _httpClient.PatchAsync(url, null, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<BoardDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task<BoardDto> ConvertBoardToVirtualAsync(Guid boardId, string? ownerAccountName = null, CancellationToken cancellationToken = default)
+    {
+        var url = $"api/boards/{boardId}/virtualize";
+        if (!string.IsNullOrWhiteSpace(ownerAccountName))
+            url += $"?ownerAccountName={Uri.EscapeDataString(ownerAccountName)}";
+
+        var response = await _httpClient.PatchAsync(url, null, cancellationToken);
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<BoardDto>(cancellationToken: cancellationToken))!;
     }
@@ -299,6 +331,19 @@ public sealed class DartSuiteApiService
         var response = await _httpClient.PostAsync($"api/matches/{tournamentId}/generate-schedule", null, cancellationToken);
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<IReadOnlyList<MatchDto>>(cancellationToken: cancellationToken)) ?? Array.Empty<MatchDto>();
+    }
+
+    public async Task<MatchPredictionDto?> GetMatchPredictionAsync(
+        int targetLegs,
+        int homeLegs,
+        int awayLegs,
+        int homeScore,
+        int awayScore,
+        int elapsedSeconds,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"api/matches/prediction?targetLegs={targetLegs}&homeLegs={homeLegs}&awayLegs={awayLegs}&homeScore={homeScore}&awayScore={awayScore}&elapsedSeconds={elapsedSeconds}";
+        return await GetFromJsonOrDefaultAsync<MatchPredictionDto>(url, cancellationToken);
     }
 
     public async Task SwapParticipantsAsync(Guid matchId, Guid participantId, Guid targetMatchId, Guid targetParticipantId, CancellationToken cancellationToken = default)
@@ -529,6 +574,21 @@ public sealed class DartSuiteApiService
             ?? Array.Empty<MatchDto>();
     }
 
+    // ─── MatchMaker (Virtual Boards) ───
+
+    public async Task<MatchDto> MatchMakerStartAsync(Guid matchId, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsync($"api/matches/{matchId}/matchmaker/start", null, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<MatchDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task MatchMakerThrowAsync(Guid matchId, object payload, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsJsonAsync($"api/matches/{matchId}/matchmaker/throw", payload, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+    }
+
     // ─── Notifications (#14) ───
 
     public async Task<IReadOnlyList<NotificationSubscriptionDto>> GetNotificationSubscriptionsAsync(Guid tournamentId, string userAccountName, CancellationToken cancellationToken = default)
@@ -580,6 +640,60 @@ public sealed class DartSuiteApiService
         var response = await _httpClient.PutAsJsonAsync($"api/tournaments/preferences/{Uri.EscapeDataString(userAccountName)}/{Uri.EscapeDataString(viewContext)}", settingsJson, cancellationToken);
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<UserViewPreferenceDto>(cancellationToken: cancellationToken))!;
+    }
+
+    // ─── Admins ───
+
+    public async Task<bool> CheckIsAdminAsync(CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.GetAsync("api/admins/check", cancellationToken);
+        if (!response.IsSuccessStatusCode) return false;
+        return (await response.Content.ReadFromJsonAsync<bool>(cancellationToken: cancellationToken));
+    }
+
+    public async Task<IReadOnlyList<AdminDto>> GetAdminsAsync(CancellationToken cancellationToken = default)
+        => await GetFromJsonOrDefaultAsync<IReadOnlyList<AdminDto>>("api/admins", cancellationToken) ?? Array.Empty<AdminDto>();
+
+    public async Task<AdminDto> CreateAdminAsync(CreateAdminRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PostAsJsonAsync("api/admins", request, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<AdminDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task<AdminDto> UpdateAdminAsync(UpdateAdminRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PutAsJsonAsync($"api/admins/{request.Id}", request, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<AdminDto>(cancellationToken: cancellationToken))!;
+    }
+
+    public async Task DeleteAdminAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.DeleteAsync($"api/admins/{id}", cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+    }
+
+    // ─── Health ───
+
+    /// <summary>
+    /// Returns <c>true</c> if the DartSuite API backend is reachable.
+    /// Probes <c>GET /api/boards</c> with a 5-second timeout; any network
+    /// error or non-success status code is treated as unavailable.
+    /// </summary>
+    public async Task<bool> CheckHealthAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(5));
+            var response = await _httpClient.GetAsync("api/boards", cts.Token);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public sealed record BoardExtensionSyncRequestAcceptedDto(bool Requested, Guid RequestId, DateTimeOffset RequestedAtUtc);

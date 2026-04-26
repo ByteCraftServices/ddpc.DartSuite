@@ -5,15 +5,15 @@
         <button class="nav-link text-nowrap @(ActiveTab == "general" ? "active" : "")" @onclick='() => SelectAsync("general")'>Allgemein</button>
     </li>
     <li class="nav-item">
-        <button class="nav-link text-nowrap @(ActiveTab == "boards-participants" ? "active" : "")" @onclick='() => SelectAsync("boards-participants")'>Boards &amp; Teilnehmer</button>
+        <button class="nav-link text-nowrap @(ActiveTab == "boards" ? "active" : "")" @onclick='() => SelectAsync("boards")'>Boards</button>
+    </li>
+    <li class="nav-item">
+        <button class="nav-link text-nowrap @(ActiveTab == "participants" ? "active" : "")" @onclick='() => SelectAsync("participants")'>Teilnehmer</button>
     </li>
     <li class="nav-item">
         <button class="nav-link text-nowrap @(ActiveTab == "draw" ? "active" : "")" @onclick='() => SelectAsync("draw")'>
             Auslosung
-            <span class="badge @DrawStatusBadgeCss ms-1" title="@DrawStatusTitle" aria-label="@DrawStatusTitle">
-                <i class="bi @DrawStatusIconCss"></i>
-            </span>
-            <span class="badge text-bg-secondary ms-1" title="@DrawProgressTitle" aria-label="@DrawProgressTitle">@DrawProgressText</span>
+            <span class="badge @DrawStatusBadgeCss ms-1" title="@DrawProgressTitle" aria-label="@DrawProgressTitle">@DrawProgressText</span>
         </button>
     </li>
     <li class="nav-item">
@@ -60,8 +60,6 @@
     [Parameter] public string ScheduleBadgeCss { get; set; } = "text-bg-secondary";
     [Parameter] public string ScheduleBadgeText { get; set; } = "0";
     [Parameter] public string DrawStatusBadgeCss { get; set; } = "text-bg-danger";
-    [Parameter] public string DrawStatusIconCss { get; set; } = "bi-hand-index-thumb-fill";
-    [Parameter] public string DrawStatusTitle { get; set; } = "Auslosung wurde noch nicht ausgeführt!";
     [Parameter] public string DrawProgressText { get; set; } = "0%";
     [Parameter] public string DrawProgressTitle { get; set; } = "Auslosungsfortschritt: 0%.";
     [Parameter] public EventCallback<string> OnTabSelected { get; set; }

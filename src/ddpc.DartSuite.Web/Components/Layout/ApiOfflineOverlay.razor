@@ -1,0 +1,32 @@
+@if (IsVisible)
+{
+    <div class="api-offline-overlay" role="status" aria-live="polite">
+        <div class="api-offline-content">
+            <div class="api-offline-spinner" aria-hidden="true">
+                <div></div>
+                <div></div>
+            </div>
+            <h2 class="api-offline-title">Verbindung zum Server wird hergestellt</h2>
+            <p class="api-offline-description">
+                Das Frontend versucht, eine Verbindung zum DartSuite-Backend herzustellen.
+                Bitte warten&hellip;
+            </p>
+            @if (RetryCount > 0)
+            {
+                <p class="api-offline-retry-info">
+                    Versuch @RetryCount
+                    @if (SecondsToNextRetry > 0)
+                    {
+                        <span> &ndash; nächster Versuch in @SecondsToNextRetry&nbsp;s</span>
+                    }
+                </p>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsVisible { get; set; }
+    [Parameter] public int RetryCount { get; set; }
+    [Parameter] public int SecondsToNextRetry { get; set; }
+}

@@ -51,12 +51,6 @@
         label.classList.remove("form-label", "mb-0", "mb-1");
     }
 
-    function needsSmallVariant(label, control) {
-        return label.classList.contains("small")
-            || control.classList.contains("form-control-sm")
-            || control.classList.contains("form-select-sm");
-    }
-
     function addPlaceholderIfNeeded(control) {
         var tag = control.tagName;
         if ((tag === "INPUT" || tag === "TEXTAREA") && !control.hasAttribute("placeholder")) {
@@ -98,9 +92,6 @@
 
         var wrapper = document.createElement("div");
         wrapper.className = "form-floating";
-        if (needsSmallVariant(label, control)) {
-            wrapper.classList.add("form-floating-sm");
-        }
         if (inputGroup) {
             wrapper.classList.add("flex-grow-1");
         }
@@ -172,10 +163,6 @@
 
             var wrapper = document.createElement("div");
             wrapper.className = "form-floating";
-            if (control.classList.contains("form-control-sm") || control.classList.contains("form-select-sm")) {
-                wrapper.classList.add("form-floating-sm");
-            }
-
             var label = document.createElement("label");
             label.textContent = text;
 

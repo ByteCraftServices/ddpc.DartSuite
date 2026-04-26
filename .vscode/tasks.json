@@ -4,7 +4,10 @@
 		{
 			"label": "preflight-stop-locking-processes",
 			"type": "shell",
-			"command": "powershell",
+			"command": "pwsh",
+			"windows": {
+				"command": "powershell"
+			},
 			"args": [
 				"-NoProfile",
 				"-ExecutionPolicy",
@@ -26,6 +29,7 @@
 			"dependsOn": [
 				"preflight-stop-locking-processes"
 			],
+			"dependsOrder": "sequence",
 			"problemMatcher": [
 				"$msCompile"
 			]
@@ -42,6 +46,7 @@
 			"dependsOn": [
 				"preflight-stop-locking-processes"
 			],
+			"dependsOrder": "sequence",
 			"problemMatcher": [
 				"$msCompile"
 			]

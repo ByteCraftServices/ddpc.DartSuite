@@ -1,0 +1,23 @@
+/* Hide the native browser disclosure triangle */
+details.settings-panel > summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+details.settings-panel > summary::-webkit-details-marker {
+    display: none;
+}
+
+/* Chevron icon animation */
+.settings-panel-chevron {
+    display: inline-block;
+    font-style: normal;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: transform 200ms ease;
+    transform: rotate(-90deg); /* collapsed: pointing right */
+}
+
+details.settings-panel[open] .settings-panel-chevron {
+    transform: rotate(0deg); /* expanded: pointing down */
+}

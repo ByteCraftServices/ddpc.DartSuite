@@ -281,6 +281,28 @@
     </div>
 }
 
+@* ─── Registration-Draw Confirmation Modal ─── *@
+@if (showRegistrationDrawConfirmation)
+{
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title">⚠ Registrierung noch geöffnet</h5>
+                </div>
+                <div class="modal-body">
+                    <p>Die Registrierung ist noch geöffnet. Soll die Registrierung jetzt abgeschlossen werden?</p>
+                    <p class="text-muted small mb-0">Die Aktion wird nach dem Schließen der Registrierung fortgesetzt.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="RejectRegistrationDrawConfirmation">Abbrechen</button>
+                    <button class="btn btn-warning" @onclick="AcceptRegistrationDrawConfirmationAsync">Registrierung schließen</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
     @* ─── Match Detail / Result Edit Modal ─── *@
     @if (detailMatch is not null)
     {
@@ -327,8 +349,14 @@
                                        IsFollowing="@IsMatchFollowed(detailMatch.Id)"
                                        CanFollow="@CanFollowFromMatchCard(detailMatch)"
                                        CanSync="@CanSyncFromMatchCard(detailMatch)"
+                                       CanStartMatch="@(CanStartMatchFromMatchCard(detailMatch))"
+                                       CanResetMatch="@(CanResetFromMatchCard(detailMatch))"
+                                       CanStartListener="@(CanStartListener(detailMatch) && !isWorking)"
                                        OnFollow="() => ToggleFollowMatchAsync(detailMatch)"
                                        OnSync="() => SyncMatchFromExternalAsync(detailMatch)"
+                                       OnStartMatch="() => SendUpcomingMatchAsync(detailMatch)"
+                                       OnResetMatch="() => ResetMatchByIdAsync(detailMatch.Id)"
+                                       OnStartListener="() => EnsureListenerAsync(detailMatch)"
                                        EnablePlayerLinks="@detailCardSettings.EnablePlayerLinks"
                                        EnableBoardLink="@detailCardSettings.EnableBoardLink"
                                        OnHomePlayerClick="BuildPlayerDetailCallback(detailMatch.HomeParticipantId)"
@@ -793,7 +821,7 @@
                                                     style="--rail-item-height:@GetTournamentRailItemHeight(t);"
                                                     title="@t.Name"
                                                     @onclick="() => SelectTournamentAsync(t)">
-                                                <span class="tournament-list-rail-label">@t.Name</span>
+                                                <span class="tournament-list-rail-label">@GetTournamentRailLabel(t)</span>
                                             </button>
                                         }
                                     </div>
@@ -896,8 +924,8 @@
                                                             {
                                                                 <span class="badge text-bg-primary font-monospace" title="Code zum Turnierbeitritt">@selectedTournament.JoinCode</span>
                                                             }
-                                                            <span class="badge text-bg-dark" title="@(IsCurrentUserManager ? "Ihrer Rolle im Turnier" : "Ihrer Rolle im Turnier")">
-                                                                @(IsCurrentUserManager ? "Spielleiter" : "Teilnehmer")
+                                                            <span class="badge text-bg-dark" title="Ihrer Rolle im Turnier">
+                                                                @CurrentUserTournamentRoleLabel
                                                             </span>
                                                             @if (selectedTournament.IsLocked)
                                                             {
@@ -944,8 +972,6 @@
                                                                   HasMissingRoundConfig="@HasMissingRoundConfig()"
                                                                   MissingRoundConfigCount="@MissingRoundConfigCount()"
                                                                   DrawStatusBadgeCss="@DrawStatusBadgeCss"
-                                                                  DrawStatusIconCss="@DrawStatusIconCss"
-                                                                  DrawStatusTitle="@DrawStatusTitle"
                                                                   DrawProgressText="@DrawProgressText"
                                                                   DrawProgressTitle="@DrawProgressTitle"
                                                                   GroupPhaseBadgeCss="@PhaseBadgeCss("Group")"
@@ -959,7 +985,8 @@
                                                                             @* ═══════ Tab: Allgemein ═══════ *@
                                                                             @if (activeTab == "general")
                                                                             {
-                                                                                <TournamentGeneralTab IsLocked="@selectedTournament.IsLocked"
+                                                                                <TournamentGeneralTab TournamentId="@selectedTournament.Id"
+                                                                                                    IsLocked="@selectedTournament.IsLocked"
                                                                                                     HasGeneralRequiredMissing="@HasGeneralRequiredMissing()"
                                                                                                     GeneralSettingsSummary="@GeneralSettingsSummary()"
                                                                                                     CanEditBasicSettings="@CanEditBasicSettings"
@@ -1001,21 +1028,81 @@
                                                                                                     EditSuccess="@editSuccess" />
                                                                             }
 
-                                                                                    @* ═══════ Tab: Boards & Teilnehmer/Teams ═══════ *@
-                                                                                    @if (activeTab == "boards-participants")
+                                                                                    @* ═══════ Tab: Boards ═══════ *@
+                                                                                    @if (activeTab == "boards")
                                                                                     {
-                                                                                        <details class="card mb-3" open>
-                                                                                            <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
-                                                                                                <span>
-                                                                                                    Teamplay & Setzliste
-                                                                                                    @if (HasTeamplayRequiredMissing() || HasSeedingRequiredMissing())
-                                                                                                    {
-                                                                                                        <span class="text-danger ms-2" title="Pflichteinstellungen fehlen">⚠</span>
-                                                                                                    }
-                                                                                                </span>
-                                                                                                <span class="d-none d-md-inline small text-muted">@TeamplaySeedingSummary()</span>
-                                                                                            </summary>
-                                                                                            <div class="card-body">
+                                                                                        @if (boards.Any())
+                                                                                        {
+                                                                                            <div class="table-responsive mb-4">
+                                                                                                <table class="table table-sm table-hover mb-0">
+                                                                                                    <thead>
+                                                                                                        <tr>
+                                                                                                            <th>Board</th>
+                                                                                                            <th>Status</th>
+                                                                                                            <th>Aktuelles Match</th>
+                                                                                                            <th></th>
+                                                                                                        </tr>
+                                                                                                    </thead>
+                                                                                                    <tbody>
+                                                                                                        @foreach (var board in boards)
+                                                                                                        {
+                                                                                                            <tr>
+                                                                                                                <td><span role="button" @onclick="() => OpenBoardDetail(board)" class="text-decoration-none fw-semibold" style="cursor:pointer">@board.Name</span></td>
+                                                                                                                <td><span class="badge @BoardStatusBadge(board.Status)">@board.Status</span></td>
+                                                                                                                <td>
+                                                                                                                    @if (!string.IsNullOrEmpty(board.CurrentMatchLabel))
+                                                                                                                    {
+                                                                                                                        var boardMatch = board.CurrentMatchId.HasValue
+                                                                                                                            ? matches.FirstOrDefault(m => m.Id == board.CurrentMatchId.Value)
+                                                                                                                            : null;
+                                                                                                                        @if (boardMatch is not null)
+                                                                                                                        {
+                                                                                                                            <span role="button" class="text-primary fw-semibold" style="cursor:pointer;text-decoration:underline dotted"
+                                                                                                                                  @onclick="() => OpenMatchDetail(boardMatch)"><span class="autodarts-icon"></span> @board.CurrentMatchLabel</span>
+                                                                                                                        }
+                                                                                                                        else
+                                                                                                                        {
+                                                                                                                            <span>@board.CurrentMatchLabel</span>
+                                                                                                                        }
+                                                                                                                    }
+                                                                                                                    else
+                                                                                                                    {
+                                                                                                                        <span>—</span>
+                                                                                                                    }
+                                                                                                                </td>
+                                                                                                                <td class="d-flex gap-1">
+                                                                                                                    <a href="https://play.autodarts.io/boards/@(board.ExternalBoardId)/follow"
+                                                                                                                       target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">📺</a>
+                                                                                                                    @if (!selectedTournament.IsLocked)
+                                                                                                                    {
+                                                                                                                        <button class="btn btn-sm btn-outline-danger"
+                                                                                                                                @onclick="() => DeleteBoardAsync(board.Id)" disabled="@isWorking">✕</button>
+                                                                                                                    }
+                                                                                                                </td>
+                                                                                                            </tr>
+                                                                                                        }
+                                                                                                    </tbody>
+                                                                                                </table>
+                                                                                            </div>
+                                                                                        }
+                                                                                        else
+                                                                                        {
+                                                                                            <p class="text-muted small mb-4">Keine Boards konfiguriert. Boards können über die <a href="/boards">Boards-Seite</a> oder die Chrome-Extension hinzugefügt werden.</p>
+                                                                                        }
+                                                                                    }
+
+                                                                                    @* ═══════ Tab: Teilnehmer ═══════ *@
+                                                                                    @if (activeTab == "participants")
+                                                                                    {
+                                                                                        <SettingsPanel TournamentId="@selectedTournament?.Id" PanelId="teamplay-setzliste" SummaryText="@TeamplaySeedingSummary()" DefaultExpanded="true">
+                                                                                            <TitleContent>
+                                                                                                Teamplay &amp; Setzliste
+                                                                                                @if (HasTeamplayRequiredMissing() || HasSeedingRequiredMissing())
+                                                                                                {
+                                                                                                    <span class="text-danger ms-2" title="Pflichteinstellungen fehlen">⚠</span>
+                                                                                                }
+                                                                                            </TitleContent>
+                                                                                            <ChildContent>
                                                                                                 @if (CanEditParticipantSettings)
                                                                                                 {
                                                                                                     <div class="form-check mb-2">
@@ -1055,25 +1142,22 @@
                                                                                                         }
                                                                                                     </div>
                                                                                                 }
-                                                                                            </div>
-                                                                                        </details>
+                                                                                            </ChildContent>
+                                                                                        </SettingsPanel>
 
-                                                                                        <details class="card mb-3">
-                                                                                            <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
-                                                                                                <span>
-                                                                                                    Registrierung
-                                                                                                    @if (HasRegistrationRequiredMissing())
-                                                                                                    {
-                                                                                                        <span class="text-danger ms-2" title="Pflichteinstellungen fehlen">⚠</span>
-                                                                                                    }
-                                                                                                </span>
-                                                                                                <span class="d-none d-md-inline small text-muted">@RegistrationSummary()</span>
-                                                                                            </summary>
-                                                                                            <div class="card-body">
+                                                                                        <SettingsPanel TournamentId="@selectedTournament?.Id" PanelId="registrierung" SummaryText="@RegistrationSummary()" DefaultExpanded="true">
+                                                                                            <TitleContent>
+                                                                                                Registrierung
+                                                                                                @if (HasRegistrationRequiredMissing())
+                                                                                                {
+                                                                                                    <span class="text-danger ms-2" title="Pflichteinstellungen fehlen">⚠</span>
+                                                                                                }
+                                                                                            </TitleContent>
+                                                                                            <ChildContent>
                                                                                                 @if (CanEditParticipantSettings)
                                                                                                 {
                                                                                                     <div class="form-check mb-2">
-                                                                                                        <input class="form-check-input" type="checkbox" id="editRegistrationOpen" @bind="editIsRegistrationOpen" @bind:after="AutoSaveSettingAsync" />
+                                                                                                        <input class="form-check-input" type="checkbox" id="editRegistrationOpen" @bind="editIsRegistrationOpen" @bind:after="OnRegistrationOpenChangedAsync" />
                                                                                                         <label class="form-check-label" for="editRegistrationOpen" title="Steuert, ob Teilnehmer sich vor Turnierstart registrieren dürfen.">Registrierung offen</label>
                                                                                                     </div>
                                                                                                     <div class="row g-2 mb-0">
@@ -1101,8 +1185,8 @@
                                                                                                         }
                                                                                                     </div>
                                                                                                 }
-                                                                                            </div>
-                                                                                        </details>
+                                                                                            </ChildContent>
+                                                                                        </SettingsPanel>
 
                                                                                         <ul class="nav nav-pills nav-fill nav-sm mb-3 border rounded p-1 bg-body-tertiary">
                                                                                             <li class="nav-item">
@@ -1124,73 +1208,23 @@
 
                                                                                         @if (activeBoardsParticipantsSubTab == "spieler")
                                                                                         {
-                                                                                            <h6 class="fw-semibold mb-2">Boards</h6>
-                                                                                            @if (boards.Any())
-                                                                                            {
-                                                                                                <div class="table-responsive mb-4">
-                                                                                                    <table class="table table-sm table-hover mb-0">
-                                                                                                        <thead>
-                                                                                                            <tr>
-                                                                                                                <th>Board</th>
-                                                                                                                <th>Status</th>
-                                                                                                                <th>Aktuelles Match</th>
-                                                                                                                <th></th>
-                                                                                                            </tr>
-                                                                                                        </thead>
-                                                                                                        <tbody>
-                                                                                                            @foreach (var board in boards)
-                                                                                                            {
-                                                                                                                <tr>
-                                                                                                                    <td><span role="button" @onclick="() => OpenBoardDetail(board)" class="text-decoration-none fw-semibold" style="cursor:pointer">@board.Name</span></td>
-                                                                                                                    <td><span class="badge @BoardStatusBadge(board.Status)">@board.Status</span></td>
-                                                                                                                    <td>
-                                                                                                                        @if (!string.IsNullOrEmpty(board.CurrentMatchLabel))
-                                                                                                                        {
-                                                                                                                            var boardMatch = board.CurrentMatchId.HasValue
-                                                                                                                                ? matches.FirstOrDefault(m => m.Id == board.CurrentMatchId.Value)
-                                                                                                                                : null;
-                                                                                                                            @if (boardMatch is not null)
-                                                                                                                            {
-                                                                                                                                <span role="button" class="text-primary fw-semibold" style="cursor:pointer;text-decoration:underline dotted"
-                                                                                                                                      @onclick="() => OpenMatchDetail(boardMatch)"><span class="autodarts-icon"></span> @board.CurrentMatchLabel</span>
-                                                                                                                            }
-                                                                                                                            else
-                                                                                                                            {
-                                                                                                                                <span>@board.CurrentMatchLabel</span>
-                                                                                                                            }
-                                                                                                                        }
-                                                                                                                        else
-                                                                                                                        {
-                                                                                                                            <span>—</span>
-                                                                                                                        }
-                                                                                                                    </td>
-                                                                                                                    <td class="d-flex gap-1">
-                                                                                                                        <a href="https://play.autodarts.io/boards/@(board.ExternalBoardId)/follow"
-                                                                                                                           target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">📺</a>
-                                                                                                                        @if (!selectedTournament.IsLocked)
-                                                                                                                        {
-                                                                                                                            <button class="btn btn-sm btn-outline-danger"
-                                                                                                                                    @onclick="() => DeleteBoardAsync(board.Id)" disabled="@isWorking">✕</button>
-                                                                                                                        }
-                                                                                                                    </td>
-                                                                                                                </tr>
-                                                                                                            }
-                                                                                                        </tbody>
-                                                                                                    </table>
-                                                                                                </div>
-                                                                                            }
-                                                                                            else
-                                                                                            {
-                                                                                                <p class="text-muted small mb-4">Keine Boards konfiguriert. Boards können über die <a href="/boards">Boards-Seite</a> oder die Chrome-Extension hinzugefügt werden.</p>
-                                                                                            }
-
-                                                                                            <h6 class="fw-semibold mb-2">@(IsTeamplayActive ? "Spielerpool" : "Teilnehmer") <span class="badge text-bg-secondary">@EffectivePlayerCount</span></h6>
+                                                                                            <h6 class="fw-semibold mb-2">@(IsTeamplayActive ? "Spielerpool" : "Teilnehmer") <span class="badge text-bg-secondary">@EffectivePlayerCount</span>
+                                                                                                @if (IsTeamplayActive && AppState.IsAdmin)
+                                                                                                {
+                                                                                                    <button class="btn btn-sm @(showAdminTeamMembers ? "btn-info" : "btn-outline-secondary") ms-2" style="font-size:0.75em"
+                                                                                                            @onclick="() => showAdminTeamMembers = !showAdminTeamMembers"
+                                                                                                            title="TeamMember-Einträge einblenden">Teams anzeigen</button>
+                                                                                                }
+                                                                                            </h6>
                                                                                             @if (participants.Any(p => !IsTeamMember(p)))
                                                                                             {
                                                                                                 var showPlayerSeedInPlayersSubTab = editSeedingEnabled && !IsTeamplayActive;
+                                                                                                var baseParticipants = (IsTeamplayActive && AppState.IsAdmin && showAdminTeamMembers)
+                                                                                                    ? participants
+                                                                                                    : participants.Where(p => !IsTeamMember(p));
                                                                                                 var sortedParticipants = showPlayerSeedInPlayersSubTab
-                                                                                                    ? participants.Where(p => !IsTeamMember(p)).OrderBy(p => p.Seed > 0 ? p.Seed : int.MaxValue).ThenBy(p => p.DisplayName).ToList()
-                                                                                                    : participants.Where(p => !IsTeamMember(p)).ToList();
+                                                                                                    ? baseParticipants.OrderBy(p => p.Seed > 0 ? p.Seed : int.MaxValue).ThenBy(p => p.DisplayName).ToList()
+                                                                                                    : baseParticipants.ToList();
                                                                                                 <div class="table-responsive mb-3">
                                                                                                     <table class="table table-sm table-hover align-middle mb-0">
                                                                                                         <thead>
@@ -1377,13 +1411,20 @@
                                                                                             {
                                                                                                 <div class="alert alert-info py-2 small mb-2">Die Turnierstruktur ist gesperrt. Teamzuordnungen können nicht mehr geändert werden.</div>
                                                                                             }
+                                                                                            @if (IsRegistrationOpen)
+                                                                                            {
+                                                                                                <div class="alert alert-warning py-2 small mb-2">
+                                                                                                    Die Registrierung ist noch geöffnet. Die Teamerstellung kann erst nach dem Schließen der Registrierung abgeschlossen werden.
+                                                                                                    <a href="#" @onclick="CloseRegistrationAsync" @onclick:preventDefault class="alert-link">Registrierung schließen</a>.
+                                                                                                </div>
+                                                                                            }
                                                                                             @if (!TeamSizeDividesParticipants)
                                                                                             {
                                                                                                 <div class="alert alert-warning py-2 small mb-3">Die Spieleranzahl (@EffectivePlayerCount) ist nicht durch Spieler/Team (@editPlayersPerTeam) teilbar. Bitte Teamgröße oder Spieleranzahl anpassen.</div>
                                                                                             }
                                                                                             <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
-                                                                                                <button class="btn btn-sm btn-primary" @onclick="GenerateRandomTeamsAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure || !TeamSizeDividesParticipants)" title="Füllt nur unvollständige Teams zufällig auf. Vollständige Teams bleiben bestehen.">⚡ Teams zufällig bilden</button>
-                                                                                                <button class="btn btn-sm btn-outline-warning" @onclick="ResetTeamDraftLocal" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure)">↩ Entwurf leeren</button>
+                                                                                                <button class="btn btn-sm btn-primary" @onclick="GenerateRandomTeamsAsync" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure || !TeamSizeDividesParticipants || IsRegistrationOpen)" title="Füllt nur unvollständige Teams zufällig auf. Vollständige Teams bleiben bestehen.">⚡ Teams zufällig bilden</button>
+                                                                                                <button class="btn btn-sm btn-outline-warning" @onclick="ResetTeamDraftLocal" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure || IsRegistrationOpen)">↩ Entwurf leeren</button>
                                                                                                 <div class="d-flex align-items-center gap-2 ms-auto">
                                                                                                     <label class="small text-muted mb-0">Animation</label>
                                                                                                     <select class="form-select form-select-sm" style="width:140px" @bind="drawAnimationMode" disabled="@(isWorking || isDrawAnimating)">
@@ -1564,7 +1605,7 @@
                                                                                                                IsRoundStarted="@(rnd => IsRoundStarted(rnd.Phase, rnd.RoundNumber))"
                                                                                                                IsRoundCompleted="@(rnd => IsRoundCompleted(rnd.Phase, rnd.RoundNumber))"
                                                                                                                RoundDisplayLabel="@RoundDisplayLabel"
-                                                                                                               OnOpenRoundDetail="OpenRoundDetail"
+                                                                                                               OnOpenRoundGroupDetail="OpenRoundDetail"
                                                                                                                CanEditTournamentStructure="@CanEditTournamentStructure"
                                                                                                                IsWorking="@isWorking"
                                                                                                                OnToggleGameModesLock="ToggleGameModesLockAsync"
@@ -1608,7 +1649,8 @@
                                                                                                         @* ═══════ Tab: Auslosung ═══════ *@
                                                                                                         @if (activeTab == "draw")
                                                                                                         {
-                                                                                                            <TournamentDrawTab CanEditTournamentStructure="@CanEditTournamentStructure"
+                                                                                                            <TournamentDrawTab TournamentId="@selectedTournament?.Id"
+                                                                                                                              CanEditTournamentStructure="@CanEditTournamentStructure"
                                                                                                                               HasProgressedMatches="@HasProgressedMatches"
                                                                                                                               SelectedTournamentMode="@(selectedTournament?.Mode ?? string.Empty)"
                                                                                                                               SelectedTournamentStatus="@(selectedTournament?.Status ?? string.Empty)"
@@ -1691,7 +1733,8 @@
 @* ═══════ Tab: Gruppenphase ═══════ *@
                                                                                                         @if (activeTab == "groups")
                                                                                                         {
-                                                                                                            <TournamentGroupsTab Matches="@matches"
+                                                                                                            <TournamentGroupsTab TournamentId="@selectedTournament?.Id"
+                                                                                                                                Matches="@matches"
                                                                                                                                GroupStandings="@groupStandings"
                                                                                                                                PlayoffAdvancers="@selectedTournament!.PlayoffAdvancers"
                                                                                                                                IsWorking="@isWorking"
@@ -1784,7 +1827,8 @@
                                                                                                                                             @* ═══════ Tab: Spielplan (chronologisch) ═══════ *@
                                                                                                                                             @if (activeTab == "schedule")
                                                                                                                                             {
-                                                                                                                                                <TournamentScheduleTab Matches="@matches"
+                                                                                                                                                <TournamentScheduleTab TournamentId="@selectedTournament?.Id"
+                                                                                                                                                                       Matches="@matches"
                                                                                                                                                                        Boards="@boards"
                                                                                                                                                                        ScheduledMatches="@ScheduledMatches"
                                                                                                                                                                        UnassignedUpcoming="@UnassignedUpcoming"
@@ -1877,12 +1921,12 @@
     var currentMatch = CurrentMatchOnBoard(detailBoard.Id);
     var upcomingOnBoard = UpcomingMatchesOnBoard(detailBoard.Id);
     var boardMatchListener = currentMatch is not null ? matchListeners.FirstOrDefault(l => l.MatchId == currentMatch.Id) : null;
-    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="CloseBoardDetail">
+    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="CloseBoardDetailAsync">
         <div class="modal-dialog modal-lg modal-dialog-centered" @onclick:stopPropagation>
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">📋 @detailBoard.Name</h5>
-                    <button type="button" class="btn-close" @onclick="CloseBoardDetail"></button>
+                    <button type="button" class="btn-close" @onclick="CloseBoardDetailAsync"></button>
                 </div>
                 <div class="modal-body">
                     <div class="d-flex align-items-center gap-2 mb-3">
@@ -1973,8 +2017,14 @@
                                    IsFollowing="@IsMatchFollowed(currentMatch.Id)"
                                    CanFollow="@CanFollowFromMatchCard(currentMatch)"
                                    CanSync="@CanSyncFromMatchCard(currentMatch)"
+                                   CanStartMatch="@(CanStartMatchFromMatchCard(currentMatch))"
+                                   CanResetMatch="@(CanResetFromMatchCard(currentMatch))"
+                                   CanStartListener="@(CanStartListener(currentMatch) && !isWorking)"
                                    OnFollow="() => ToggleFollowMatchAsync(currentMatch)"
                                    OnSync="() => SyncMatchFromExternalAsync(currentMatch)"
+                                   OnStartMatch="() => SendUpcomingMatchAsync(currentMatch)"
+                                   OnResetMatch="() => ResetMatchByIdAsync(currentMatch.Id)"
+                                   OnStartListener="() => EnsureListenerAsync(currentMatch)"
                                    EnablePlayerLinks="@boardCardSettings.EnablePlayerLinks"
                                    EnableBoardLink="@boardCardSettings.EnableBoardLink"
                                    OnHomePlayerClick="BuildPlayerDetailCallback(currentMatch.HomeParticipantId)"
@@ -1996,7 +2046,7 @@
                                    DetailsExpandedByDefault="@(!boardCardSettings.CollapseDetailsOnMobile || !isCompactViewport)"
                                    ForceDetailsExpanded="@forcedMatchDetailsExpanded"
                                    EnableRealtimeConsumer="@(currentMatch.StartedUtc is not null && currentMatch.FinishedUtc is null)"
-                                   OnClick="() => { var m = currentMatch; var b = detailBoard; CloseBoardDetail(); if (b is not null) _modalBackStack.Push(() => OpenBoardDetail(b)); OpenMatchDetail(m); }" />
+                                   OnClick="async () => { var m = currentMatch; var b = detailBoard; await CloseBoardDetailAsync(); if (b is not null) _modalBackStack.Push(() => OpenBoardDetail(b)); OpenMatchDetail(m); }" />
                         <div class="d-flex flex-column gap-1 mb-3">
                             <div class="d-flex align-items-center gap-2">
                                 <span class="badge @GetMonitoringBadgeCss(currentMatch)">@GetMonitoringBadgeText(currentMatch)</span>
@@ -2066,6 +2116,20 @@
                                            ShowHighestCheckout="@boardQueueCardSettings.ShowHighestCheckout"
                                            ShowAverageDartsPerLeg="@boardQueueCardSettings.ShowAverageDartsPerLeg"
                                            ShowMinimalDartsPerLeg="@boardQueueCardSettings.ShowMinimalDartsPerLeg"
+                                           ShowActionButtons="@ShowMatchCardActionBar(boardQueueCardSettings)"
+                                           ShowSyncAction="@ShowMatchCardSyncAction(boardQueueCardSettings, m)"
+                                           ShowFollowAction="@ShowMatchCardFollowAction(boardQueueCardSettings)"
+                                           IsFollowing="@IsMatchFollowed(m.Id)"
+                                           CanFollow="@CanFollowFromMatchCard(m)"
+                                           CanSync="@CanSyncFromMatchCard(m)"
+                                           CanStartMatch="@(CanStartMatchFromMatchCard(m))"
+                                           CanResetMatch="@(CanResetFromMatchCard(m))"
+                                           CanStartListener="@(CanStartListener(m) && !isWorking)"
+                                           OnFollow="() => ToggleFollowMatchAsync(m)"
+                                           OnSync="() => SyncMatchFromExternalAsync(m)"
+                                           OnStartMatch="() => SendUpcomingMatchAsync(m)"
+                                           OnResetMatch="() => ResetMatchByIdAsync(m.Id)"
+                                           OnStartListener="() => EnsureListenerAsync(m)"
                                            OnHomePlayerClick="BuildPlayerDetailCallback(m.HomeParticipantId)"
                                            OnAwayPlayerClick="BuildPlayerDetailCallback(m.AwayParticipantId)"
                                            EnableDetailPanel="false"
@@ -2088,7 +2152,7 @@
                     }
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="CloseBoardDetail">Schließen</button>
+                    <button class="btn btn-secondary" @onclick="CloseBoardDetailAsync">Schließen</button>
                 </div>
             </div>
         </div>
@@ -2098,13 +2162,17 @@
 @* ─── Round Detail Modal ─── *@
 @if (detailRound is not null && selectedTournament is not null)
 {
-    var roundStarted = IsRoundStarted(detailRound.Phase, detailRound.RoundNumber);
-    var roundCompleted = IsRoundCompleted(detailRound.Phase, detailRound.RoundNumber);
+    var roundStarted = detailRoundGroup.Any(r => IsRoundStarted(r.Phase, r.RoundNumber));
+    var roundCompleted = detailRoundGroup.Any(r => IsRoundCompleted(r.Phase, r.RoundNumber));
     <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="CloseRoundDetail">
         <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation>
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">@RoundDisplayLabel(detailRound)
+                        @if (detailRoundGroup.Count > 1)
+                        {
+                            <span class="badge text-bg-secondary ms-2">@detailRoundGroup.Count Runden</span>
+                        }
                         @if (roundCompleted) { <span class="badge text-bg-success ms-2">✓ Abgeschlossen</span> }
                         else if (roundStarted) { <span class="badge text-bg-warning ms-2">▶ Gestartet</span> }
                     </h5>
@@ -2118,6 +2186,13 @@
                     else if (roundStarted)
                     {
                         <div class="alert alert-warning py-2 small">⚠ Diese Runde wurde bereits gestartet. Änderungen können laufende Matches beeinflussen.</div>
+                    }
+                    @if (detailRoundGroup.Count > 1)
+                    {
+                        <div class="alert alert-info py-2 small">
+                            Diese Konfiguration gilt für <strong>@detailRoundGroup.Count</strong> Runden:
+                            @string.Join(" · ", detailRoundGroup.Select(RoundDisplayLabel))
+                        </div>
                     }
                     <div class="mb-3">
                         <label class="form-label small fw-semibold">Base Score</label>
@@ -2230,7 +2305,7 @@
                     }
                 </div>
                 <div class="modal-footer">
-                    @if (!roundStarted && !roundCompleted && !editAreGameModesLocked && !selectedTournament.IsLocked && CanEditTournamentStructure)
+                    @if (detailRoundGroup.Count == 1 && !roundStarted && !roundCompleted && !editAreGameModesLocked && !selectedTournament.IsLocked && CanEditTournamentStructure)
                     {
                         <button class="btn btn-outline-danger me-auto" @onclick="DeleteRoundAsync" disabled="@(isWorking || !CanEditTournamentStructure)"
                                 title="Spielrunde löschen">
@@ -2240,7 +2315,7 @@
                     <button class="btn btn-secondary" @onclick="CloseRoundDetail">Abbrechen</button>
                     @if (!roundCompleted && !editAreGameModesLocked && !selectedTournament.IsLocked && CanEditTournamentStructure)
                     {
-                        <button class="btn btn-primary" @onclick="async () => { await SaveRoundAsync(); CloseRoundDetail(); }" disabled="@(isWorking || !CanEditTournamentStructure)">Speichern</button>
+                        <button class="btn btn-primary" @onclick="async () => { await SaveRoundAsync(); CloseRoundDetail(); }" disabled="@(isWorking || !CanEditTournamentStructure)">@(detailRoundGroup.Count > 1 ? "Gruppe speichern" : "Speichern")</button>
                     }
                 </div>
             </div>
@@ -2720,9 +2795,9 @@
     .tournament-list-rail-item {
         --rail-item-height: 5.2rem;
         width: 1.9rem;
-        min-height: 4.2rem;
+        min-height: 3.1rem;
         height: var(--rail-item-height);
-        padding: 0.1rem;
+        padding: 0.04rem;
         border: 1px solid rgba(13, 110, 253, 0.25);
         border-radius: 0.7rem;
         background: rgba(255, 255, 255, 0.95);
