@@ -1,9 +1,10 @@
 name: Build, publish and deploy to MonsterASP.NET
 
 on:
-  push:
-    branches: [ "publish-web" ]
-  workflow_dispatch:
+  workflow_run:
+    workflows: ["Release Web"]
+    types:
+      - completed
 
 jobs:
   build_and_deploy:
