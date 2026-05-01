@@ -25,6 +25,10 @@ public sealed class TournamentRound
     public int PauseBetweenMatchesMinutes { get; set; }
     public int MinPlayerPauseMinutes { get; set; }
 
+    // Round date/time for online scheduling (Issue #83)
+    public DateOnly? RoundDate { get; set; }
+    public TimeOnly? RoundStartTime { get; set; }
+
     // Board assignment
     public BoardAssignmentMode BoardAssignment { get; set; } = BoardAssignmentMode.Dynamic;
     public Guid? FixedBoardId { get; set; }

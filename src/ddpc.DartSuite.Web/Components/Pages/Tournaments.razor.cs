@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.Hosting;
 using Microsoft.JSInterop;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 
 namespace ddpc.DartSuite.Web.Components.Pages;
@@ -322,7 +323,7 @@ public partial class Tournaments : IAsyncDisposable
     {
         var nameLength = Math.Min(tournament.Name?.Length ?? 0, TournamentRailLabelMaxLength);
         var heightRem = Math.Clamp(1.9 + (nameLength * 0.2), 3.1, 7.2);
-        return $"{heightRem:0.##}rem";
+        return $"{heightRem.ToString("0.##", CultureInfo.InvariantCulture)}rem";
     }
 
     private static string GetTournamentRailLabel(TournamentDto tournament)

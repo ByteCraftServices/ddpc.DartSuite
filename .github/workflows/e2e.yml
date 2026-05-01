@@ -1,0 +1,108 @@
+name: E2E UI Tests (Playwright)
+
+# Runs automatically on push/PR to develop for smoke validation,
+# or manually against any deployed environment.
+#
+# Issue #73: Automatisierte UI-Tests einführen
+# Tests: Desktop smoke, Mobile smoke, VirtualBoard/MatchMaker, KO Regression
+#
+# For automated runs the job spins up the Blazor server locally using
+# a minimal in-memory configuration (no external DB required). Tests that
+# need a real backend skip gracefully when the endpoint returns an error.
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - develop
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Target base URL (leave empty to start a local server)'
+        required: false
+        default: ''
+
+env:
+  DOTNET_VERSION: '10.0.x'
+
+jobs:
+  e2e-tests:
+    name: E2E UI Tests — Playwright / Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore ddpc.DartSuite.slnx
+
+      - name: Build solution
+        run: dotnet build ddpc.DartSuite.slnx --no-restore --configuration Release
+
+      - name: Install Playwright browsers
+        run: |
+          cd tests/ddpc.DartSuite.E2E.Tests
+          dotnet run --project . -- playwright install chromium 2>/dev/null || \
+            dotnet tool install --global Microsoft.Playwright.CLI 2>/dev/null || true
+          ~/.dotnet/tools/playwright install chromium 2>/dev/null || \
+            dotnet exec "$(find ~/.nuget -name 'playwright.ps1' 2>/dev/null | head -1)" install chromium 2>/dev/null || \
+            pwsh -c "cd tests/ddpc.DartSuite.E2E.Tests && bin/Release/net10.0/playwright.ps1 install chromium" 2>/dev/null || true
+          # Fallback: direct npx
+          npx playwright install chromium 2>/dev/null || true
+
+      - name: Start local server (if no external URL provided)
+        if: ${{ github.event.inputs.base_url == '' }}
+        run: |
+          # Start the web server in background with minimal config
+          export ASPNETCORE_ENVIRONMENT=Development
+          export ASPNETCORE_URLS=http://localhost:7300
+          dotnet run --project src/ddpc.DartSuite.Web/ \
+            --no-build \
+            --configuration Release \
+            -- --urls http://localhost:7300 &
+          # Wait up to 30s for server to become ready
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:7300/ >/dev/null 2>&1; then
+              echo "Server ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Run E2E tests (smoke + mobile + edge-cases)
+        env:
+          DARTSUITE_E2E_ENABLED: '1'
+          DARTSUITE_E2E_BASE_URL: ${{ github.event.inputs.base_url != '' && github.event.inputs.base_url || 'http://localhost:7300' }}
+        run: |
+          dotnet test tests/ddpc.DartSuite.E2E.Tests/ \
+            --no-build \
+            --configuration Release \
+            --logger "trx;LogFileName=e2e-results.trx" \
+            --results-directory ./TestResults/E2E \
+            --timeout 120
+
+      - name: Upload E2E test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: TestResults/E2E/**
+          retention-days: 14
+
+      - name: E2E test summary
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: E2E Test Results (Playwright)
+          path: TestResults/E2E/*.trx
+          reporter: dotnet-trx
+          fail-on-error: false

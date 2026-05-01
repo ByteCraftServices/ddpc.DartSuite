@@ -36,3 +36,4 @@ TestResults/
 appsettings.*.Secrets.json
 
 src/ddpc.DartSuite.Api/dartsuite.dev.db*
+.validation-output/

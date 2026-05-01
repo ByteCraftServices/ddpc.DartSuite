@@ -216,29 +216,97 @@ public sealed class VirtualBoardAndMatchMakerTests : SmokeTestBase
         automaticOption.Should().NotBeNull("Automatic mode option should be available for admin");
     }
 
-    [Fact]
+    [Fact(DisplayName = "DS-066-M01: Virtual Boards page loads on mobile viewport (375x812)")]
     public async Task VirtualBoard_ResponsiveLayout_Mobile()
     {
         if (!ShouldRun()) return;
 
-        // Set mobile viewport
-        await Context.DisposeAsync();
-           // Note: E2E tests use fixed viewport size from SmokeTestBase.
-           // Mobile tests require separate browser context with mobile viewport
-           // This would need dedicated test class that doesn't reuse Context/Page
-           await Task.CompletedTask;
+        var mobileBrowser = await Playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
+        {
+            Headless = true,
+            Args = ["--no-sandbox", "--disable-setuid-sandbox"]
+        });
+        var mobilePage = await mobileBrowser.NewPageAsync(new BrowserNewPageOptions
+        {
+            ViewportSize = new ViewportSize { Width = 375, Height = 812 },
+            IgnoreHTTPSErrors = true
+        });
+
+        try
+        {
+            var response = await mobilePage.GotoAsync($"{BaseUrl}/boards", new PageGotoOptions
+            {
+                WaitUntil = WaitUntilState.Commit,
+                Timeout = 30_000
+            });
+            await mobilePage.WaitForLoadStateAsync(LoadState.Load, new PageWaitForLoadStateOptions { Timeout = 15_000 });
+
+            if (IsLoginRedirect(mobilePage)) return;
+
+            Assert.NotNull(response);
+            Assert.True(response.Ok, $"HTTP {response.Status}");
+
+            var scrollWidth = await mobilePage.EvaluateAsync<int>("document.body.scrollWidth");
+            Assert.True(scrollWidth <= 380,
+                $"Horizontaler Overflow auf Mobile: body.scrollWidth={scrollWidth} > 380px (375+5 tolerance)");
+        }
+        finally
+        {
+            await mobilePage.CloseAsync();
+            await mobileBrowser.DisposeAsync();
+        }
     }
 
-    [Fact]
+    [Fact(DisplayName = "DS-066-M02: MatchMaker keypad is visible and not overflowing on mobile (375x812)")]
     public async Task MatchMaker_KeypadLayout_ResponsiveOnMobile()
     {
         if (!ShouldRun()) return;
 
-        // Set mobile viewport
-        await Context.DisposeAsync();
-           // Note: Mobile tests require separate browser context initialization
-           // This test class reuses Context/Page from SmokeTestBase which are read-only
-           // Mobile tests should be in separate class with mobile viewport setup
-           await Task.CompletedTask;
+        var mobileBrowser = await Playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
+        {
+            Headless = true,
+            Args = ["--no-sandbox", "--disable-setuid-sandbox"]
+        });
+        var mobilePage = await mobileBrowser.NewPageAsync(new BrowserNewPageOptions
+        {
+            ViewportSize = new ViewportSize { Width = 375, Height = 812 },
+            IgnoreHTTPSErrors = true
+        });
+
+        try
+        {
+            await mobilePage.GotoAsync($"{BaseUrl}/matches", new PageGotoOptions
+            {
+                WaitUntil = WaitUntilState.Commit,
+                Timeout = 30_000
+            });
+            await mobilePage.WaitForLoadStateAsync(LoadState.Load, new PageWaitForLoadStateOptions { Timeout = 15_000 });
+
+            if (IsLoginRedirect(mobilePage)) return;
+
+            var matchMakerPanel = await mobilePage.QuerySelectorAsync("text=⚡ MatchMaker");
+            if (matchMakerPanel == null) return;
+
+            // Check keypad buttons are visible and within viewport width
+            var dartButton = mobilePage.Locator(".matchmaker-keypad button, button:has-text('S17'), button:has-text('20')").First;
+            if (await dartButton.CountAsync() > 0)
+            {
+                var box = await dartButton.BoundingBoxAsync();
+                if (box is not null)
+                {
+                    Assert.True(box.X + box.Width <= 380,
+                        $"MatchMaker keypad button overflows mobile viewport: X={box.X}, Width={box.Width}");
+                }
+            }
+
+            var scrollWidth = await mobilePage.EvaluateAsync<int>("document.body.scrollWidth");
+            Assert.True(scrollWidth <= 380,
+                $"Horizontaler Overflow auf Mobile: body.scrollWidth={scrollWidth}");
+        }
+        finally
+        {
+            await mobilePage.CloseAsync();
+            await mobileBrowser.DisposeAsync();
+        }
     }
 }

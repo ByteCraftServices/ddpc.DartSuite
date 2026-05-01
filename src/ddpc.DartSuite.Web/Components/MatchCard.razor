@@ -8,6 +8,7 @@
     @if (string.Equals(EffectiveLayout, "List", StringComparison.Ordinal))
     {
         <div class="match-card-list-row py-1 px-2 small">
+            <div class="match-list-leading-meta" style="display:contents">
             @if (ShowListDetailChevron)
             {
                 <button type="button"
@@ -34,6 +35,8 @@
             {
                 <span class="badge text-bg-secondary flex-shrink-0">@Label</span>
             }
+            </div>
+            <div class="match-list-player-slot-home" style="display:contents">
             <PlayerName Name="@ResolvedHomeName"
                         HighlightWinner="@(Match.WinnerParticipantId == Match.HomeParticipantId)"
                         ShowAverage="@ShowPlayerAverage"
@@ -43,7 +46,8 @@
             {
                 <span class="badge text-bg-info flex-shrink-0" style="font-size:.65em">am Zug</span>
             }
-            <div class="d-flex align-items-center gap-1 flex-shrink-0 match-card-list-score">
+            </div>
+            <div class="d-flex align-items-center gap-1 flex-shrink-0 match-card-list-score match-list-score-slot">
                 @if (ShouldShowSets)
                 {
                     <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">S @EffectiveHomeSets</span>
@@ -79,77 +83,6 @@
                 {
                     <span class="text-muted" style="font-size:.8em">vs</span>
                 }
-                @if (ShowInlineBodyActions && UseActionMenu)
-                {
-                    <div class="dropdown flex-shrink-0" @onclick:stopPropagation="true">
-                        <button type="button" class="btn btn-outline-secondary btn-sm match-action-menu-button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Match-Aktionen oeffnen" title="Aktionen">
-                            <span class="match-action-menu-glyph" aria-hidden="true">⋮</span>
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            @if (ShowStartMatchActionItem)
-                            {
-                                <li><button type="button" class="dropdown-item d-flex align-items-center gap-2 match-action-menu-item" disabled="@DisableStartMatchActionItem" title="Match starten" @onclick="HandleStartMatchAsync"><i class="bi bi-play-fill"></i><span class="match-action-label">Match starten</span></button></li>
-                            }
-                            @if (ShowResetActionItem)
-                            {
-                                <li><button type="button" class="dropdown-item d-flex align-items-center gap-2 match-action-menu-item" disabled="@DisableResetActionItem" title="Match zuruecksetzen" @onclick="HandleResetMatchAsync"><i class="bi bi-arrow-counterclockwise"></i><span class="match-action-label">Zuruecksetzen</span></button></li>
-                            }
-                            @if (ShowStartListenerActionItem)
-                            {
-                                <li><button type="button" class="dropdown-item d-flex align-items-center gap-2 match-action-menu-item" disabled="@DisableStartListenerActionItem" title="Listener starten" @onclick="HandleStartListenerAsync"><i class="bi bi-broadcast-pin"></i><span class="match-action-label">Listener starten</span></button></li>
-                            }
-                            @if (ShowSyncActionItem)
-                            {
-                                <li><button type="button" class="dropdown-item d-flex align-items-center gap-2 match-action-menu-item" disabled="@DisableSyncActionItem" title="Synchronisieren" @onclick="HandleSyncAsync"><i class="bi bi-arrow-repeat"></i><span class="match-action-label">Sync</span></button></li>
-                            }
-                            @if (ShowFollowActionItem)
-                            {
-                                <li><button type="button" class="dropdown-item d-flex align-items-center gap-2 match-action-menu-item" disabled="@DisableFollowActionItem" title="@(IsFollowing ? "Nicht mehr folgen" : "Match folgen")" @onclick="HandleFollowAsync"><i class="bi @(IsFollowing ? "bi-bell-fill" : "bi-bell")"></i><span class="match-action-label">@(IsFollowing ? "Folgen aktiv" : "Folgen")</span></button></li>
-                            }
-                            @if (ShowToggleStartTimeLockActionItem)
-                            {
-                                <li><button type="button" class="dropdown-item d-flex align-items-center gap-2 match-action-menu-item" disabled="@DisableToggleStartTimeLockActionItem" title="Startzeit sperren oder entsperren" @onclick="HandleToggleStartTimeLockAsync"><span>@StartTimeLockGlyph</span><span class="match-action-label">@(Match.IsStartTimeLocked ? "Startzeit entsperren" : "Startzeit sperren")</span></button></li>
-                            }
-                            @if (ShowToggleBoardLockActionItem)
-                            {
-                                <li><button type="button" class="dropdown-item d-flex align-items-center gap-2 match-action-menu-item" disabled="@DisableToggleBoardLockActionItem" title="Board sperren oder entsperren" @onclick="HandleToggleBoardLockAsync"><span>@BoardLockGlyph</span><span class="match-action-label">@(Match.IsBoardLocked ? "Board entsperren" : "Board sperren")</span></button></li>
-                            }
-                        </ul>
-                    </div>
-                }
-                @if (ShowInlineBodyActions && !UseActionMenu)
-                {
-                    <div class="d-flex flex-wrap align-items-center gap-1 flex-shrink-0 match-action-inline-buttons" @onclick:stopPropagation="true">
-                        @if (ShowStartMatchActionItem)
-                        {
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@DisableStartMatchActionItem" title="Match starten" aria-label="Match starten" @onclick="HandleStartMatchAsync"><span aria-hidden="true">▶</span></button>
-                        }
-                        @if (ShowResetActionItem)
-                        {
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@DisableResetActionItem" title="Match zuruecksetzen" @onclick="HandleResetMatchAsync"><i class="bi bi-arrow-counterclockwise"></i></button>
-                        }
-                        @if (ShowStartListenerActionItem)
-                        {
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@DisableStartListenerActionItem" title="Listener starten" @onclick="HandleStartListenerAsync"><i class="bi bi-broadcast-pin"></i></button>
-                        }
-                        @if (ShowSyncActionItem)
-                        {
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@DisableSyncActionItem" title="Synchronisieren" @onclick="HandleSyncAsync"><i class="bi bi-arrow-repeat"></i></button>
-                        }
-                        @if (ShowFollowActionItem)
-                        {
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@DisableFollowActionItem" title="@(IsFollowing ? "Nicht mehr folgen" : "Match folgen")" @onclick="HandleFollowAsync"><i class="bi @(IsFollowing ? "bi-bell-fill" : "bi-bell")"></i></button>
-                        }
-                        @if (ShowToggleStartTimeLockActionItem)
-                        {
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@DisableToggleStartTimeLockActionItem" title="Startzeit sperren oder entsperren" @onclick="HandleToggleStartTimeLockAsync">@StartTimeLockGlyph</button>
-                        }
-                        @if (ShowToggleBoardLockActionItem)
-                        {
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@DisableToggleBoardLockActionItem" title="Board sperren oder entsperren" @onclick="HandleToggleBoardLockAsync">@BoardLockGlyph</button>
-                        }
-                    </div>
-                }
                 @if (ShouldShowLegs)
                 {
                     <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">L @EffectiveAwayLegs</span>
@@ -159,6 +92,7 @@
                     <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">S @EffectiveAwaySets</span>
                 }
             </div>
+            <div class="match-list-player-slot-away" style="display:contents">
             <PlayerName Name="@ResolvedAwayName"
                         HighlightWinner="@(Match.WinnerParticipantId == Match.AwayParticipantId)"
                         ShowAverage="@ShowPlayerAverage"
@@ -168,6 +102,10 @@
             {
                 <span class="badge text-bg-info flex-shrink-0" style="font-size:.65em">am Zug</span>
             }
+            </div>
+            @if (ShowListInlineActions)
+            {
+            <div class="match-list-actions-slot" style="display:contents">
             @if (ShowAnyActionButtons && ShowListInlineActions && UseActionMenu)
             {
                 <div class="dropdown flex-shrink-0" @onclick:stopPropagation="true">
@@ -239,6 +177,9 @@
                     }
                 </div>
             }
+            </div>
+            }
+            <div class="match-list-trailing-meta" style="display:contents">
             @if (!string.IsNullOrWhiteSpace(ResolvedBoardName))
             {
                 @if (ShouldShowListBoardLockOverlay)
@@ -279,10 +220,11 @@
             {
                 <span class="badge @MatchStatusBadgeClass flex-shrink-0">@Match.Status</span>
             }
+            </div>
         </div>
         @if (ShowAnyActionButtons && !ShowListInlineActions && UseActionMenu)
         {
-            <div class="match-card-list-actions" @onclick:stopPropagation="true">
+            <div class="match-card-list-actions match-list-actions-slot" @onclick:stopPropagation="true">
                 <div class="dropdown">
                     <button type="button" class="btn btn-outline-secondary btn-sm match-action-menu-button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Match-Aktionen oeffnen" title="Aktionen">
                         <span class="match-action-menu-glyph" aria-hidden="true">⋮</span>
@@ -322,7 +264,7 @@
         }
         @if (ShowAnyActionButtons && !ShowListInlineActions && !UseActionMenu)
         {
-            <div class="match-card-list-actions d-flex flex-wrap align-items-center gap-1" @onclick:stopPropagation="true">
+            <div class="match-card-list-actions match-list-actions-slot d-flex flex-wrap align-items-center gap-1" @onclick:stopPropagation="true">
                 @if (ShowStartMatchActionItem)
                 {
                     <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@DisableStartMatchActionItem" title="Match starten" aria-label="Match starten" @onclick="HandleStartMatchAsync"><span aria-hidden="true">▶</span></button>
@@ -358,7 +300,7 @@
     {
     @if (!ResolvedSuppressHeader && ShowHeaderSection)
     {
-        <div class="card-header py-1 px-3 d-flex align-items-center gap-2 overflow-hidden @(ResolvedEmbedHeader ? "border-0 bg-transparent pb-0" : string.Empty)">
+        <div class="card-header py-1 px-3 d-flex align-items-center gap-2 @(ResolvedEmbedHeader ? "border-0 bg-transparent pb-0" : string.Empty)">
             @if (ShowHeaderTitleLine)
             {
                 <span class="fw-semibold small text-nowrap flex-shrink-0" style="overflow:hidden;text-overflow:ellipsis;max-width:50%">@HeaderTitleLine</span>
@@ -428,11 +370,11 @@
                         }
                         @if (ResolvedShowHeaderMatchStatus)
                         {
-                            <span class="badge @MatchStatusBadgeClass">@Match.Status</span>
+                            <span class="badge @MatchStatusBadgeClass" title="@MatchStatusTooltipText">@Match.Status</span>
                         }
                         @if (ResolvedShowHeaderLiveBadge && IsRunning)
                         {
-                            <span class="badge text-bg-info">Live</span>
+                            <span class="badge text-bg-info" title="Live-Match: Werte werden in Echtzeit aktualisiert">Live</span>
                         }
                         @if (ResolvedShowMonitoringStatus && !string.IsNullOrWhiteSpace(MonitoringStatusText))
                         {
@@ -2066,6 +2008,18 @@
     }
 
     private string MatchStatusBadgeClass => MatchStatusToBadgeCss(Match.Status, Match.SchedulingStatus, Match.DelayMinutes);
+
+    private string MatchStatusTooltipText => (Match.Status ?? string.Empty) switch
+    {
+        "Aktiv" => "Aktiv: Match laeuft gerade",
+        "Gestartet" => "Aktiv: Match laeuft gerade",
+        "Geplant" => "Geplant: Match ist eingeplant",
+        "Warten" => "Warten: Wartet auf Spieler oder Board",
+        "Beendet" => "Beendet: Match wurde abgeschlossen",
+        "Erstellt" => "Erstellt: Match wurde erstellt",
+        "WalkOver" => "WalkOver: Match wurde nicht gespielt",
+        _ => Match.Status ?? string.Empty
+    };
 
     private string ResolveScoreStatusChipClass()
     {
