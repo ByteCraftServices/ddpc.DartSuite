@@ -1,0 +1,282 @@
+@page "/infowall"
+@page "/infowall/{BoardId}"
+@using ddpc.DartSuite.Application.Contracts.Boards
+@using ddpc.DartSuite.Application.Contracts.Matches
+@using ddpc.DartSuite.Web.Components
+@inject DartSuiteApiService Api
+@inject AppStateService AppState
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@implements IAsyncDisposable
+
+<PageTitle>Live Preview — Infowall</PageTitle>
+
+@if (selectedBoard is null)
+{
+    <div class="container-fluid p-4">
+        <h2>&#x26A1; Live Preview — Infowall</h2>
+        <p class="text-muted">Wählen Sie ein Board aus, um den Live-Kamerastream mit Live-Scoring-Overlay zu starten.</p>
+
+        @if (allBoards.Count == 0)
+        {
+            <div class="alert alert-warning">Keine Boards verfügbar. Stellen Sie sicher, dass Boards einer IP-Adresse zugeordnet sind.</div>
+        }
+        else
+        {
+            var boardsWithIp = allBoards.Where(b => !string.IsNullOrWhiteSpace(b.LocalIpAddress)).ToList();
+            @if (boardsWithIp.Count == 0)
+            {
+                <div class="alert alert-info">
+                    Keine Boards mit lokaler IP-Adresse konfiguriert. Bitte im Boards-Bereich eine IP-Adresse eintragen.
+                </div>
+            }
+            else
+            {
+                <div class="row g-3">
+                    @foreach (var board in boardsWithIp)
+                    {
+                        var b = board;
+                        <div class="col-md-4 col-lg-3">
+                            <div class="card shadow-sm infowall-board-card" role="button" tabindex="0"
+                                 @onclick="@(() => SelectBoardAsync(b))"
+                                 @onkeydown="@((e) => OnCardKeyDown(e, b))">
+                                <div class="card-body">
+                                    <h5 class="card-title">@b.Name</h5>
+                                    <p class="card-text text-muted small">IP: @b.LocalIpAddress</p>
+                                    <span class="badge @GetBoardStatusClass(b.OverallStatus)">@b.OverallStatus</span>
+                                    @if (b.CurrentMatchLabel is not null)
+                                    {
+                                        <div class="mt-1 small">&#x1F3AF; @b.CurrentMatchLabel</div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+}
+else
+{
+    <div id="infowall-container" style="position:relative;width:100vw;height:100vh;background:#000;overflow:hidden;cursor:none">
+        <img id="cam-stream"
+             src="@currentCamUrl"
+             alt="Live Kamerastream"
+             style="width:100%;height:100%;object-fit:contain;display:block" />
+
+        @if (activeMatch is not null)
+        {
+            <div class="infowall-match-overlay" aria-label="Live-Scoring">
+                <MatchCard Match="activeMatch"
+                           Layout="List"
+                           SuppressHeader="true"
+                           LiveScoreEnabled="true"
+                           SetModeActive="@(activeMatch.HomeSets > 0 || activeMatch.AwaySets > 0)"
+                           PlayerNameMode="NameAndPpr"
+                           CanSync="false"
+                           CanStartMatch="false"
+                           CanResetMatch="false"
+                           CanStartListener="false"
+                           CanFollow="false"
+                           CanToggleStartTimeLock="false"
+                           CanToggleBoardLock="false" />
+            </div>
+        }
+
+        <div id="infowall-controls" class="infowall-controls">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="badge text-bg-light">&#x1F4F9; @selectedBoard.Name</span>
+                @for (int camI = 0; camI < 3; camI++)
+                {
+                    var idx = camI;
+                    <button type="button"
+                            class="btn btn-sm @(activeCamIndex == idx ? "btn-warning" : "btn-outline-light")"
+                            title="@($"Kamera {idx + 1}")"
+                            @onclick="@(() => SwitchCameraAsync(idx))">
+                        Cam @(idx + 1)
+                    </button>
+                }
+                <button type="button" class="btn btn-sm btn-outline-danger ms-2" @onclick="ExitInfowallAsync" title="Infowall beenden">&#x2715;</button>
+            </div>
+            <div class="small text-white-50 mt-1">
+                Auto-Cam: @(autoCamEnabled ? "AN" : "AUS")
+                <button type="button" class="btn btn-link btn-sm text-white-50 p-0 ms-1" @onclick="ToggleAutoCam">umschalten</button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(wsError))
+        {
+            <div class="infowall-ws-error">&#x26A0; WS: @wsError</div>
+        }
+    </div>
+}
+
+<style>
+    .infowall-board-card {
+        cursor: pointer;
+        transition: transform .15s, box-shadow .15s;
+    }
+    .infowall-board-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,.15) !important;
+    }
+    .infowall-match-overlay {
+        position: absolute;
+        bottom: 24px;
+        right: 24px;
+        min-width: 280px;
+        max-width: 380px;
+        background: rgba(10,10,10,.82);
+        border-radius: 8px;
+        padding: 8px 12px;
+        color: #fff;
+        backdrop-filter: blur(4px);
+        border: 1px solid rgba(255,255,255,.12);
+    }
+    .infowall-controls {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        background: rgba(0,0,0,.6);
+        padding: 8px 12px;
+        border-radius: 6px;
+        color: #fff;
+        opacity: 0;
+        transition: opacity .3s;
+    }
+    #infowall-container:hover .infowall-controls {
+        opacity: 1;
+    }
+    .infowall-ws-error {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: rgba(180,30,30,.85);
+        color: #fff;
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+    }
+</style>
+
+@code {
+    [Parameter] public string? BoardId { get; set; }
+
+    private List<BoardDto> allBoards = [];
+    private BoardDto? selectedBoard;
+    private MatchDto? activeMatch;
+
+    private int activeCamIndex;
+    private string currentCamUrl = "";
+    private bool autoCamEnabled = true;
+    private string wsError = "";
+
+    private DotNetObjectReference<Infowall>? dotNetRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { allBoards = (await Api.GetBoardsAsync()).ToList(); }
+        catch { /* API offline */ }
+
+        if (!string.IsNullOrWhiteSpace(BoardId) && Guid.TryParse(BoardId, out var bid))
+        {
+            var board = allBoards.FirstOrDefault(b => b.Id == bid);
+            if (board is not null) await SelectBoardAsync(board);
+        }
+    }
+
+    private async Task OnCardKeyDown(KeyboardEventArgs e, BoardDto board)
+    {
+        if (e.Key is "Enter" or " ")
+            await SelectBoardAsync(board);
+    }
+
+    private async Task SelectBoardAsync(BoardDto board)
+    {
+        selectedBoard = board;
+        activeCamIndex = 0;
+        UpdateCamUrl();
+        Nav.NavigateTo($"/infowall/{board.Id}", replace: true);
+        await LoadActiveMatchAsync();
+        await StartWsEventListenerAsync();
+        StateHasChanged();
+    }
+
+    private void UpdateCamUrl()
+    {
+        if (selectedBoard?.LocalIpAddress is null) return;
+        currentCamUrl = $"http://{selectedBoard.LocalIpAddress}:3180/api/streams/cams/{activeCamIndex}";
+    }
+
+    private Task SwitchCameraAsync(int camIndex)
+    {
+        if (activeCamIndex == camIndex) return Task.CompletedTask;
+        activeCamIndex = camIndex;
+        UpdateCamUrl();
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private void ToggleAutoCam() { autoCamEnabled = !autoCamEnabled; StateHasChanged(); }
+
+    [JSInvokable("OnThrowEvent")]
+    public async Task OnThrowEventAsync(int suggestedCamIndex)
+    {
+        if (!autoCamEnabled) return;
+        if (suggestedCamIndex < 0 || suggestedCamIndex >= 3) return;
+        await InvokeAsync(() => SwitchCameraAsync(suggestedCamIndex));
+    }
+
+    [JSInvokable("OnWsError")]
+    public void OnWsError(string message)
+    {
+        wsError = message;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task StartWsEventListenerAsync()
+    {
+        if (selectedBoard?.LocalIpAddress is null) return;
+        try
+        {
+            dotNetRef ??= DotNetObjectReference.Create(this);
+            var wsUrl = $"ws://{selectedBoard.LocalIpAddress}:3180/api/events";
+            await JS.InvokeVoidAsync("InfowallInterop.startEventListener", wsUrl, dotNetRef);
+        }
+        catch (Exception ex) { wsError = ex.Message; }
+    }
+
+    private async Task LoadActiveMatchAsync()
+    {
+        if (selectedBoard?.CurrentMatchId is null || AppState.SelectedTournament is null) return;
+        try
+        {
+            var matches = await Api.GetMatchesAsync(AppState.SelectedTournament.Id);
+            activeMatch = matches.FirstOrDefault(m => m.Id == selectedBoard.CurrentMatchId);
+        }
+        catch { /* API offline */ }
+    }
+
+    private async Task ExitInfowallAsync()
+    {
+        try { await JS.InvokeVoidAsync("InfowallInterop.stopEventListener"); } catch { }
+        selectedBoard = null;
+        activeMatch = null;
+        Nav.NavigateTo("/infowall", replace: true);
+        StateHasChanged();
+    }
+
+    private static string GetBoardStatusClass(string status) => status switch
+    {
+        "Ok" => "text-bg-success",
+        "Warning" => "text-bg-warning",
+        _ => "text-bg-danger"
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("InfowallInterop.stopEventListener"); } catch { }
+        dotNetRef?.Dispose();
+    }
+}
