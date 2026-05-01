@@ -963,6 +963,17 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         var startDateTime = tournament.StartDate.ToDateTime(tournament.StartTime.Value);
         var startUtc = ConvertLocalWallTimeToUtc(startDateTime, TimeZoneInfo.Local);
 
+        if (tournament.Variant == TournamentVariant.Online)
+        {
+            OnlineSchedulingStrategy.Schedule(matches, rounds, startUtc);
+
+            foreach (var match in matches.Where(m => m.Status != MatchStatus.WalkOver))
+                match.RecomputeStatus();
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return await GetMatchesAsync(tournamentId, cancellationToken);
+        }
+
         if (boards.Count == 0)
             return await GetMatchesAsync(tournamentId, cancellationToken);
 

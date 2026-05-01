@@ -29,7 +29,8 @@ public sealed class ScheduleGenerationTests
             OrganizerAccount = "manager",
             StartDate = DateOnly.FromDateTime(DateTime.Today),
             EndDate = DateOnly.FromDateTime(DateTime.Today),
-            StartTime = new TimeOnly(18, 0)
+            StartTime = new TimeOnly(18, 0),
+            Variant = TournamentVariant.OnSite
         });
 
         var boards = new[]
@@ -96,7 +97,8 @@ public sealed class ScheduleGenerationTests
             OrganizerAccount = "manager",
             StartDate = DateOnly.FromDateTime(DateTime.Today),
             EndDate = DateOnly.FromDateTime(DateTime.Today),
-            StartTime = new TimeOnly(18, 0)
+            StartTime = new TimeOnly(18, 0),
+            Variant = TournamentVariant.OnSite
         });
 
         db.Boards.Add(new Board { Id = boardId, ExternalBoardId = "b1", Name = "Board 1", TournamentId = tournamentId });
@@ -156,7 +158,8 @@ public sealed class ScheduleGenerationTests
             OrganizerAccount = "manager",
             StartDate = DateOnly.FromDateTime(DateTime.Today),
             EndDate = DateOnly.FromDateTime(DateTime.Today),
-            StartTime = new TimeOnly(18, 0)
+            StartTime = new TimeOnly(18, 0),
+            Variant = TournamentVariant.OnSite
         });
         db.Boards.AddRange(boardA, boardB);
 
