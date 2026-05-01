@@ -488,6 +488,20 @@ async function transferSelectedBoards() {
         return;
     }
 
+    // DS-074: Confirmation dialog before adding new boards
+    const newBoards = Array.from(checked).filter(cb => {
+        const statusEl = cb.closest(".checkbox-row")?.nextElementSibling?.querySelector(".board-status");
+        return statusEl?.textContent?.includes("Neu");
+    });
+    const boardNames = Array.from(checked).map(cb => cb.dataset.boardName || cb.dataset.boardExtId).join(", ");
+    const newBoardsHint = newBoards.length > 0
+        ? `\n\nHinweis: ${newBoards.length} Board(s) werden neu in DartSuite registriert.`
+        : "";
+    const confirmed = window.confirm(
+        `Folgende Boards dem Turnier „${currentTournament.name}" zuordnen?\n\n${boardNames}${newBoardsHint}`
+    );
+    if (!confirmed) return;
+
     const apiBaseUrl = getApiBaseUrl();
     let transferred = 0;
     let failed = 0;
@@ -767,16 +781,25 @@ async function loadActiveBoardOptions() {
         return;
     }
 
+    // DS-074: Only show boards assigned to the active tournament for clarity.
+    // Boards not yet in the tournament are shown in the Boards tab for transfer.
+    const tournamentBoards = availableBoards.filter(board => {
+        const dsBoard = extToDsMap.get(board.id);
+        return dsBoard && dsBoard.tournamentId === tournamentId;
+    });
+
+    const selectableBoards = tournamentBoards.length > 0 ? tournamentBoards : availableBoards;
     boardSelect.disabled = false;
     boardSelect.innerHTML = '<option value="">Board wählen...</option>';
-    for (const board of availableBoards) {
+    for (const board of selectableBoards) {
         const dsBoard = extToDsMap.get(board.id);
         const inTournament = dsBoard.tournamentId === tournamentId;
         const opt = document.createElement("option");
         opt.value = dsBoard.id;
         opt.dataset.name = dsBoard.name || board.name || board.id;
         opt.dataset.externalId = board.id;
-        opt.textContent = (board.name || board.id) + (inTournament ? "" : " (nicht im Turnier)");
+        // DS-074: Only append "(nicht im Turnier)" when no tournament boards available as fallback
+        opt.textContent = (board.name || board.id) + (!inTournament && tournamentBoards.length === 0 ? " (nicht im Turnier)" : "");
         boardSelect.appendChild(opt);
     }
 

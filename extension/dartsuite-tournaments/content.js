@@ -73,8 +73,31 @@ function sanitizeOptionsForLog(options) {
 function refreshStatusPresentation() {
     updateInfoBarStatusTag();
     refreshInfoBarVisibility();
+    refreshPanelVisibilityDuringMatch();
     if (debugModeEnabled) {
         showStatusToast(currentDstStatus, currentMatchStatus);
+    }
+}
+
+/**
+ * Auto-minimizes the DartSuite panel when a match starts ("playing" state) so the
+ * Autodarts game screen is fully visible. Restores it when the match ends.
+ * Issue #74: "Keine Panels/Overlays während eines laufenden Matches."
+ */
+function refreshPanelVisibilityDuringMatch() {
+    const panel = document.getElementById("dartsuite-panel");
+    if (!panel) return;
+
+    if (currentMatchStatus === "playing") {
+        // Minimize panel if not already minimized so Autodarts screen is unobstructed
+        if (panel.dataset.minimized !== "true") {
+            minimizeDartSuitePanel();
+            panel.dataset.autoMinimized = "true";
+        }
+    } else if (panel.dataset.autoMinimized === "true") {
+        // Restore panel when match ends (only if we were the one who minimized it)
+        delete panel.dataset.autoMinimized;
+        restoreDartSuitePanel();
     }
 }
 
