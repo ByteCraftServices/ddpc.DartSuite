@@ -34,7 +34,8 @@
 			"Out-Null": true,
 			"git fetch": true,
 			"git rev-parse": true,
-			"git stash": true
+			"git stash": true,
+			"git merge": true
 		},
 		"chat.agent.maxRequests": 100,
 		"workbench.browser.enableChatTools": true
