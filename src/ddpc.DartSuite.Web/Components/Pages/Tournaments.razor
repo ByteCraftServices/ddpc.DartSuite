@@ -18,7 +18,7 @@
             }
             <div class="dropdown @(showPageSettingsDropdown ? "show" : "")">
                 <button class="btn btn-outline-secondary" type="button" @onclick="() => showPageSettingsDropdown = !showPageSettingsDropdown" title="Seiteneinstellungen">⋮</button>
-                <ul class="dropdown-menu dropdown-menu-end @(showPageSettingsDropdown ? "show" : "")" style="right: 0; left: auto;">
+                <ul class="dropdown-menu dropdown-menu-end ds-dropdown-end-auto @(showPageSettingsDropdown ? "show" : "")">
                     <li><button class="dropdown-item" @onclick="() => { showPageSettingsDropdown = false; showPageSettingsModal = true; }">Einstellungen</button></li>
                 </ul>
             </div>
@@ -36,7 +36,7 @@
 @if (showLegacyMatchCardPanel) /* matchcard-panel moved to page settings modal */
 {
     <details id="section-tournaments-matchcard-config" class="card shadow-sm mb-3" open>
-        <summary class="card-header d-flex justify-content-between align-items-center" style="cursor:pointer">
+        <summary class="card-header d-flex justify-content-between align-items-center ds-clickable">
             <span class="fw-semibold">MatchCard Konfiguration</span>
             <a href="/settings?tab=general&edit=matchcard&scope=@activeMatchCardConfigScopeKey"
                class="btn btn-outline-secondary btn-sm"
@@ -238,7 +238,7 @@
 @* ─── Confirmation Modal ─── *@
 @if (showConfirmation)
 {
-    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+    <div class="modal d-block ds-modal-overlay" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header bg-warning">
@@ -263,7 +263,7 @@
 
 @if (showInactiveActionInfoModal)
 {
-    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="CloseInactiveActionInfo">
+    <div class="modal d-block ds-modal-overlay" tabindex="-1" @onclick="CloseInactiveActionInfo">
         <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation>
             <div class="modal-content">
                 <div class="modal-header bg-info-subtle">
@@ -284,7 +284,7 @@
 @* ─── Registration-Draw Confirmation Modal ─── *@
 @if (showRegistrationDrawConfirmation)
 {
-    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+    <div class="modal d-block ds-modal-overlay" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header bg-warning">
@@ -313,7 +313,7 @@
         var gameplayText = FormatGameplay(detailMatch);
         var matchListener = matchListeners.FirstOrDefault(l => l.MatchId == detailMatch.Id);
         var showManualResultEditor = !(detailMatchOpenedFromSchedule && IsMatchMonitored(detailMatch));
-        <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="CloseMatchDetail">
+        <div class="modal d-block ds-modal-overlay" tabindex="-1" @onclick="CloseMatchDetail">
             <div class="modal-dialog modal-lg modal-dialog-centered" @onclick:stopPropagation>
                 <div class="modal-content">
                     <div class="modal-header">
@@ -433,7 +433,7 @@
                                         }
                                         @if (assignedBoard is not null)
                                         {
-                                            <p class="small">📋 Board: <strong role="button" style="cursor:pointer;text-decoration:underline dotted" @onclick="() => { var m = detailMatch; var fromSchedule = detailMatchOpenedFromSchedule; _modalBackStack.Push(() => OpenMatchDetail(m!, fromSchedule)); CloseMatchDetail(); OpenBoardDetail(assignedBoard); }">@assignedBoard.Name</strong>
+                                            <p class="small">📋 Board: <strong role="button" class="ds-link-dotted" @onclick="() => { var m = detailMatch; var fromSchedule = detailMatchOpenedFromSchedule; _modalBackStack.Push(() => OpenMatchDetail(m!, fromSchedule)); CloseMatchDetail(); OpenBoardDetail(assignedBoard); }">@assignedBoard.Name</strong>
                                                 @if (detailMatch.IsBoardLocked) { <span class="text-primary fw-semibold ms-1">🔒 Gesperrt</span> }</p>
                                             @if (gameplayText is not null)
                                             {
@@ -631,7 +631,7 @@
                             @* ─── Participant Edit Modal ─── *@
                             @if (editingParticipant is not null)
                             {
-                                <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+                                <div class="modal d-block ds-modal-overlay" tabindex="-1">
                                     <div class="modal-dialog modal-dialog-centered">
                                         <div class="modal-content">
                                             <div class="modal-header">
@@ -675,7 +675,7 @@
                             @* ─── Player Detail Modal ─── *@
                             @if (detailParticipant is not null)
                             {
-                                <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="() => detailParticipant = null">
+                                <div class="modal d-block ds-modal-overlay" tabindex="-1" @onclick="() => detailParticipant = null">
                                     <div class="modal-dialog modal-lg modal-dialog-centered" @onclick:stopPropagation>
                                         <div class="modal-content">
                                             <div class="modal-header">
@@ -847,14 +847,14 @@
                                         <ul class="list-group mb-3">
                                             @foreach (var t in ActiveTournaments)
                                             {
-                                                <li class="list-group-item list-group-item-action @(selectedTournament?.Id == t.Id ? "active" : "")"
-                                                    style="cursor:pointer" @onclick="() => SelectTournamentAsync(t)">
+                                                <li class="list-group-item list-group-item-action ds-clickable @(selectedTournament?.Id == t.Id ? "active" : "")"
+                                                    @onclick="() => SelectTournamentAsync(t)">
                                                     <div class="d-flex justify-content-between align-items-center">
                                                         <span class="list-group-item-name" title="@t.Name">
                                                             @t.Name
                                                             @if (!string.IsNullOrEmpty(t.JoinCode))
                                                             {
-                                                                <span class="badge text-bg-primary font-monospace" style="font-size:0.65rem">@t.JoinCode</span>
+                                                                <span class="badge text-bg-primary font-monospace badge-xs">@t.JoinCode</span>
                                                             }
                                                             @if (t.IsLocked)
                                                             {
@@ -874,8 +874,8 @@
                                         <ul class="list-group mb-3">
                                             @foreach (var t in UpcomingTournaments)
                                             {
-                                                <li class="list-group-item list-group-item-action @(selectedTournament?.Id == t.Id ? "active" : "")"
-                                                    style="cursor:pointer" @onclick="() => SelectTournamentAsync(t)">
+                                                <li class="list-group-item list-group-item-action ds-clickable @(selectedTournament?.Id == t.Id ? "active" : "")"
+                                                    @onclick="() => SelectTournamentAsync(t)">
                                                     <div class="d-flex justify-content-between align-items-center">
                                                         <span class="list-group-item-name" title="@t.Name">
                                                             @t.Name
@@ -897,8 +897,8 @@
                                         <ul class="list-group mb-3">
                                             @foreach (var t in PastTournaments)
                                             {
-                                                <li class="list-group-item list-group-item-action @(selectedTournament?.Id == t.Id ? "active" : "")"
-                                                    style="cursor:pointer" @onclick="() => SelectTournamentAsync(t)">
+                                                <li class="list-group-item list-group-item-action ds-clickable @(selectedTournament?.Id == t.Id ? "active" : "")"
+                                                    @onclick="() => SelectTournamentAsync(t)">
                                                     <div class="d-flex justify-content-between align-items-center">
                                                         <span class="list-group-item-name" title="@t.Name">@t.Name</span>
                                                         <span
@@ -1060,7 +1060,7 @@
                                                                                                         @foreach (var board in boards)
                                                                                                         {
                                                                                                             <tr>
-                                                                                                                <td><span role="button" @onclick="() => OpenBoardDetail(board)" class="text-decoration-none fw-semibold" style="cursor:pointer">@board.Name</span></td>
+                                                                                                                <td><span role="button" @onclick="() => OpenBoardDetail(board)" class="text-decoration-none fw-semibold ds-clickable">@board.Name</span></td>
                                                                                                                 <td><span class="badge @BoardStatusBadge(board.Status)">@board.Status</span></td>
                                                                                                                 <td>
                                                                                                                     @if (!string.IsNullOrEmpty(board.CurrentMatchLabel))
@@ -1070,7 +1070,7 @@
                                                                                                                             : null;
                                                                                                                         @if (boardMatch is not null)
                                                                                                                         {
-                                                                                                                            <span role="button" class="text-primary fw-semibold" style="cursor:pointer;text-decoration:underline dotted"
+                                                                                                                            <span role="button" class="text-primary fw-semibold ds-link-dotted"
                                                                                                                                   @onclick="() => OpenMatchDetail(boardMatch)"><span class="autodarts-icon"></span> @board.CurrentMatchLabel</span>
                                                                                                                         }
                                                                                                                         else
@@ -1224,7 +1224,7 @@
                                                                                             <h6 class="fw-semibold mb-2">@(IsTeamplayActive ? "Spielerpool" : "Teilnehmer") <span class="badge text-bg-secondary">@EffectivePlayerCount</span>
                                                                                                 @if (IsTeamplayActive && AppState.IsAdmin)
                                                                                                 {
-                                                                                                    <button class="btn btn-sm @(showAdminTeamMembers ? "btn-info" : "btn-outline-secondary") ms-2" style="font-size:0.75em"
+                                                                                                    <button class="btn btn-sm @(showAdminTeamMembers ? "btn-info" : "btn-outline-secondary") ms-2 ds-btn-xs"
                                                                                                             @onclick="() => showAdminTeamMembers = !showAdminTeamMembers"
                                                                                                             title="TeamMember-Einträge einblenden">Teams anzeigen</button>
                                                                                                 }
@@ -1267,11 +1267,11 @@
                                                                                                                             {
                                                                                                                                 @if (isSeedTarget)
                                                                                                                                 {
-                                                                                                                                    <span class="badge text-bg-warning" style="min-width:34px; cursor:grab" title="Setzlistenrang — per Drag & Drop ändern">#@p.Seed</span>
+                                                                                                                                    <span class="badge text-bg-warning seed-badge-editable" title="Setzlistenrang — per Drag & Drop ändern">#@p.Seed</span>
                                                                                                                                 }
                                                                                                                                 else
                                                                                                                                 {
-                                                                                                                                    <span class="badge text-bg-light text-muted border" style="min-width:34px">@(p.Seed > 0 ? $"#{p.Seed}" : "—")</span>
+                                                                                                                                    <span class="badge text-bg-light text-muted border seed-badge">@(p.Seed > 0 ? $"#{p.Seed}" : "—")</span>
                                                                                                                                 }
                                                                                                                             }
                                                                                                                             @if (editGroupDrawMode == "SeededPots" && p.SeedPot > 0)
@@ -1282,7 +1282,7 @@
                                                                                                                             {
                                                                                                                                 <span class="autodarts-icon d-xl-none" title="Autodarts"></span>
                                                                                                                             }
-                                                                                                                            <span role="button" style="cursor:pointer;text-decoration:underline dotted" @onclick="() => OpenPlayerDetail(p.Id)">@p.DisplayName.ToUpperInvariant()</span>
+                                                                                                                            <span role="button" class="ds-link-dotted" @onclick="() => OpenPlayerDetail(p.Id)">@p.DisplayName.ToUpperInvariant()</span>
                                                                                                                             @if (p.IsManager)
                                                                                                                             {
                                                                                                                                 <span class="badge text-bg-warning">Spielleiter</span>
@@ -1370,7 +1370,7 @@
                                                                                                                @onfocusout="() => { Task.Delay(200).ContinueWith(_ => InvokeAsync(() => { showParticipantSuggestions = false; StateHasChanged(); })); }" />
                                                                                                         @if (showParticipantSuggestions && participantSuggestions.Any())
                                                                                                         {
-                                                                                                            <div class="list-group position-absolute w-100 shadow-sm" style="z-index:1050; max-height:200px; overflow-y:auto; top:100%">
+                                                                                                            <div class="list-group position-absolute w-100 shadow-sm ds-autocomplete-dropdown">
                                                                                                                 @foreach (var s in participantSuggestions)
                                                                                                                 {
                                                                                                                     <button type="button"
@@ -1440,7 +1440,7 @@
                                                                                                 <button class="btn btn-sm btn-outline-warning" @onclick="ResetTeamDraftLocal" disabled="@(isWorking || isDrawAnimating || !CanEditTournamentStructure || IsRegistrationOpen)">↩ Entwurf leeren</button>
                                                                                                 <div class="d-flex align-items-center gap-2 ms-auto">
                                                                                                     <label class="small text-muted mb-0">Animation</label>
-                                                                                                    <select class="form-select form-select-sm" style="width:140px" @bind="drawAnimationMode" disabled="@(isWorking || isDrawAnimating)">
+                                                                                                    <select class="form-select form-select-sm ds-select-narrow" @bind="drawAnimationMode" disabled="@(isWorking || isDrawAnimating)">
                                                                                                         <option value="Off">Aus</option>
                                                                                                         <option value="Exciting">Spannend</option>
                                                                                                         <option value="Moderate">Moderat</option>
@@ -1471,7 +1471,7 @@
                                                                                                         <div class="card-body p-2 team-unassigned-body">
                                                                                                             @foreach (var p in TeamDraftUnassignedParticipants)
                                                                                                             {
-                                                                                                                <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(p.Id) @(IsSelectedTeamParticipant(p.Id) ? "team-draft-pick-active" : string.Empty)" draggable="@(CanEditTournamentStructure ? "true" : "false")" @ondragstart="() => StartTeamParticipantDrag(p.Id)" @onclick="() => SelectTeamParticipant(p.Id)" @onclick:stopPropagation style="cursor:grab; font-size:.85em">
+                                                                                                                <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(p.Id) @(IsSelectedTeamParticipant(p.Id) ? "team-draft-pick-active" : string.Empty) ds-drag-badge" draggable="@(CanEditTournamentStructure ? "true" : "false")" @ondragstart="() => StartTeamParticipantDrag(p.Id)" @onclick="() => SelectTeamParticipant(p.Id)" @onclick:stopPropagation>
                                                                                                                     @p.DisplayName.ToUpperInvariant()
                                                                                                                 </div>
                                                                                                             }
@@ -1487,7 +1487,7 @@
                                                                                                         <div class="card-body p-2 team-unassigned-body">
                                                                                                             @foreach (var p in TeamDraftUnassignedParticipants)
                                                                                                             {
-                                                                                                                <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(p.Id) @(IsSelectedTeamParticipant(p.Id) ? "team-draft-pick-active" : string.Empty)" draggable="@(CanEditTournamentStructure ? "true" : "false")" @ondragstart="() => StartTeamParticipantDrag(p.Id)" @onclick="() => SelectTeamParticipant(p.Id)" @onclick:stopPropagation style="cursor:grab; font-size:.85em">
+                                                                                                                <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(p.Id) @(IsSelectedTeamParticipant(p.Id) ? "team-draft-pick-active" : string.Empty) ds-drag-badge" draggable="@(CanEditTournamentStructure ? "true" : "false")" @ondragstart="() => StartTeamParticipantDrag(p.Id)" @onclick="() => SelectTeamParticipant(p.Id)" @onclick:stopPropagation>
                                                                                                                     @p.DisplayName.ToUpperInvariant()
                                                                                                                 </div>
                                                                                                             }
@@ -1535,8 +1535,7 @@
                                                                                                                                 @if (editingTeamNameIndex == idx)
                                                                                                                                 {
                                                                                                                                     <input id="@TeamNameEditInputId(idx)"
-                                                                                                                                       class="form-control form-control-sm team-name-edit-input"
-                                                                                                                                       style="max-width:220px"
+                                                                                                                                       class="form-control form-control-sm team-name-edit-input ds-team-name-max"
                                                                                                                                        @bind="editingTeamNameValue"
                                                                                                                                        @bind:event="oninput"
                                                                                                                                        @onkeydown="async (e) => await HandleTeamNameEditKeyDownAsync(idx, e)"
@@ -1544,7 +1543,7 @@
                                                                                                                                 }
                                                                                                                             else
                                                                                                                             {
-                                                                                                                                <strong class="small text-truncate team-name-editable" style="max-width:220px" title="@TeamDraftNameHint(team)" @onclick="() => BeginTeamNameEdit(idx)">@TeamDraftDisplayName(team, idx)</strong>
+                                                                                                                                <strong class="small text-truncate team-name-editable ds-team-name-max" title="@TeamDraftNameHint(team)" @onclick="() => BeginTeamNameEdit(idx)">@TeamDraftDisplayName(team, idx)</strong>
                                                                                                                                 <span class="team-name-actions d-none d-md-inline-flex">
                                                                                                                                     <button class="btn btn-sm btn-link p-0 text-muted" title="Teamnamen bearbeiten" @onclick="() => BeginTeamNameEdit(idx)" @onclick:stopPropagation disabled="@(isWorking || !CanEditTournamentStructure)">✎</button>
                                                                                                                                     <button class="btn btn-sm btn-link p-0 text-muted ms-1" title="Namen automatisch aus Mitgliedern erzeugen" @onclick="async () => await ResetTeamDraftNameToAutoAsync(idx)" @onclick:stopPropagation disabled="@(isWorking || !CanEditTournamentStructure)">↺</button>
@@ -1581,12 +1580,12 @@
                                                                                                                         </div>
                                                                                                                     </div>
                                                                                                                     <div class="card-body p-2">
-                                                                                                                        <div class="team-slot-area @(selectedTeamParticipantId is not null && !IsTeamFull(idx) ? "team-slot-area-clickable" : string.Empty)" style="min-height:64px" @onclick="async () => await AssignSelectedParticipantToTeamAsync(idx)">
+                                                                                                                        <div class="team-slot-area @(selectedTeamParticipantId is not null && !IsTeamFull(idx) ? "team-slot-area-clickable" : string.Empty)" @onclick="async () => await AssignSelectedParticipantToTeamAsync(idx)">
                                                                                                                             @foreach (var member in members)
                                                                                                                             {
-                                                                                                                                <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(member.Id) @(IsSelectedTeamParticipant(member.Id) ? "team-draft-pick-active" : string.Empty)" draggable="@(CanEditTournamentStructure ? "true" : "false")" @ondragstart="() => StartTeamParticipantDrag(member.Id)" @onclick="() => SelectTeamParticipant(member.Id)" @onclick:stopPropagation style="cursor:grab; font-size:.85em">
+                                                                                                                                <div class="badge bg-dark p-2 me-1 mb-1 user-select-none @DrawParticipantAnimationCss(member.Id) @(IsSelectedTeamParticipant(member.Id) ? "team-draft-pick-active" : string.Empty) ds-drag-badge" draggable="@(CanEditTournamentStructure ? "true" : "false")" @ondragstart="() => StartTeamParticipantDrag(member.Id)" @onclick="() => SelectTeamParticipant(member.Id)" @onclick:stopPropagation>
                                                                                                                                     @member.DisplayName.ToUpperInvariant()
-                                                                                                                                    <button class="btn btn-sm p-0 ms-1 text-white-50" style="font-size:.7em; line-height:1" @onclick="async () => await RemoveParticipantFromTeamAsync(member.Id)" @onclick:stopPropagation disabled="@(isWorking || !CanEditTournamentStructure)" title="Aus Team entfernen">✕</button>
+                                                                                                                                    <button class="btn btn-sm p-0 ms-1 text-white-50 ds-remove-btn" @onclick="async () => await RemoveParticipantFromTeamAsync(member.Id)" @onclick:stopPropagation disabled="@(isWorking || !CanEditTournamentStructure)" title="Aus Team entfernen">✕</button>
                                                                                                                                 </div>
                                                                                                                             }
                                                                                                                             @if (!members.Any())
@@ -1934,7 +1933,7 @@
     var currentMatch = CurrentMatchOnBoard(detailBoard.Id);
     var upcomingOnBoard = UpcomingMatchesOnBoard(detailBoard.Id);
     var boardMatchListener = currentMatch is not null ? matchListeners.FirstOrDefault(l => l.MatchId == currentMatch.Id) : null;
-    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="CloseBoardDetailAsync">
+    <div class="modal d-block ds-modal-overlay" tabindex="-1" @onclick="CloseBoardDetailAsync">
         <div class="modal-dialog modal-lg modal-dialog-centered" @onclick:stopPropagation>
             <div class="modal-content">
                 <div class="modal-header">
@@ -1970,7 +1969,7 @@
                     @if (IsDevelopmentEnvironment)
                     {
                         <details class="card border-warning-subtle mb-3">
-                            <summary class="card-header py-2 d-flex justify-content-between align-items-center" style="cursor:pointer">
+                            <summary class="card-header py-2 d-flex justify-content-between align-items-center ds-clickable">
                                 <span class="small fw-semibold">Dev: Board Sync Debug</span>
                                 <span class="small text-muted">@(boardSyncDebug?.Matched is true ? "gematcht" : boardSyncDebug?.ReportedAtUtc is not null ? "reportet" : "eingeklappt")</span>
                             </summary>
@@ -2185,7 +2184,7 @@
 {
     var roundStarted = detailRoundGroup.Any(r => IsRoundStarted(r.Phase, r.RoundNumber));
     var roundCompleted = detailRoundGroup.Any(r => IsRoundCompleted(r.Phase, r.RoundNumber));
-    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="CloseRoundDetail">
+    <div class="modal d-block ds-modal-overlay" tabindex="-1" @onclick="CloseRoundDetail">
         <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation>
             <div class="modal-content">
                 <div class="modal-header">
@@ -2347,7 +2346,7 @@
 @* ─── Page Settings Modal ─── *@
 @if (showPageSettingsModal)
 {
-    <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="() => showPageSettingsModal = false">
+    <div class="modal d-block ds-modal-overlay" tabindex="-1" @onclick="() => showPageSettingsModal = false">
         <div class="modal-dialog modal-lg modal-dialog-centered" @onclick:stopPropagation>
             <div class="modal-content">
                 <div class="modal-header">
