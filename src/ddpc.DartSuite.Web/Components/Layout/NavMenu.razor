@@ -99,6 +99,9 @@
             <div class="nav-item nav-level-1">
                 <NavLink class="nav-link small nav-level-1-link" href="@RegisterHref" title="@UiHelp.GetTooltip("page.register")">Registrieren</NavLink>
             </div>
+            <div class="nav-item nav-level-1">
+                <NavLink class="nav-link small nav-level-1-link" href="spieler" title="@UiHelp.GetTooltip("page.spieler")">Meine Übersicht</NavLink>
+            </div>
         }
         <div class="nav-item nav-level-0 nav-group-head">
             <NavLink class="nav-link flex-grow-1" href="settings?tab=general" @onclick="OnSettingsParentClick">
@@ -477,7 +480,7 @@
         if (relative.StartsWith("settings") || relative.StartsWith("profile"))
             isSettingsExpanded = true;
 
-        if (relative.StartsWith("register") || relative.StartsWith("landing"))
+        if (relative.StartsWith("register") || relative.StartsWith("landing") || relative.StartsWith("spieler"))
             isPlayerExpanded = true;
 
         if (relative.StartsWith("boards"))
