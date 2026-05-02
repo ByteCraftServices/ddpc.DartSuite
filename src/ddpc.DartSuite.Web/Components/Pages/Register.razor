@@ -14,50 +14,122 @@
 }
 else if (activeTournament is null)
 {
-    <div class="alert alert-info">Bitte waehlen Sie ein Turnier aus oder verwenden Sie einen Link mit <code>?tournamentId=...</code>.</div>
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <h5 class="card-title">Turnier suchen</h5>
+            <p class="text-muted small">Gib entweder die vollständige Turnier-ID oder den 3-stelligen Turniercode ein.</p>
+
+            <div class="row g-2 mb-2">
+                <div class="col-md-4">
+                    <label class="form-label">Turniercode (3 Zeichen)</label>
+                    <input class="form-control text-uppercase" @bind="lookupCode" placeholder="z. B. A3X" maxlength="3"
+                           title="@UiHelp.GetTooltip("register.join-code")" />
+                </div>
+                <div class="col-md-8 d-flex align-items-end">
+                    <button class="btn btn-primary" @onclick="LookupByCodeAsync" disabled="@isWorking">Turnier laden</button>
+                </div>
+            </div>
+
+            <div class="row g-2 mb-2">
+                <div class="col-md-8">
+                    <label class="form-label">Oder direkt mit Turnier-ID</label>
+                    <input class="form-control font-monospace" @bind="lookupId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                           title="@UiHelp.GetTooltip("register.tournament-id")" />
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button class="btn btn-outline-secondary" @onclick="LookupByIdAsync" disabled="@isWorking">Laden</button>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(lookupError))
+            {
+                <div class="alert alert-danger py-2 mt-2">@lookupError</div>
+            }
+        </div>
+    </div>
 }
 else
 {
     <div class="card shadow-sm">
         <div class="card-body">
-            <h5 class="card-title">@activeTournament.Name</h5>
-            <p class="text-muted small mb-1">Die Selbstregistrierung wird ueber Turnierstatus und Registrierungsphase gesteuert.</p>
-            <p class="small text-muted mb-3">Status: <span class="badge bg-secondary">@activeTournament.Status</span></p>
+            <div class="d-flex justify-content-between align-items-start mb-1">
+                <h5 class="card-title mb-0">@activeTournament.Name</h5>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="ClearTournament">Turnier wechseln</button>
+            </div>
+            <p class="text-muted small mb-1">Veranstalter: <strong>@activeTournament.OrganizerAccount</strong></p>
+            <p class="small text-muted mb-0">Status: <span class="badge bg-secondary">@activeTournament.Status</span></p>
 
-            @if (!CanSelfRegister)
+            @if (!string.IsNullOrWhiteSpace(registrationStatusMessage))
             {
-                <div class="alert alert-warning py-2">
-                    Registrierung ist derzeit geschlossen. Austragen ist nur vor Turnierstart moeglich.
-                </div>
+                <div class="alert @registrationStatusCss py-2 mt-2 mb-0">@registrationStatusMessage</div>
             }
 
-            <div class="row g-2">
-                <div class="col-md-6">
-                    <label class="form-label">Anzeigename</label>
-                          <input class="form-control" @bind="displayName" placeholder="Name"
-                              title="@UiHelp.GetTooltip("register.display-name")" />
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">Accountname (optional bei lokalem Spieler)</label>
-                          <input class="form-control" @bind="accountName" placeholder="Autodarts Account" disabled="@(!isAutodartsAccount)"
-                              title="@UiHelp.GetTooltip("register.account-name")" />
-                </div>
-            </div>
+            @if (registrationTimeRemaining.HasValue)
+            {
+                <p class="small text-muted mt-1 mb-0">
+                    <i class="bi bi-clock me-1"></i>Registrierung offen bis: <strong>@activeTournament.RegistrationEndUtc!.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</strong>
+                    &nbsp;(noch @FormatTimeRemaining(registrationTimeRemaining.Value))
+                </p>
+            }
 
-            <div class="form-check mt-3">
-                  <input id="isAutodarts" class="form-check-input" type="checkbox" @bind="isAutodartsAccount"
-                      title="@UiHelp.GetTooltip("register.is-autodarts")" />
-                <label class="form-check-label" for="isAutodarts">Autodarts-Account verwenden</label>
-            </div>
+            @if (CanSelfRegister)
+            {
+                <hr class="my-3" />
 
-            <div class="mt-3 d-flex gap-2">
-                <button class="btn btn-primary" @onclick="RegisterAsync" disabled="@(isWorking || !CanSelfRegister)"
-                    title="@UiHelp.GetTooltip("register.submit")">Registrieren</button>
-                <button class="btn btn-outline-danger" @onclick="UnregisterAsync" disabled="@(isWorking || !CanSelfUnregister)"
-                    title="@UiHelp.GetTooltip("register.unregister")">Austragen</button>
-                <a class="btn btn-outline-secondary" href="/login">Login</a>
-                <a class="btn btn-outline-secondary" href="/profile">Profil</a>
-            </div>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label">Anzeigename <span class="text-danger">*</span></label>
+                        <input class="form-control" @bind="displayName" placeholder="Name"
+                               title="@UiHelp.GetTooltip("register.display-name")" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Accountname (optional bei lokalem Spieler)</label>
+                        <input class="form-control" @bind="accountName" placeholder="Autodarts Account" disabled="@(!isAutodartsAccount)"
+                               title="@UiHelp.GetTooltip("register.account-name")" />
+                    </div>
+                </div>
+
+                <div class="form-check mt-3">
+                    <input id="isAutodarts" class="form-check-input" type="checkbox" @bind="isAutodartsAccount"
+                           title="@UiHelp.GetTooltip("register.is-autodarts")" />
+                    <label class="form-check-label" for="isAutodarts">Autodarts-Account verwenden</label>
+                </div>
+
+                <div class="mt-3 d-flex gap-2">
+                    <button class="btn btn-primary" @onclick="RegisterAsync" disabled="@isWorking"
+                            title="@UiHelp.GetTooltip("register.submit")">Registrieren</button>
+                    <button class="btn btn-outline-danger" @onclick="UnregisterAsync" disabled="@(isWorking || !CanSelfUnregister)"
+                            title="@UiHelp.GetTooltip("register.unregister")">Austragen</button>
+                    <a class="btn btn-outline-secondary" href="/login">Login</a>
+                    <a class="btn btn-outline-secondary" href="/profile">Profil</a>
+                </div>
+            }
+            else if (CanSelfUnregister)
+            {
+                <hr class="my-3" />
+
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label">Anzeigename</label>
+                        <input class="form-control" @bind="displayName" placeholder="Name" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Accountname (optional)</label>
+                        <input class="form-control" @bind="accountName" placeholder="Autodarts Account" disabled="@(!isAutodartsAccount)" />
+                    </div>
+                </div>
+
+                <div class="form-check mt-3">
+                    <input id="isAutodartsUnreg" class="form-check-input" type="checkbox" @bind="isAutodartsAccount" />
+                    <label class="form-check-label" for="isAutodartsUnreg">Autodarts-Account verwenden</label>
+                </div>
+
+                <div class="mt-3 d-flex gap-2">
+                    <button class="btn btn-outline-danger" @onclick="UnregisterAsync" disabled="@isWorking"
+                            title="@UiHelp.GetTooltip("register.unregister")">Austragen</button>
+                    <a class="btn btn-outline-secondary" href="/login">Login</a>
+                </div>
+            }
 
             @if (!string.IsNullOrWhiteSpace(message))
             {
@@ -79,6 +151,16 @@ else
     private bool isError;
     private bool isWorking;
     private bool isLoading;
+
+    // lookup state (before tournament is chosen)
+    private string lookupCode = string.Empty;
+    private string lookupId = string.Empty;
+    private string? lookupError;
+
+    // registration time display
+    private TimeSpan? registrationTimeRemaining;
+    private string? registrationStatusMessage;
+    private string registrationStatusCss = "alert-info";
 
     private bool CanSelfRegister
         => activeTournament is not null
@@ -116,6 +198,8 @@ else
             {
                 activeTournament = AppState.SelectedTournament;
             }
+
+            UpdateRegistrationStatus();
         }
         catch (Exception ex)
         {
@@ -128,6 +212,147 @@ else
         }
     }
 
+    private void UpdateRegistrationStatus()
+    {
+        if (activeTournament is null)
+        {
+            registrationStatusMessage = null;
+            registrationTimeRemaining = null;
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        registrationTimeRemaining = null;
+
+        if (string.Equals(activeTournament.Status, "Beendet", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(activeTournament.Status, "Abgebrochen", StringComparison.OrdinalIgnoreCase))
+        {
+            registrationStatusMessage = "Dieses Turnier ist bereits beendet oder abgebrochen.";
+            registrationStatusCss = "alert-secondary";
+        }
+        else if (string.Equals(activeTournament.Status, "Gestartet", StringComparison.OrdinalIgnoreCase))
+        {
+            registrationStatusMessage = "Das Turnier hat bereits begonnen. Eine Registrierung ist nicht mehr möglich.";
+            registrationStatusCss = "alert-warning";
+        }
+        else if (!activeTournament.IsRegistrationOpen)
+        {
+            if (activeTournament.RegistrationStartUtc.HasValue && now < activeTournament.RegistrationStartUtc.Value)
+            {
+                var opensAt = activeTournament.RegistrationStartUtc.Value.ToLocalTime();
+                registrationStatusMessage = $"Registrierung noch nicht geöffnet. Öffnet am {opensAt:dd.MM.yyyy} um {opensAt:HH:mm} Uhr.";
+                registrationStatusCss = "alert-info";
+            }
+            else if (activeTournament.RegistrationEndUtc.HasValue && now > activeTournament.RegistrationEndUtc.Value)
+            {
+                var closedAt = activeTournament.RegistrationEndUtc.Value.ToLocalTime();
+                registrationStatusMessage = $"Registrierungsfrist abgelaufen (seit {closedAt:dd.MM.yyyy HH:mm} Uhr). Wende dich an den Veranstalter.";
+                registrationStatusCss = "alert-danger";
+            }
+            else
+            {
+                registrationStatusMessage = "Registrierung ist derzeit geschlossen.";
+                registrationStatusCss = "alert-warning";
+            }
+        }
+        else
+        {
+            registrationStatusMessage = null;
+            if (activeTournament.RegistrationEndUtc.HasValue && now < activeTournament.RegistrationEndUtc.Value)
+                registrationTimeRemaining = activeTournament.RegistrationEndUtc.Value - now;
+        }
+    }
+
+    private static string FormatTimeRemaining(TimeSpan span)
+    {
+        if (span.TotalDays >= 1)
+            return $"{(int)span.TotalDays}d {span.Hours}h";
+        if (span.TotalHours >= 1)
+            return $"{(int)span.TotalHours}h {span.Minutes}min";
+        return $"{span.Minutes}min";
+    }
+
+    private void ClearTournament()
+    {
+        activeTournament = null;
+        lookupCode = string.Empty;
+        lookupId = string.Empty;
+        lookupError = null;
+        message = null;
+        isError = false;
+        registrationStatusMessage = null;
+        registrationTimeRemaining = null;
+    }
+
+    private async Task LookupByCodeAsync()
+    {
+        lookupError = null;
+        var code = lookupCode.Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(code) || code.Length > 6)
+        {
+            lookupError = "Bitte einen gültigen Turniercode eingeben.";
+            return;
+        }
+
+        isWorking = true;
+        try
+        {
+            var result = await Api.GetTournamentByCodeAsync(code);
+            if (result is null)
+            {
+                lookupError = $"Kein Turnier mit Code \"{code}\" gefunden. Bitte prüfe den Code oder wende dich an den Veranstalter.";
+            }
+            else
+            {
+                activeTournament = result;
+                AppState.SetSelectedTournament(result);
+                UpdateRegistrationStatus();
+            }
+        }
+        catch (Exception ex)
+        {
+            lookupError = ex.Message;
+        }
+        finally
+        {
+            isWorking = false;
+        }
+    }
+
+    private async Task LookupByIdAsync()
+    {
+        lookupError = null;
+        if (!Guid.TryParse(lookupId.Trim(), out var id))
+        {
+            lookupError = "Ungültige Turnier-ID. Bitte die vollständige ID im Format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx eingeben.";
+            return;
+        }
+
+        isWorking = true;
+        try
+        {
+            var result = await Api.GetTournamentAsync(id);
+            if (result is null)
+            {
+                lookupError = "Kein Turnier mit dieser ID gefunden.";
+            }
+            else
+            {
+                activeTournament = result;
+                AppState.SetSelectedTournament(result);
+                UpdateRegistrationStatus();
+            }
+        }
+        catch (Exception ex)
+        {
+            lookupError = ex.Message;
+        }
+        finally
+        {
+            isWorking = false;
+        }
+    }
+
     private async Task RegisterAsync()
     {
         if (activeTournament is null)
@@ -136,11 +361,12 @@ else
         if (!CanSelfRegister)
         {
             isError = true;
-            message = "Registrierung ist aktuell nicht moeglich.";
+            message = "Registrierung ist aktuell nicht möglich.";
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(displayName))
+        var trimmedName = displayName.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedName))
         {
             isError = true;
             message = "Bitte einen Anzeigenamen eintragen.";
@@ -149,12 +375,12 @@ else
 
         var effectiveAccountName = isAutodartsAccount
             ? accountName.Trim()
-            : BuildLocalAccountName(displayName);
+            : BuildLocalAccountName(trimmedName);
 
         if (string.IsNullOrWhiteSpace(effectiveAccountName))
         {
             isError = true;
-            message = "Bitte einen gueltigen Accountnamen eintragen.";
+            message = "Bitte einen gültigen Accountnamen eintragen.";
             return;
         }
 
@@ -163,18 +389,28 @@ else
             isWorking = true;
             isError = false;
 
-            var participants = await Api.GetParticipantsAsync(activeTournament.Id);
-            var nextSeed = participants.Count + 1;
+            // Client-side uniqueness pre-check to give early feedback
+            var existingParticipants = await Api.GetParticipantsAsync(activeTournament.Id);
+            var nameConflict = existingParticipants.Any(p =>
+                string.Equals(p.DisplayName, trimmedName, StringComparison.OrdinalIgnoreCase));
+            if (nameConflict)
+            {
+                isError = true;
+                message = $"Ein Teilnehmer mit dem Anzeigenamen \"{trimmedName}\" ist bereits registriert. Bitte wähle einen anderen Namen.";
+                return;
+            }
+
+            var nextSeed = existingParticipants.Count + 1;
 
             await Api.AddParticipantAsync(new AddParticipantRequest(
                 activeTournament.Id,
-                displayName.Trim(),
+                trimmedName,
                 effectiveAccountName,
                 isAutodartsAccount,
                 false,
                 nextSeed));
 
-            message = "Registrierung gespeichert.";
+            message = "Registrierung erfolgreich gespeichert.";
         }
         catch (Exception ex)
         {

@@ -325,6 +325,14 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
             cancellationToken);
         if (exists) throw new InvalidOperationException("Participant already exists.");
 
+        var trimmedDisplayName = request.DisplayName.Trim();
+        var displayNameExists = await dbContext.Participants.AnyAsync(
+            x => x.TournamentId == request.TournamentId
+                 && x.DisplayName.ToLower() == trimmedDisplayName.ToLower(),
+            cancellationToken);
+        if (displayNameExists)
+            throw new InvalidOperationException($"Ein Teilnehmer mit dem Anzeigenamen \"{trimmedDisplayName}\" ist bereits in diesem Turnier registriert. Bitte waehle einen anderen Namen.");
+
         var participantType = ParseParticipantTypeOrDefault(request.Type, ParticipantType.Spieler);
         if (participantType == ParticipantType.TeamMember)
             throw new InvalidOperationException("Team-Teilnehmer werden automatisch ueber die Teamverwaltung erstellt.");

@@ -191,6 +191,16 @@ public sealed class DartSuiteApiService
         return await response.Content.ReadFromJsonAsync<TournamentDto>(cancellationToken: cancellationToken);
     }
 
+    public async Task<TournamentDto?> GetTournamentByCodeAsync(string code, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.GetAsync($"api/tournaments/by-code/{Uri.EscapeDataString(code.Trim().ToUpperInvariant())}", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return null;
+
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<TournamentDto>(cancellationToken: cancellationToken);
+    }
+
     public async Task<TournamentDto> CreateTournamentAsync(CreateTournamentRequest request, CancellationToken cancellationToken = default)
     {
         var response = await _httpClient.PostAsJsonAsync("api/tournaments", request, cancellationToken);
