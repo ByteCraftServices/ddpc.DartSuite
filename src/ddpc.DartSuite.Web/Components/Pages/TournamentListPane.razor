@@ -1,0 +1,93 @@
+@using ddpc.DartSuite.Application.Contracts.Tournaments
+
+<div id="tournament-list-panel" class="@PanelCssClass">
+    @if (ActiveTournaments.Any())
+    {
+        <h6 class="mb-1 fw-semibold text-success">▶ Aktiv</h6>
+        <ul class="list-group mb-3">
+            @foreach (var tournament in ActiveTournaments)
+            {
+                <li class="list-group-item list-group-item-action @(SelectedTournament?.Id == tournament.Id ? "active" : string.Empty)"
+                    @onclick="() => SelectTournamentAsync(tournament)">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="list-group-item-name" title="@tournament.Name">
+                            @tournament.Name
+                            @if (!string.IsNullOrEmpty(tournament.JoinCode))
+                            {
+                                <span class="badge text-bg-primary font-monospace tournament-list-join-code">@tournament.JoinCode</span>
+                            }
+                            @if (tournament.IsLocked)
+                            {
+                                <span>🔒</span>
+                            }
+                        </span>
+                        <span class="badge @(SelectedTournament?.Id == tournament.Id ? "bg-light text-dark" : "bg-primary")">@tournament.ParticipantCount</span>
+                    </div>
+                    <small class="@(SelectedTournament?.Id == tournament.Id ? "text-white-50" : "text-muted")">@tournament.StartDate.ToString("dd.MM.yyyy") – @tournament.EndDate.ToString("dd.MM.yyyy")</small>
+                </li>
+            }
+        </ul>
+    }
+
+    @if (UpcomingTournaments.Any())
+    {
+        <h6 class="mb-1 fw-semibold text-primary">📅 Geplant</h6>
+        <ul class="list-group mb-3">
+            @foreach (var tournament in UpcomingTournaments)
+            {
+                <li class="list-group-item list-group-item-action @(SelectedTournament?.Id == tournament.Id ? "active" : string.Empty)"
+                    @onclick="() => SelectTournamentAsync(tournament)">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="list-group-item-name" title="@tournament.Name">
+                            @tournament.Name
+                            @if (tournament.IsLocked)
+                            {
+                                <span>🔒</span>
+                            }
+                        </span>
+                        <span class="badge @(SelectedTournament?.Id == tournament.Id ? "bg-light text-dark" : "bg-secondary")">@tournament.ParticipantCount</span>
+                    </div>
+                    <small class="@(SelectedTournament?.Id == tournament.Id ? "text-white-50" : "text-muted")">@tournament.StartDate.ToString("dd.MM.yyyy") – @tournament.EndDate.ToString("dd.MM.yyyy")</small>
+                </li>
+            }
+        </ul>
+    }
+
+    @if (PastTournaments.Any())
+    {
+        <h6 class="mb-1 fw-semibold text-muted">✓ Vergangen</h6>
+        <ul class="list-group mb-3">
+            @foreach (var tournament in PastTournaments)
+            {
+                <li class="list-group-item list-group-item-action @(SelectedTournament?.Id == tournament.Id ? "active" : string.Empty)"
+                    @onclick="() => SelectTournamentAsync(tournament)">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="list-group-item-name" title="@tournament.Name">@tournament.Name</span>
+                        <span class="badge @(SelectedTournament?.Id == tournament.Id ? "bg-light text-dark" : "bg-secondary")">@tournament.ParticipantCount</span>
+                    </div>
+                    <small class="@(SelectedTournament?.Id == tournament.Id ? "text-white-50" : "text-muted")">@tournament.StartDate.ToString("dd.MM.yyyy")</small>
+                </li>
+            }
+        </ul>
+    }
+
+    @if (!HasAnyTournaments)
+    {
+        <p class="text-muted">Noch keine Turniere vorhanden.</p>
+    }
+</div>
+
+@code {
+    [Parameter] public string PanelCssClass { get; set; } = "col-12";
+    [Parameter] public TournamentDto? SelectedTournament { get; set; }
+    [Parameter] public IEnumerable<TournamentDto> ActiveTournaments { get; set; } = Array.Empty<TournamentDto>();
+    [Parameter] public IEnumerable<TournamentDto> UpcomingTournaments { get; set; } = Array.Empty<TournamentDto>();
+    [Parameter] public IEnumerable<TournamentDto> PastTournaments { get; set; } = Array.Empty<TournamentDto>();
+    [Parameter] public bool HasAnyTournaments { get; set; }
+    [Parameter] public EventCallback<TournamentDto> OnSelectTournament { get; set; }
+
+    private Task SelectTournamentAsync(TournamentDto tournament)
+    {
+        return OnSelectTournament.InvokeAsync(tournament);
+    }
+}
