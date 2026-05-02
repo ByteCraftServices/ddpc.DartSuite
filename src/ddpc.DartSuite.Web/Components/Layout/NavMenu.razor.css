@@ -111,3 +111,128 @@
         overflow-y: auto;
     }
 }
+
+.nav-group-head {
+    display: flex;
+    align-items: center;
+}
+
+.nav-expand-btn {
+    color: rgba(255, 255, 255, 0.78);
+    text-decoration: none;
+    padding: 0 0.3rem;
+    min-width: 2.1rem;
+    min-height: 2.1rem;
+    line-height: 1;
+    font-size: 1.2rem;
+    touch-action: manipulation;
+}
+
+.nav-expand-btn:hover {
+    color: #fff;
+}
+
+.nav-subgroup-head {
+    margin-top: 0.1rem;
+}
+
+.nav-separator {
+    border-color: rgba(255, 255, 255, 0.25);
+    margin: 0.55rem 0.9rem;
+}
+
+.board-subentry {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.nav-level-0 ::deep .nav-link {
+    padding-left: 0.9rem;
+    min-height: 2.75rem;
+    line-height: 2.75rem;
+}
+
+.nav-level-1-link {
+    padding-left: 2.15rem !important;
+    min-height: 2.15rem !important;
+    line-height: 2.15rem !important;
+    font-size: 0.82rem !important;
+}
+
+.nav-level-2-link {
+    padding-left: 3.2rem !important;
+    min-height: 2.05rem !important;
+    line-height: 2.05rem !important;
+    font-size: 0.8rem !important;
+}
+
+.nav-level-1,
+.nav-level-2 {
+    position: relative;
+}
+
+.nav-level-1::before {
+    content: "";
+    position: absolute;
+    left: 1.45rem;
+    top: 0.45rem;
+    bottom: 0.45rem;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.nav-level-2::before {
+    content: "";
+    position: absolute;
+    left: 2.55rem;
+    top: 0.4rem;
+    bottom: 0.4rem;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.nav-level-1::after,
+.nav-level-2::after {
+    content: "";
+    position: absolute;
+    left: 1.45rem;
+    top: 50%;
+    width: 0.6rem;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.24);
+}
+
+.nav-level-2::after {
+    left: 2.55rem;
+    width: 0.55rem;
+}
+
+.nav-level-1 ::deep .nav-link:hover,
+.nav-level-2 ::deep .nav-link:hover {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+.dot-ok {
+    background: #21c55d;
+}
+
+.dot-warning {
+    background: #facc15;
+}
+
+.dot-error {
+    background: #ef4444;
+}
+
+.dot-unknown {
+    background: #9ca3af;
+}

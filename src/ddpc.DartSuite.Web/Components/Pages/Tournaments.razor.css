@@ -1,0 +1,60 @@
+.page-settings-dropdown-menu {
+    right: 0;
+    left: auto;
+}
+
+.summary-clickable {
+    cursor: pointer;
+}
+
+.modal-overlay-backdrop {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.interactive-link-dotted {
+    cursor: pointer;
+    text-decoration: underline dotted;
+}
+
+.team-admin-toggle {
+    font-size: 0.75em;
+}
+
+.seed-badge-draggable {
+    min-width: 34px;
+    cursor: grab;
+}
+
+.seed-badge-static {
+    min-width: 34px;
+}
+
+.participant-suggestions-list {
+    z-index: 1050;
+    max-height: 200px;
+    overflow-y: auto;
+    top: 100%;
+}
+
+.draw-animation-mode-select {
+    width: 140px;
+}
+
+.team-draft-member-chip {
+    cursor: grab;
+    font-size: 0.85em;
+}
+
+.team-name-edit-input,
+.team-name-editable {
+    max-width: 220px;
+}
+
+.team-slot-area-min {
+    min-height: 64px;
+}
+
+.team-draft-remove-chip-btn {
+    font-size: 0.7em;
+    line-height: 1;
+}
