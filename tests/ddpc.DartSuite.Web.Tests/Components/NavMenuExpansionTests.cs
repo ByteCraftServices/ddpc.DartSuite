@@ -219,7 +219,7 @@ public sealed class NavMenuExpansionTests
 
     private static void ClickOverviewChevron(IRenderedComponent<NavMenu> cut)
     {
-        // The overview group chevron is the first expand button with title containing "Turnieruebersicht" or "Untermenue"
+        // The overview group chevron is the first expand button (expand/collapse indicator)
         var expandBtns = cut.FindAll("button.nav-expand-btn");
         expandBtns[0].Click();
     }
@@ -227,7 +227,6 @@ public sealed class NavMenuExpansionTests
     private static void ClickOverviewParentLink(IRenderedComponent<NavMenu> cut)
     {
         var link = cut.FindAll("a.nav-link").First(a =>
-            a.TextContent.Contains("Turnieruebersicht") ||
             a.GetAttribute("href")?.Contains("tournaments?tab") == true);
         link.Click();
     }
