@@ -18,7 +18,7 @@
             }
             <div class="dropdown @(showPageSettingsDropdown ? "show" : "")">
                 <button class="btn btn-outline-secondary" type="button" @onclick="() => showPageSettingsDropdown = !showPageSettingsDropdown" title="Seiteneinstellungen" data-testid="page-settings-btn">⋮</button>
-                <ul class="dropdown-menu dropdown-menu-end ds-dropdown-end-auto @(showPageSettingsDropdown ? "show" : "")">
+                <ul class="dropdown-menu dropdown-menu-end ds-dropdown-align-end @(showPageSettingsDropdown ? "show" : "")">
                     <li><button class="dropdown-item" @onclick="() => { showPageSettingsDropdown = false; showPageSettingsModal = true; }">Einstellungen</button></li>
                 </ul>
             </div>

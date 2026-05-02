@@ -2198,6 +2198,8 @@ function setupQuickConfig() {
             boardSelect.innerHTML = '<option value="">Keine Boards im Turnier registriert</option>';
         }
 
+        // Remove any existing listener before adding to prevent duplicates when called multiple times
+        boardSelect.removeEventListener("change", handleBoardSelectChange);
         boardSelect.addEventListener("change", handleBoardSelectChange);
     }
 
@@ -2206,7 +2208,10 @@ function setupQuickConfig() {
         if (!boardSelect) return;
 
         const selectedOption = boardSelect.selectedOptions[0];
-        // If the selected board is not yet in the tournament, ask the user to confirm adding it
+        // If the selected board is not yet in the tournament, ask the user to confirm adding it.
+        // window.confirm() is intentional here: this is a Chrome extension content script running
+        // inside the Autodarts app. The native dialog is simple, always accessible, and appropriate
+        // for this desktop-focused operator tool context.
         if (selectedOption && selectedOption.dataset.inTournament === "0") {
             const boardName = selectedOption.dataset.name || selectedOption.textContent;
             const confirmed = window.confirm(
