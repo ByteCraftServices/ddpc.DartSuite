@@ -1,5 +1,6 @@
 @page "/login"
 @using ddpc.DartSuite.Application.Contracts.Autodarts
+@using ddpc.DartSuite.Web.Services
 @using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
 @inject DartSuiteApiService Api
 @inject ProtectedLocalStorage LocalStorage
@@ -144,7 +145,7 @@
                 boards = new();
                 connectionStatus = "Login unvollständig: Profildaten (Name/E-Mail) fehlen. Bitte erneut anmelden.";
                 statusAlertClass = "alert-warning";
-                AppState.SetAutodartsProfile(null, false);
+                AppState.SetAutodartsProfile(null, false, AutodartsLoginSource.None);
                 return;
             }
 
@@ -152,7 +153,7 @@
             boards = response.Boards.ToList();
             connectionStatus = "Verbindung hergestellt";
             statusAlertClass = "alert-success";
-            AppState.SetAutodartsProfile(profile, true);
+            AppState.SetAutodartsProfile(profile, true, AutodartsLoginSource.Manual);
 
             if (rememberLogin)
             {
@@ -199,7 +200,7 @@
                 profile = status.Profile;
                 connectionStatus = "Sitzung wiederhergestellt";
                 statusAlertClass = "alert-success";
-                AppState.SetAutodartsProfile(profile, true);
+                AppState.SetAutodartsProfile(profile, true, AutodartsLoginSource.AutoRestore);
 
                 try { boards = (await Api.GetAutodartsBoardsAsync()).ToList(); }
                 catch { /* boards optional */ }
@@ -211,7 +212,7 @@
                 boards = new();
                 connectionStatus = "Sitzung unvollständig. Bitte erneut anmelden.";
                 statusAlertClass = "alert-warning";
-                AppState.SetAutodartsProfile(null, false);
+                AppState.SetAutodartsProfile(null, false, AutodartsLoginSource.None);
             }
 
             var storedEmail = await LocalStorage.GetAsync<string>(StorageKeyEmail);
@@ -234,7 +235,7 @@
                             boards = response.Boards.ToList();
                             connectionStatus = "Sitzung automatisch wiederhergestellt";
                             statusAlertClass = "alert-success";
-                            AppState.SetAutodartsProfile(profile, true);
+                            AppState.SetAutodartsProfile(profile, true, AutodartsLoginSource.AutoRestore);
                         }
                         else
                         {
@@ -242,7 +243,7 @@
                             boards = new();
                             connectionStatus = "Automatische Anmeldung fehlgeschlagen: Profildaten unvollständig. Bitte Zugangsdaten erneut eingeben.";
                             statusAlertClass = "alert-warning";
-                            AppState.SetAutodartsProfile(null, false);
+                            AppState.SetAutodartsProfile(null, false, AutodartsLoginSource.None);
                         }
                     }
                     catch
@@ -251,7 +252,7 @@
                         boards = new();
                         connectionStatus = "Automatische Anmeldung fehlgeschlagen. Bitte erneut anmelden.";
                         statusAlertClass = "alert-warning";
-                        AppState.SetAutodartsProfile(null, false);
+                        AppState.SetAutodartsProfile(null, false, AutodartsLoginSource.None);
                     }
                 }
             }
@@ -287,7 +288,7 @@
         boards = new();
         connectionStatus = "Abgemeldet";
         statusAlertClass = "alert-info";
-        AppState.SetAutodartsProfile(null, false);
+        AppState.SetAutodartsProfile(null, false, AutodartsLoginSource.None);
     }
 
     private static bool IsProfileComplete(AutodartsProfileDto? candidate)
