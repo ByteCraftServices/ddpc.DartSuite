@@ -2,6 +2,7 @@
 @using ddpc.DartSuite.Application.Contracts.Autodarts
 @using ddpc.DartSuite.Application.Contracts.Tournaments
 @using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using ddpc.DartSuite.Web.Services
 @inject DartSuiteApiService Api
 @inject AppStateService AppState
 @inject ProtectedLocalStorage LocalStorage
@@ -42,7 +43,14 @@
                                  class="rounded-circle" width="32" height="32" referrerpolicy="no-referrer" />
                         }
                         <span class="small fw-semibold text-nowrap">@(AppState.AutodartsProfile.DisplayName ?? AppState.AutodartsProfile.Email)</span>
-                        <span class="badge bg-success">Verbunden</span>
+                        @if (AppState.LoginSource == AutodartsLoginSource.AutoRestore)
+                        {
+                            <span class="badge bg-info text-dark" title="Automatisch wiederhergestellt">Auto</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-success">Verbunden</span>
+                        }
                     </div>
                 }
                 else
@@ -185,7 +193,7 @@
             var status = await Api.GetAutodartsStatusAsync(cancellationToken);
             if (status.IsConnected && status.Profile is not null)
             {
-                AppState.SetAutodartsProfileSilent(status.Profile, true);
+                AppState.SetAutodartsProfileSilent(status.Profile, true, AutodartsLoginSource.AutoRestore);
             }
             else
             {
@@ -221,7 +229,7 @@
             if (profile is null || string.IsNullOrWhiteSpace(profile.DisplayName) || string.IsNullOrWhiteSpace(profile.Email))
                 return;
 
-            AppState.SetAutodartsProfileSilent(profile, true);
+            AppState.SetAutodartsProfileSilent(profile, true, AutodartsLoginSource.AutoRestore);
         }
         catch
         {
