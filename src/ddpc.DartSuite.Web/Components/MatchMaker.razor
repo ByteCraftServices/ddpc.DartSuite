@@ -625,6 +625,9 @@ else
             _playerDartsThrown[slot] += dartCount;
             _playerTotalPoints[slot] += turnPoints;
 
+            if (turnPoints > _playerHighestRoundScore[slot])
+                _playerHighestRoundScore[slot] = turnPoints;
+
             if (turnPoints == 180) _player180s[slot]++;
             else if (turnPoints >= 140) _player140Plus[slot]++;
             else if (turnPoints >= 100) _player100Plus[slot]++;
@@ -634,9 +637,6 @@ else
             _playerDartsThrown[slot] += dartCount;
             _showBustBanner = true;
             _ = HideBustBannerAsync();
-
-                if (!isBust && turnPoints > _playerHighestRoundScore[slot])
-                    _playerHighestRoundScore[slot] = turnPoints;
         }
 
         // Check checkout attempt
