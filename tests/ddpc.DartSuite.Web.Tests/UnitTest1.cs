@@ -141,4 +141,80 @@ public sealed class AppStateServiceTests
 
         fired.Should().BeFalse();
     }
+
+    // ─── LoginSource tracking ───────────────────────────────────────────────
+
+    [Fact]
+    public void SetAutodartsProfile_ManualSource_SetsLoginSourceManual()
+    {
+        var sut = new AppStateService();
+
+        sut.SetAutodartsProfile(MakeProfile(), true, AutodartsLoginSource.Manual);
+
+        sut.LoginSource.Should().Be(AutodartsLoginSource.Manual);
+    }
+
+    [Fact]
+    public void SetAutodartsProfile_AutoRestoreSource_SetsLoginSourceAutoRestore()
+    {
+        var sut = new AppStateService();
+
+        sut.SetAutodartsProfile(MakeProfile(), true, AutodartsLoginSource.AutoRestore);
+
+        sut.LoginSource.Should().Be(AutodartsLoginSource.AutoRestore);
+    }
+
+    [Fact]
+    public void SetAutodartsProfile_Disconnected_ResetsLoginSourceToNone()
+    {
+        var sut = new AppStateService();
+        sut.SetAutodartsProfileSilent(MakeProfile(), true, AutodartsLoginSource.Manual);
+
+        sut.SetAutodartsProfile(null, false, AutodartsLoginSource.None);
+
+        sut.LoginSource.Should().Be(AutodartsLoginSource.None);
+    }
+
+    [Fact]
+    public void SetAutodartsProfileSilent_AutoRestoreSource_SetsLoginSourceWithoutFiringOnChange()
+    {
+        var sut = new AppStateService();
+        var fired = false;
+        sut.OnChange += () => fired = true;
+
+        sut.SetAutodartsProfileSilent(MakeProfile(), true, AutodartsLoginSource.AutoRestore);
+
+        fired.Should().BeFalse();
+        sut.LoginSource.Should().Be(AutodartsLoginSource.AutoRestore);
+    }
+
+    [Fact]
+    public void SetAutodartsProfile_WhenDisconnected_ResetsLoginSourceToNone()
+    {
+        var sut = new AppStateService();
+        sut.SetAutodartsProfileSilent(MakeProfile(), true, AutodartsLoginSource.Manual);
+
+        // Passing AutoRestore but disconnected — source must still become None
+        sut.SetAutodartsProfile(null, false, AutodartsLoginSource.AutoRestore);
+
+        sut.LoginSource.Should().Be(AutodartsLoginSource.None);
+    }
+
+    [Fact]
+    public void LoginSource_DefaultsToNone()
+    {
+        var sut = new AppStateService();
+
+        sut.LoginSource.Should().Be(AutodartsLoginSource.None);
+    }
+
+    [Fact]
+    public void SetAutodartsProfile_DefaultSourceIsManual_WhenNoSourceProvided()
+    {
+        var sut = new AppStateService();
+
+        sut.SetAutodartsProfile(MakeProfile(), true);
+
+        sut.LoginSource.Should().Be(AutodartsLoginSource.Manual);
+    }
 }
