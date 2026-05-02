@@ -963,6 +963,17 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         var startDateTime = tournament.StartDate.ToDateTime(tournament.StartTime.Value);
         var startUtc = ConvertLocalWallTimeToUtc(startDateTime, TimeZoneInfo.Local);
 
+        if (tournament.Variant == TournamentVariant.Online)
+        {
+            OnlineSchedulingStrategy.Schedule(matches, rounds, startUtc);
+
+            foreach (var match in matches.Where(m => m.Status != MatchStatus.WalkOver))
+                match.RecomputeStatus();
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return await GetMatchesAsync(tournamentId, cancellationToken);
+        }
+
         if (boards.Count == 0)
             return await GetMatchesAsync(tournamentId, cancellationToken);
 
@@ -1414,7 +1425,31 @@ public sealed class MatchManagementService(DartSuiteDbContext dbContext, IMatchP
         match.WinnerParticipantId = request.WinnerParticipantId;
 
         if (Enum.TryParse<MatchStatus>(request.Status, out var status))
+        {
             match.Status = status;
+
+            switch (status)
+            {
+                case MatchStatus.Aktiv:
+                    match.StartedUtc ??= DateTimeOffset.UtcNow;
+                    match.FinishedUtc = null;
+                    break;
+
+                case MatchStatus.Geplant:
+                case MatchStatus.Erstellt:
+                case MatchStatus.Inaktiv:
+                    match.StartedUtc = null;
+                    match.FinishedUtc = null;
+                    match.ExternalMatchId = null;
+                    break;
+
+                case MatchStatus.Beendet:
+                case MatchStatus.WalkOver:
+                    match.StartedUtc ??= DateTimeOffset.UtcNow;
+                    match.FinishedUtc ??= DateTimeOffset.UtcNow;
+                    break;
+            }
+        }
 
         await EnsureBoardCurrentMatchConsistencyForChangedMatchAsync(match, previousBoardId, cancellationToken);
 

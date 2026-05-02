@@ -4,6 +4,7 @@
 @using System.Text.Json
 @inject DartSuiteApiService Api
 @inject AppStateService AppState
+@inject IJSRuntime JS
 
 @if (Match is null || !IsVisible)
 {
@@ -15,22 +16,25 @@ else
         <div class="card-header d-flex justify-content-between align-items-center bg-primary text-white">
             <span class="fw-bold">⚡ MatchMaker</span>
             <div class="d-flex gap-2 align-items-center">
-                @if (AppState.IsAdmin)
-                {
-                    <select class="form-select form-select-sm" style="width:auto" value="@_mode" @onchange="OnModeChanged" disabled="@_isRunning">
-                        <option value="Manual">Manuell</option>
-                        <option value="Automatic">Automatisch (x01)</option>
-                    </select>
-                }
-                else
-                {
-                    <span class="badge bg-light text-dark">Manuell</span>
-                }
+                <select class="form-select form-select-sm" style="width:auto" value="@_mode" @onchange="OnModeChanged">
+                    <option value="Manual">Manuell</option>
+                    <option value="Automatic">Automatisch (x01)</option>
+                </select>
+                <button class="btn btn-outline-light btn-sm" type="button" title="MatchMaker Einstellungen" @onclick="ToggleSettings">
+                    ⋯
+                </button>
                 @if (!_isRunning)
                 {
-                    <button class="btn btn-success btn-sm" @onclick="StartMatchAsync" disabled="@_isBusy">
-                        ▶ Match starten
-                    </button>
+                    @if (CanStartMatch)
+                    {
+                        <button class="btn btn-success btn-sm" @onclick="StartMatchAsync" disabled="@_isBusy">
+                            ▶ Match starten
+                        </button>
+                    }
+                    else
+                    {
+                        <span class="badge bg-secondary" title="MatchMaker kann nur bei Status Geplant oder Aktiv starten.">@CurrentStatusLabel</span>
+                    }
                 }
                 else
                 {
@@ -47,30 +51,75 @@ else
                 </div>
             }
 
+            @if (_showSettings)
+            {
+                <div class="alert alert-light border py-2 mb-3">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-12 col-md-5">
+                            <label class="form-label form-label-sm mb-1">Automatik Geschwindigkeit</label>
+                            <select class="form-select form-select-sm" value="@_autoSpeedLabel" @onchange="OnAutoSpeedChanged">
+                                <option value="1x">1x (3.0s pro Wurf)</option>
+                                <option value="2x">2x (1.0s pro Wurf)</option>
+                                <option value="3x">3x (0.5s pro Wurf)</option>
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-7">
+                            <div class="form-check mt-3 mt-md-0">
+                                <input id="mm-auto-switch" class="form-check-input" type="checkbox" checked="@_autoPlayerSwitch" @onchange="OnAutoSwitchChanged" />
+                                <label class="form-check-label" for="mm-auto-switch">
+                                    Spieler automatisch wechseln
+                                </label>
+                            </div>
+                            @if (!_autoPlayerSwitch)
+                            {
+                                <div class="small text-muted">Wenn deaktiviert, muss der Wechsel per Button erfolgen.</div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (_showBustBanner)
+            {
+                <div class="mm-bust-banner">BUST - Score zurueckgesetzt, bitte Spieler wechseln.</div>
+            }
+
             @if (_isRunning && !_matchFinished)
             {
                 @* ─── Score Board ─── *@
                 <div class="row text-center mb-3">
                     <div class="col-6">
-                        <div class="@(_currentPlayerSlot == 0 ? "fw-bold text-primary" : "")">
-                            @HomeName
+                        <div class="mm-player-box @(_currentPlayerSlot == 0 ? "mm-player-box-active" : string.Empty)">
+                            <div class="d-flex justify-content-center align-items-center gap-2">
+                                <span class="fw-semibold">@HomeName</span>
+                                @if (_currentPlayerSlot == 0)
+                                {
+                                    <span class="badge text-bg-primary">am Zug</span>
+                                }
+                            </div>
+                            <div class="display-6">@Math.Max(0, DisplayScore(0))</div>
+                            <div class="small text-muted">Legs: @_playerLegs[0] | Avg: @_playerAvg[0].ToString("F1")</div>
                         </div>
-                        <div class="display-6">@_playerScores[0]</div>
-                        <div class="small text-muted">Legs: @_playerLegs[0] | Avg: @_playerAvg[0].ToString("F1")</div>
                     </div>
                     <div class="col-6">
-                        <div class="@(_currentPlayerSlot == 1 ? "fw-bold text-primary" : "")">
-                            @AwayName
+                        <div class="mm-player-box @(_currentPlayerSlot == 1 ? "mm-player-box-active" : string.Empty)">
+                            <div class="d-flex justify-content-center align-items-center gap-2">
+                                <span class="fw-semibold">@AwayName</span>
+                                @if (_currentPlayerSlot == 1)
+                                {
+                                    <span class="badge text-bg-primary">am Zug</span>
+                                }
+                            </div>
+                            <div class="display-6">@Math.Max(0, DisplayScore(1))</div>
+                            <div class="small text-muted">Legs: @_playerLegs[1] | Avg: @_playerAvg[1].ToString("F1")</div>
                         </div>
-                        <div class="display-6">@_playerScores[1]</div>
-                        <div class="small text-muted">Legs: @_playerLegs[1] | Avg: @_playerAvg[1].ToString("F1")</div>
                     </div>
                 </div>
 
                 @* ─── Current Turn ─── *@
                 <div class="text-center mb-2">
                     <span class="fw-semibold">Am Zug: @(_currentPlayerSlot == 0 ? HomeName : AwayName)</span>
-                    <span class="ms-2 text-muted small">Wurf @(_currentDartInTurn + 1)/3</span>
+                    <span class="ms-2 text-muted small">@CurrentThrowDisplayText</span>
                 </div>
 
                 @* ─── Current Darts in Turn ─── *@
@@ -93,40 +142,65 @@ else
                             }
                         </div>
                     }
+                    <div class="border rounded px-3 py-2 text-center bg-light" style="min-width:88px">
+                        <div class="small text-muted">Σ Wurf</div>
+                        <div class="fw-bold">@CurrentTurnPoints</div>
+                    </div>
                 </div>
 
                 @if (_mode == "Manual")
                 {
-                    @* ─── Manual Keypad ─── *@
-                    <div class="mb-2 d-flex gap-2 justify-content-center">
-                        <button class="btn @(_selectedMultiplier == 2 ? "btn-warning" : "btn-outline-warning") btn-sm px-3"
-                                @onclick="() => SelectMultiplier(2)">Double</button>
-                        <button class="btn @(_selectedMultiplier == 3 ? "btn-danger" : "btn-outline-danger") btn-sm px-3"
-                                @onclick="() => SelectMultiplier(3)">Triple</button>
-                        @if (_selectedMultiplier > 1)
-                        {
-                            <span class="badge bg-info align-self-center">
-                                @(_selectedMultiplier == 2 ? "D" : "T") ausgewählt
-                            </span>
-                        }
-                    </div>
+                    @* ─── Manual Board (Autodarts-like) ─── *@
+                    <div class="mm-manual-board">
+                        <div class="mm-mode-row">
+                            <button class="btn mm-mode-btn @(_selectedMultiplier == 2 ? "btn-warning" : "btn-outline-primary")"
+                                    @onclick="() => SelectMultiplier(2)">
+                                Double
+                            </button>
+                            <button class="btn mm-mode-btn @(_selectedMultiplier == 3 ? "btn-danger" : "btn-outline-primary")"
+                                    @onclick="() => SelectMultiplier(3)">
+                                Triple
+                            </button>
+                        </div>
 
-                    <div class="d-flex flex-wrap gap-1 justify-content-center mb-2">
-                        @for (int val = 1; val <= 20; val++)
-                        {
-                            var v = val;
-                            <button class="btn btn-outline-secondary btn-sm" style="min-width:42px" @onclick="() => ThrowDartAsync(v)">@v</button>
-                        }
-                        <button class="btn btn-outline-warning btn-sm" style="min-width:42px" @onclick="() => ThrowDartAsync(25)">Bull</button>
-                    </div>
+                        <div class="mm-grid">
+                            <button class="btn btn-outline-secondary mm-cell mm-miss" @onclick="ThrowMissAsync">Miss</button>
 
-                    <div class="d-flex justify-content-center gap-2 mt-2">
-                        <button class="btn btn-outline-secondary btn-sm" @onclick="UndoLastDartAsync" disabled="@(!CanUndo)">
-                            ↩ Undo
-                        </button>
-                        <button class="btn btn-outline-dark btn-sm" @onclick="ThrowMissAsync">
-                            ✗ Daneben
-                        </button>
+                            @for (int val = 20; val >= 16; val--)
+                            {
+                                var v = val;
+                                <button class="btn btn-outline-primary mm-cell" aria-label="@BoardCellLabel(v)" @onclick="() => ThrowDartAsync(v)">@BoardCellLabel(v)</button>
+                            }
+
+                            @for (int val = 15; val >= 11; val--)
+                            {
+                                var v = val;
+                                <button class="btn btn-outline-primary mm-cell" aria-label="@BoardCellLabel(v)" @onclick="() => ThrowDartAsync(v)">@BoardCellLabel(v)</button>
+                            }
+
+                            <button class="btn btn-outline-warning mm-cell mm-bull" aria-label="@BoardCellLabel(25)" @onclick="() => ThrowDartAsync(25)">@BoardCellLabel(25)</button>
+
+                            @for (int val = 10; val >= 6; val--)
+                            {
+                                var v = val;
+                                <button class="btn btn-outline-primary mm-cell" aria-label="@BoardCellLabel(v)" @onclick="() => ThrowDartAsync(v)">@BoardCellLabel(v)</button>
+                            }
+
+                            @for (int val = 5; val >= 1; val--)
+                            {
+                                var v = val;
+                                <button class="btn btn-outline-primary mm-cell" aria-label="@BoardCellLabel(v)" @onclick="() => ThrowDartAsync(v)">@BoardCellLabel(v)</button>
+                            }
+                        </div>
+
+                        <div class="mm-bottom-row">
+                            <button class="btn btn-outline-secondary mm-bottom-btn" @onclick="UndoLastDartAsync" disabled="@(!CanUndo)">
+                                ↩ Rückgängig
+                            </button>
+                            <button class="btn btn-outline-dark mm-bottom-btn" @onclick="SwitchPlayerNowAsync">
+                                ▸ Spieler wechseln
+                            </button>
+                        </div>
                     </div>
                 }
                 else
@@ -139,8 +213,22 @@ else
                         }
                         else
                         {
-                            <button class="btn btn-secondary" @onclick="StopAutoAsync">⏹ Auto stoppen</button>
-                            <div class="mt-2 text-muted small">Nächster Wurf in @_autoCountdown s ...</div>
+                            <div class="d-flex justify-content-center gap-2">
+                                <button class="btn btn-secondary" @onclick="StopAutoAsync">⏹ Auto stoppen</button>
+                                @if (!_autoPlayerSwitch)
+                                {
+                                    <button class="btn btn-outline-dark" @onclick="SwitchPlayerNowAsync" disabled="@(!_waitingForManualSwitch)">▸ Spieler wechseln</button>
+                                }
+                            </div>
+                            @if (_waitingForManualSwitch)
+                            {
+                                <div class="mt-2 text-warning-emphasis small fw-semibold">Warte auf manuellen Spielerwechsel ...</div>
+                            }
+                            else
+                            {
+                                <div class="mt-2 text-muted small">Nächster Wurf in @_autoCountdownText ...</div>
+                                <div class="text-muted small">Intervall pro Wurf: @($"{CurrentAutoDelayMs / 1000d:0.0}s") (auch nach Spielerwechsel)</div>
+                            }
                         }
                     </div>
                 }
@@ -148,7 +236,7 @@ else
             else if (_matchFinished)
             {
                 <div class="alert alert-success text-center">
-                    🏆 Match beendet! Sieger: <strong>@_winnerName</strong>
+                    🏆 Match beendet! Sieger: <strong>@WinnerDisplayName</strong>
                 </div>
             }
             else
@@ -187,11 +275,16 @@ else
     private int[] _player180s = [0, 0];
     private int[] _player140Plus = [0, 0];
     private int[] _player100Plus = [0, 0];
+    private int[] _playerHighestRoundScore = [0, 0];
+    private int[] _playerBestLegDarts = [int.MaxValue, int.MaxValue];
+    private int[] _legStartDartsThrown = [0, 0];
 
     private int _legsPerSet = 3;
     private int _setsToWin = 1;
     private bool _isSetMode;
-    private string _outMode = "DoubleOut";
+    private string _inMode = "Straight";
+    private string _outMode = "Double";
+    private bool[] _playerLegOpened = [true, true];
 
     private int _currentPlayerSlot = 0;
     private int _currentDartInTurn = 0;
@@ -206,16 +299,44 @@ else
     // Auto mode
     private bool _autoRunning;
     private CancellationTokenSource? _autoCts;
-    private int _autoCountdown;
+    private string _autoCountdownText = "0.0s";
+    private Guid? _loadedMatchId;
+    private bool _showSettings;
+    private bool _settingsLoaded;
+    private string _autoSpeedLabel = "2x";
+    private bool _autoPlayerSwitch = true;
+    private bool _showBustBanner;
+    private bool _waitingForManualSwitch;
+    private bool _waitingForAutoSwitch;
+    private bool _turnCommittedAwaitingSwitch;
+
+    private const string AutoSpeedStorageKey = "dartsuite.matchmaker.autoSpeed";
+    private const string AutoSwitchStorageKey = "dartsuite.matchmaker.autoSwitch";
 
     private bool CanUndo => _currentDartInTurn > 0 || _legHistory.Count > 0;
+    private bool CanStartMatch => !_matchFinished && IsStartStatusAllowed(Match?.Status);
+    private string CurrentStatusLabel => string.IsNullOrWhiteSpace(Match?.Status) ? "Status unbekannt" : Match.Status!;
+    private int CurrentTurnPoints => _currentTurnDarts.Take(_currentDartInTurn).Sum(d => d.Points);
+    private int CurrentAutoDelayMs => GetAutoThrowDelayMs();
+    private string WinnerDisplayName => ResolveWinnerName();
+    private bool IsWaitingForSwitch => _waitingForManualSwitch || _waitingForAutoSwitch;
+    private string CurrentThrowDisplayText => IsWaitingForSwitch
+        ? "3/3 (warte auf Wechsel)"
+        : $"Wurf {Math.Min(_currentDartInTurn + 1, 3)}/3";
 
     protected override void OnParametersSet()
     {
         if (Match is null) return;
 
-        _isRunning = Match.StartedUtc is not null && Match.FinishedUtc is null;
+        var isMatchChanged = _loadedMatchId != Match.Id;
+        _loadedMatchId = Match.Id;
+
+        _isRunning = string.Equals(Match.Status, "Aktiv", StringComparison.OrdinalIgnoreCase)
+            || (Match.StartedUtc is not null && Match.FinishedUtc is null);
         _matchFinished = Match.FinishedUtc is not null;
+
+        if (_matchFinished && string.IsNullOrWhiteSpace(_winnerName))
+            _winnerName = ResolveWinnerNameFromMatch();
 
         // Initialize game settings from round
         if (Round is not null)
@@ -224,11 +345,44 @@ else
             _legsPerSet = Round.Legs > 0 ? Round.Legs : 3;
             _setsToWin = Round.Sets.HasValue && Round.Sets.Value > 0 ? Round.Sets.Value : 1;
             _isSetMode = Round.GameMode == "Sets";
-            _outMode = Round.OutMode ?? "DoubleOut";
+            _inMode = NormalizeInMode(Round.InMode);
+            _outMode = NormalizeOutMode(Round.OutMode);
         }
 
-        if (!_isRunning && !_matchFinished)
+        EnsureNonNegativeScores();
+
+        // Reinitialize simulator scoreboard when target score changed (e.g. 121 instead of default 501)
+        // and we do not have local throw progress yet.
+        var hasLocalProgress = _currentDartInTurn > 0
+            || _legHistory.Count > 0
+            || _playerDartsThrown[0] > 0
+            || _playerDartsThrown[1] > 0
+            || _playerLegs[0] > 0
+            || _playerLegs[1] > 0
+            || _playerSets[0] > 0
+            || _playerSets[1] > 0;
+
+        var needsTargetReinit = !hasLocalProgress
+            && (_playerScores[0] != _targetScore || _playerScores[1] != _targetScore);
+
+        if (!_matchFinished && (isMatchChanged || needsTargetReinit))
             ResetGameState();
+
+        if (!_isRunning)
+            StopAuto();
+
+        if (!_isRunning && !_matchFinished && !isMatchChanged)
+            ResetGameState();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _settingsLoaded)
+            return;
+
+        _settingsLoaded = true;
+        await LoadSettingsAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private void ResetGameState()
@@ -245,23 +399,60 @@ else
         _player180s = [0, 0];
         _player140Plus = [0, 0];
         _player100Plus = [0, 0];
+            _playerHighestRoundScore = [0, 0];
+            _playerBestLegDarts = [int.MaxValue, int.MaxValue];
+            _legStartDartsThrown = [0, 0];
         _currentPlayerSlot = 0;
         _currentDartInTurn = 0;
         _currentTurnDarts = [new(), new(), new()];
         _legHistory = [];
         _selectedMultiplier = 1;
+        _waitingForManualSwitch = false;
+        _waitingForAutoSwitch = false;
+        _turnCommittedAwaitingSwitch = false;
+        var startsOpen = _inMode == "Straight";
+        _playerLegOpened = [startsOpen, startsOpen];
     }
 
     private void OnModeChanged(ChangeEventArgs e)
     {
         _mode = e.Value?.ToString() ?? "Manual";
         if (_mode != "Automatic")
-            StopAutoAsync();
+            StopAuto();
+    }
+
+    private void ToggleSettings()
+    {
+        _showSettings = !_showSettings;
+    }
+
+    private async Task OnAutoSpeedChanged(ChangeEventArgs e)
+    {
+        _autoSpeedLabel = NormalizeSpeedLabel(e.Value?.ToString());
+        await SaveSettingsAsync();
+    }
+
+    private async Task OnAutoSwitchChanged(ChangeEventArgs e)
+    {
+        _autoPlayerSwitch = e.Value is bool flag && flag;
+
+        if (_autoPlayerSwitch && _waitingForManualSwitch)
+        {
+            await SwitchPlayerNowAsync();
+        }
+
+        await SaveSettingsAsync();
     }
 
     private async Task StartMatchAsync()
     {
         if (Match is null) return;
+        if (!CanStartMatch)
+        {
+            _errorMessage = "MatchMaker darf nur bei Status Geplant oder Aktiv starten.";
+            return;
+        }
+
         _isBusy = true;
         _errorMessage = null;
         try
@@ -269,6 +460,8 @@ else
             ResetGameState();
             await Api.MatchMakerStartAsync(Match.Id);
             _isRunning = true;
+            _waitingForManualSwitch = false;
+            _waitingForAutoSwitch = false;
         }
         catch (Exception ex)
         {
@@ -290,9 +483,45 @@ else
         await ThrowDartAsync(0, 1);
     }
 
+    private async Task SwitchPlayerNowAsync()
+    {
+        if (!_isRunning || _matchFinished)
+            return;
+
+        if (_turnCommittedAwaitingSwitch)
+        {
+            _currentPlayerSlot = 1 - _currentPlayerSlot;
+            _waitingForManualSwitch = false;
+            _waitingForAutoSwitch = false;
+            _turnCommittedAwaitingSwitch = false;
+            _currentTurnDarts = [new(), new(), new()];
+            _currentDartInTurn = 0;
+            await SendMatchStateAsync(eventType: "player-switch");
+            StateHasChanged();
+            return;
+        }
+
+        if (_currentDartInTurn > 0)
+        {
+            await CommitTurnAsync(isBust: false, isCheckout: false, forceSwitch: true);
+            return;
+        }
+
+        _currentPlayerSlot = 1 - _currentPlayerSlot;
+        _waitingForManualSwitch = false;
+        _waitingForAutoSwitch = false;
+        _turnCommittedAwaitingSwitch = false;
+        _currentTurnDarts = [new(), new(), new()];
+        _currentDartInTurn = 0;
+        await SendMatchStateAsync(eventType: "player-switch");
+        StateHasChanged();
+    }
+
     private async Task ThrowDartAsync(int value, int? forceMultiplier = null)
     {
         if (!_isRunning || _matchFinished) return;
+
+        EnsureNonNegativeScores();
 
         var mult = forceMultiplier ?? (value == 0 ? 1 : _selectedMultiplier);
         var points = value == 0 ? 0 : value * mult;
@@ -306,12 +535,26 @@ else
         // Can't triple bull
         if (value == 25 && mult == 3) { points = 25; mult = 1; }
 
+        // Enforce in-mode opening rules for x01 (Straight/Double/Master in)
+        var legOpened = _playerLegOpened[_currentPlayerSlot];
+        if (!legOpened)
+        {
+            if (IsValidInThrow(value, mult))
+            {
+                _playerLegOpened[_currentPlayerSlot] = true;
+            }
+            else
+            {
+                points = 0;
+            }
+        }
+
         var label = FormatDartLabel(value, mult);
         _currentTurnDarts[_currentDartInTurn] = new DartRecord { Value = value, Multiplier = mult, Points = points, Label = label };
         _currentDartInTurn++;
         _selectedMultiplier = 1;
 
-        var newScore = _playerScores[_currentPlayerSlot] - points;
+        var newScore = _playerScores[_currentPlayerSlot] - _currentTurnDarts.Take(_currentDartInTurn).Sum(d => d.Points);
 
         // Check bust
         bool isBust = IsBust(newScore, value, mult);
@@ -323,6 +566,7 @@ else
         }
         else
         {
+            await SendMatchStateAsync(eventType: "throw");
             StateHasChanged();
         }
     }
@@ -330,21 +574,31 @@ else
     private bool IsBust(int newScore, int value, int mult)
     {
         if (newScore < 0) return true;
-        if (newScore == 0) return false;
-        if (newScore == 1 && _outMode != "StraightOut") return true;
+        if (newScore == 0) return !IsValidCheckout(value, mult);
+        if (newScore == 1 && _outMode != "Straight") return true;
         return false;
     }
 
     private bool IsValidCheckout(int value, int mult)
     {
-        if (_outMode == "StraightOut") return true;
-        if (_outMode == "DoubleOut") return mult == 2 || (value == 25 && mult == 2);
-        if (_outMode == "MasterOut") return mult >= 2;
+        if (_outMode == "Straight") return true;
+        if (_outMode == "Double") return mult == 2 || (value == 25 && mult == 2);
+        if (_outMode == "Master") return mult >= 2;
         return true;
     }
 
-    private async Task CommitTurnAsync(bool isBust, bool isCheckout)
+    private bool IsValidInThrow(int value, int mult)
     {
+        if (_inMode == "Straight") return true;
+        if (_inMode == "Double") return mult == 2 || (value == 25 && mult == 2);
+        if (_inMode == "Master") return mult >= 2;
+        return true;
+    }
+
+    private async Task CommitTurnAsync(bool isBust, bool isCheckout, bool forceSwitch = false)
+    {
+        EnsureNonNegativeScores();
+
         var slot = _currentPlayerSlot;
         var dartCount = _currentDartInTurn;
         var turnPoints = 0;
@@ -367,7 +621,7 @@ else
 
         if (!isBust)
         {
-            _playerScores[slot] -= turnPoints;
+            _playerScores[slot] = ClampScore(_playerScores[slot] - turnPoints);
             _playerDartsThrown[slot] += dartCount;
             _playerTotalPoints[slot] += turnPoints;
 
@@ -378,6 +632,11 @@ else
         else
         {
             _playerDartsThrown[slot] += dartCount;
+            _showBustBanner = true;
+            _ = HideBustBannerAsync();
+
+                if (!isBust && turnPoints > _playerHighestRoundScore[slot])
+                    _playerHighestRoundScore[slot] = turnPoints;
         }
 
         // Check checkout attempt
@@ -388,6 +647,8 @@ else
 
         if (isCheckout)
         {
+            _waitingForManualSwitch = false;
+            _turnCommittedAwaitingSwitch = false;
             _playerCheckoutHits[slot]++;
             int checkout = turnPoints;
             if (checkout > _playerHighestCheckout[slot])
@@ -401,18 +662,59 @@ else
         if (_playerDartsThrown[slot] > 0)
             _playerAvg[slot] = Math.Round((double)_playerTotalPoints[slot] * 3 / _playerDartsThrown[slot], 2);
 
-        // Switch player
-        _currentPlayerSlot = 1 - _currentPlayerSlot;
-        _currentDartInTurn = 0;
-        _currentTurnDarts = [new(), new(), new()];
+        // Keep the committed third dart visible in automatic mode and delay the switch
+        // until the configured interval has elapsed.
+        var shouldDelayAutoSwitch = !forceSwitch
+            && _mode == "Automatic"
+            && _autoPlayerSwitch
+            && _autoRunning;
 
-        await SendMatchStateAsync();
+        // Switch player only when enabled, requested, or after delayed auto-switch phase.
+        if (forceSwitch)
+        {
+            _currentPlayerSlot = 1 - _currentPlayerSlot;
+            _waitingForManualSwitch = false;
+            _waitingForAutoSwitch = false;
+            _turnCommittedAwaitingSwitch = false;
+            _currentDartInTurn = 0;
+            _currentTurnDarts = [new(), new(), new()];
+        }
+        else if (shouldDelayAutoSwitch)
+        {
+            _waitingForManualSwitch = false;
+            _waitingForAutoSwitch = true;
+            _turnCommittedAwaitingSwitch = true;
+        }
+        else if (_autoPlayerSwitch)
+        {
+            _currentPlayerSlot = 1 - _currentPlayerSlot;
+            _waitingForManualSwitch = false;
+            _waitingForAutoSwitch = false;
+            _turnCommittedAwaitingSwitch = false;
+            _currentDartInTurn = 0;
+            _currentTurnDarts = [new(), new(), new()];
+        }
+        else
+        {
+            _waitingForManualSwitch = true;
+            _waitingForAutoSwitch = false;
+            _turnCommittedAwaitingSwitch = true;
+        }
+
+        await SendMatchStateAsync(eventType: "turn");
         StateHasChanged();
     }
 
     private async Task WinLegAsync(int winnerSlot)
     {
+        _waitingForManualSwitch = false;
+        _waitingForAutoSwitch = false;
+        _turnCommittedAwaitingSwitch = false;
         _playerLegs[winnerSlot]++;
+
+        var legDarts = _playerDartsThrown[winnerSlot] - _legStartDartsThrown[winnerSlot];
+        if (legDarts > 0 && (_playerBestLegDarts[winnerSlot] == int.MaxValue || legDarts < _playerBestLegDarts[winnerSlot]))
+            _playerBestLegDarts[winnerSlot] = legDarts;
 
         // Recalculate avg
         if (_playerDartsThrown[winnerSlot] > 0)
@@ -440,19 +742,22 @@ else
         if (matchOver)
         {
             _matchFinished = true;
-            _winnerName = winnerSlot == 0 ? HomeName : AwayName;
-            await SendMatchStateAsync(finished: true);
+            _winnerName = ResolvePlayerName(winnerSlot);
+            await SendMatchStateAsync(finished: true, eventType: "match-finished");
             StateHasChanged();
             return;
         }
 
         // Start new leg
         _playerScores = [_targetScore, _targetScore];
+        var startsOpen = _inMode == "Straight";
+        _playerLegOpened = [startsOpen, startsOpen];
         _currentPlayerSlot = winnerSlot == 0 ? 1 : 0; // loser starts
+            _legStartDartsThrown = [_playerDartsThrown[0], _playerDartsThrown[1]];
         _currentDartInTurn = 0;
         _currentTurnDarts = [new(), new(), new()];
 
-        await SendMatchStateAsync();
+        await SendMatchStateAsync(eventType: "leg-finished");
         StateHasChanged();
     }
 
@@ -475,7 +780,7 @@ else
         _legHistory.RemoveAt(_legHistory.Count - 1);
 
         // Restore state
-        _playerScores[last.PlayerSlot] = last.ScoreBefore;
+        _playerScores[last.PlayerSlot] = ClampScore(last.ScoreBefore);
         _playerDartsThrown[last.PlayerSlot] -= last.DartCount;
         _playerTotalPoints[last.PlayerSlot] -= last.TurnPoints;
         if (_playerDartsThrown[last.PlayerSlot] > 0)
@@ -487,16 +792,16 @@ else
         _currentDartInTurn = 0;
         _currentTurnDarts = [new(), new(), new()];
 
-        await SendMatchStateAsync();
+        await SendMatchStateAsync(eventType: "undo");
         StateHasChanged();
     }
 
-    private async Task SendMatchStateAsync(bool finished = false)
+    private async Task SendMatchStateAsync(bool finished = false, string eventType = "state")
     {
         if (Match is null) return;
         try
         {
-            var payload = BuildAutodartsPayload(finished);
+            var payload = BuildAutodartsPayload(finished, eventType);
             await Api.MatchMakerThrowAsync(Match.Id, payload);
         }
         catch (Exception ex)
@@ -505,10 +810,14 @@ else
         }
     }
 
-    private object BuildAutodartsPayload(bool finished)
+    private object BuildAutodartsPayload(bool finished, string eventType)
     {
         var home = HomeName ?? "Player 1";
         var away = AwayName ?? "Player 2";
+        var currentTurn = _currentTurnDarts
+            .Take(_currentDartInTurn)
+            .Select(d => new { value = d.Value, multiplier = d.Multiplier, score = d.Points, label = d.Label })
+            .ToArray();
 
         return new
         {
@@ -516,15 +825,30 @@ else
             variant = "X01",
             gameMode = "x01",
             finished,
+            eventType,
+            inMode = _inMode,
+            outMode = _outMode,
+            timestamp = DateTimeOffset.UtcNow,
             players = new[]
             {
-                new { name = home, score = _playerScores[0], points = _playerScores[0] },
-                new { name = away, score = _playerScores[1], points = _playerScores[1] }
+                new { name = home, score = Math.Max(0, DisplayScore(0)), points = Math.Max(0, DisplayScore(0)) },
+                new { name = away, score = Math.Max(0, DisplayScore(1)), points = Math.Max(0, DisplayScore(1)) }
             },
             scores = new[]
             {
                 new { legs = _playerLegs[0], sets = _playerSets[0] },
                 new { legs = _playerLegs[1], sets = _playerSets[1] }
+            },
+            turns = new[]
+            {
+                new
+                {
+                    player = _currentPlayerSlot,
+                    throws = currentTurn,
+                    darts = currentTurn,
+                    dart = _currentDartInTurn,
+                    started = _playerLegOpened[_currentPlayerSlot]
+                }
             },
             stats = new[]
             {
@@ -543,7 +867,9 @@ else
                         highestCheckout = _playerHighestCheckout[0],
                         plus180 = _player180s[0],
                         plus140 = _player140Plus[0],
-                        plus100 = _player100Plus[0]
+                        plus100 = _player100Plus[0],
+                        highestRoundScore = _playerHighestRoundScore[0],
+                        bestLegDarts = _playerBestLegDarts[0] == int.MaxValue ? 0 : _playerBestLegDarts[0]
                     }
                 },
                 new
@@ -561,7 +887,9 @@ else
                         highestCheckout = _playerHighestCheckout[1],
                         plus180 = _player180s[1],
                         plus140 = _player140Plus[1],
-                        plus100 = _player100Plus[1]
+                        plus100 = _player100Plus[1],
+                        highestRoundScore = _playerHighestRoundScore[1],
+                        bestLegDarts = _playerBestLegDarts[1] == int.MaxValue ? 0 : _playerBestLegDarts[1]
                     }
                 }
             }
@@ -582,7 +910,19 @@ else
     {
         _autoCts?.Cancel();
         _autoRunning = false;
+        _waitingForManualSwitch = false;
+        _waitingForAutoSwitch = false;
+        _turnCommittedAwaitingSwitch = false;
         StateHasChanged();
+    }
+
+    private void StopAuto()
+    {
+        _autoCts?.Cancel();
+        _autoRunning = false;
+        _waitingForManualSwitch = false;
+        _waitingForAutoSwitch = false;
+        _turnCommittedAwaitingSwitch = false;
     }
 
     private async Task RunAutoAsync(CancellationToken ct)
@@ -591,18 +931,53 @@ else
         {
             while (!ct.IsCancellationRequested && _isRunning && !_matchFinished)
             {
-                _autoCountdown = 2;
-                for (int i = 2; i >= 1 && !ct.IsCancellationRequested; i--)
+                if (_waitingForAutoSwitch && _turnCommittedAwaitingSwitch)
                 {
-                    _autoCountdown = i;
+                    var switchDelayMs = GetAutoThrowDelayMs();
+                    var switchEnd = DateTime.UtcNow.AddMilliseconds(switchDelayMs);
+                    while (!ct.IsCancellationRequested)
+                    {
+                        var remainingMs = (int)(switchEnd - DateTime.UtcNow).TotalMilliseconds;
+                        if (remainingMs <= 0)
+                            break;
+
+                        _autoCountdownText = $"{remainingMs / 1000d:0.0}s";
+                        await InvokeAsync(StateHasChanged);
+                        await Task.Delay(Math.Min(remainingMs, 100), ct).ConfigureAwait(false);
+                    }
+
+                    if (ct.IsCancellationRequested)
+                        break;
+
+                    await InvokeAsync(SwitchPlayerNowAsync);
+                    continue;
+                }
+
+                if (_waitingForManualSwitch)
+                {
+                    _autoCountdownText = "manuell";
                     await InvokeAsync(StateHasChanged);
-                    await Task.Delay(500, ct).ConfigureAwait(false);
+                    await Task.Delay(120, ct).ConfigureAwait(false);
+                    continue;
+                }
+
+                var delayMs = GetAutoThrowDelayMs();
+                var end = DateTime.UtcNow.AddMilliseconds(delayMs);
+                while (!ct.IsCancellationRequested)
+                {
+                    var remainingMs = (int)(end - DateTime.UtcNow).TotalMilliseconds;
+                    if (remainingMs <= 0)
+                        break;
+
+                    _autoCountdownText = $"{remainingMs / 1000d:0.0}s";
+                    await InvokeAsync(StateHasChanged);
+                    await Task.Delay(Math.Min(remainingMs, 100), ct).ConfigureAwait(false);
                 }
                 if (ct.IsCancellationRequested) break;
 
-                var (val, mult) = SimulateThrow(_playerScores[_currentPlayerSlot]);
+                var effectiveRemaining = Math.Max(0, _playerScores[_currentPlayerSlot] - PendingTurnPoints(_currentPlayerSlot));
+                var (val, mult) = SimulateThrow(effectiveRemaining, _playerLegOpened[_currentPlayerSlot]);
                 await InvokeAsync(() => ThrowDartAsync(val, mult));
-                await Task.Delay(300, ct).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -616,19 +991,67 @@ else
         }
     }
 
-    private (int Value, int Multiplier) SimulateThrow(int remaining)
+    private (int Value, int Multiplier) SimulateThrow(int remaining, bool legOpened)
     {
         var rng = Random.Shared;
 
-        // Try checkout (simulates ~30% success rate — realistic for amateur play)
+        if (!legOpened)
+        {
+            return SimulateOpeningThrow(rng);
+        }
+
+        // Try checkout (simulates realistic finish chance)
         if (remaining <= 170)
         {
             var checkout = TryFindCheckout(remaining, _outMode);
-            if (checkout.HasValue && rng.NextDouble() < 0.3)
+            if (checkout.HasValue && rng.NextDouble() < 0.45)
                 return checkout.Value;
         }
 
-        // Random throw with realistic distribution
+        // Keep remaining score in valid x01 range (never bust into invalid negative/1 states)
+        var maxSafePoints = MaxSafePoints(remaining);
+        if (maxSafePoints <= 0)
+            return (0, 1);
+
+        var candidate = SimulateScoringThrow(rng);
+        var points = DartPoints(candidate.Value, candidate.Multiplier);
+        if (points <= maxSafePoints)
+            return candidate;
+
+        return BestSafeThrow(maxSafePoints);
+    }
+
+    private (int Value, int Multiplier) SimulateOpeningThrow(Random rng)
+    {
+        if (_inMode == "Double")
+        {
+            if (rng.NextDouble() < 0.55)
+            {
+                var doubles = new[] { 20, 16, 10, 8, 12, 18, 14, 6, 4, 2, 25 };
+                var val = doubles[rng.Next(0, doubles.Length)];
+                return (val, 2);
+            }
+
+            return rng.NextDouble() < 0.25 ? (0, 1) : (rng.Next(1, 21), 1);
+        }
+
+        if (_inMode == "Master")
+        {
+            if (rng.NextDouble() < 0.65)
+            {
+                var val = rng.Next(1, 21);
+                var mult = rng.NextDouble() < 0.5 ? 2 : 3;
+                return (val, mult);
+            }
+
+            return rng.NextDouble() < 0.2 ? (0, 1) : (rng.Next(1, 21), 1);
+        }
+
+        return SimulateScoringThrow(rng);
+    }
+
+    private static (int Value, int Multiplier) SimulateScoringThrow(Random rng)
+    {
         var high20 = rng.NextDouble();
         int value;
         int mult;
@@ -638,22 +1061,54 @@ else
         else if (high20 < 0.75) { value = rng.Next(10, 21); mult = 1; }
         else { value = rng.Next(1, 21); mult = 1; }
 
-        // Occasional miss (0)
         if (rng.NextDouble() < 0.05) return (0, 1);
-
         return (value, mult);
+    }
+
+    private int MaxSafePoints(int remaining)
+    {
+        if (_outMode == "Straight")
+            return Math.Max(0, remaining - 1);
+
+        return Math.Max(0, remaining - 2);
+    }
+
+    private static int DartPoints(int value, int mult)
+    {
+        if (value == 0) return 0;
+        if (value == 25) return mult == 2 ? 50 : 25;
+        return value * mult;
+    }
+
+    private static readonly (int Value, int Multiplier)[] SafeThrows =
+    [
+        (20,3),(19,3),(18,3),(17,3),(16,3),(15,3),
+        (20,2),(19,2),(18,2),(17,2),(16,2),(15,2),(14,2),(13,2),(12,2),(11,2),(10,2),(9,2),(8,2),(7,2),(6,2),(5,2),(4,2),(3,2),(2,2),(1,2),
+        (20,1),(19,1),(18,1),(17,1),(16,1),(15,1),(14,1),(13,1),(12,1),(11,1),(10,1),(9,1),(8,1),(7,1),(6,1),(5,1),(4,1),(3,1),(2,1),(1,1),
+        (25,1),(0,1)
+    ];
+
+    private static (int Value, int Multiplier) BestSafeThrow(int maxSafePoints)
+    {
+        foreach (var throwCandidate in SafeThrows)
+        {
+            if (DartPoints(throwCandidate.Value, throwCandidate.Multiplier) <= maxSafePoints)
+                return throwCandidate;
+        }
+
+        return (0, 1);
     }
 
     private static (int Value, int Multiplier)? TryFindCheckout(int remaining, string outMode)
     {
-        if (outMode == "StraightOut")
+        if (outMode == "Straight")
         {
             if (remaining <= 20) return (remaining, 1);
             if (remaining == 25) return (25, 1);
             if (remaining == 50) return (25, 2);
         }
 
-        if (outMode == "DoubleOut" || outMode == "MasterOut")
+        if (outMode == "Double" || outMode == "Master")
         {
             if (remaining % 2 == 0 && remaining <= 40) return (remaining / 2, 2);
             if (remaining == 50) return (25, 2);
@@ -675,6 +1130,162 @@ else
         };
     }
 
+    private string BoardCellLabel(int value)
+    {
+        if (value == 0) return "Miss";
+        return FormatDartLabel(value, _selectedMultiplier);
+    }
+
+    private int PendingTurnPoints(int slot)
+    {
+        if (slot != _currentPlayerSlot || _currentDartInTurn <= 0)
+            return 0;
+
+        // After the turn is committed we keep darts visible until switching,
+        // but they must no longer be subtracted from the already committed score.
+        if (_turnCommittedAwaitingSwitch)
+            return 0;
+
+        var pending = 0;
+        for (int i = 0; i < _currentDartInTurn; i++)
+            pending += _currentTurnDarts[i].Points;
+
+        return pending;
+    }
+
+    private int DisplayScore(int slot)
+    {
+        var baseScore = ClampScore(_playerScores[slot]);
+        if (_turnCommittedAwaitingSwitch) return baseScore;
+        var pending = PendingTurnPoints(slot);
+        var projected = baseScore - pending;
+        return projected < 0 ? baseScore : ClampScore(projected);
+    }
+
+    private static int ClampScore(int value) => value < 0 ? 0 : value;
+
+    private int GetAutoThrowDelayMs() => _autoSpeedLabel switch
+    {
+        "1x" => 3000,
+        "3x" => 500,
+        _ => 1000
+    };
+
+    private static string NormalizeSpeedLabel(string? value) => value switch
+    {
+        "1x" => "1x",
+        "3x" => "3x",
+        _ => "2x"
+    };
+
+    private async Task LoadSettingsAsync()
+    {
+        try
+        {
+            var speed = await JS.InvokeAsync<string?>("localStorage.getItem", AutoSpeedStorageKey);
+            var autoSwitch = await JS.InvokeAsync<string?>("localStorage.getItem", AutoSwitchStorageKey);
+
+            _autoSpeedLabel = NormalizeSpeedLabel(speed);
+            _autoPlayerSwitch = !string.Equals(autoSwitch, "false", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            _autoSpeedLabel = "2x";
+            _autoPlayerSwitch = true;
+        }
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", AutoSpeedStorageKey, _autoSpeedLabel);
+            await JS.InvokeVoidAsync("localStorage.setItem", AutoSwitchStorageKey, _autoPlayerSwitch ? "true" : "false");
+        }
+        catch
+        {
+            // Best effort persistence only.
+        }
+    }
+
+    private async Task HideBustBannerAsync()
+    {
+        await Task.Delay(1400);
+        _showBustBanner = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void EnsureNonNegativeScores()
+    {
+        _playerScores[0] = ClampScore(_playerScores[0]);
+        _playerScores[1] = ClampScore(_playerScores[1]);
+    }
+
+    private static string NormalizeInMode(string? inMode)
+    {
+        var normalized = (inMode ?? string.Empty).Replace("-", string.Empty).Replace(" ", string.Empty);
+        return normalized.ToLowerInvariant() switch
+        {
+            "double" or "doublein" => "Double",
+            "master" or "masterin" => "Master",
+            _ => "Straight"
+        };
+    }
+
+    private static string NormalizeOutMode(string? outMode)
+    {
+        var normalized = (outMode ?? string.Empty).Replace("-", string.Empty).Replace(" ", string.Empty);
+        return normalized.ToLowerInvariant() switch
+        {
+            "straight" or "straightout" => "Straight",
+            "master" or "masterout" => "Master",
+            _ => "Double"
+        };
+    }
+
+    private string ResolvePlayerName(int slot)
+    {
+        if (slot == 0)
+            return string.IsNullOrWhiteSpace(HomeName) ? "Heim" : HomeName!;
+
+        return string.IsNullOrWhiteSpace(AwayName) ? "Gast" : AwayName!;
+    }
+
+    private string ResolveWinnerNameFromMatch()
+    {
+        if (Match is null)
+            return "Unbekannt";
+
+        if (Match.WinnerParticipantId.HasValue)
+        {
+            if (Match.WinnerParticipantId == Match.HomeParticipantId)
+                return ResolvePlayerName(0);
+            if (Match.WinnerParticipantId == Match.AwayParticipantId)
+                return ResolvePlayerName(1);
+        }
+
+        if (_playerSets[0] != _playerSets[1])
+            return _playerSets[0] > _playerSets[1] ? ResolvePlayerName(0) : ResolvePlayerName(1);
+
+        if (_playerLegs[0] != _playerLegs[1])
+            return _playerLegs[0] > _playerLegs[1] ? ResolvePlayerName(0) : ResolvePlayerName(1);
+
+        return "Unbekannt";
+    }
+
+    private string ResolveWinnerName()
+    {
+        if (!string.IsNullOrWhiteSpace(_winnerName))
+            return _winnerName!;
+
+        return ResolveWinnerNameFromMatch();
+    }
+
+    private static bool IsStartStatusAllowed(string? status)
+        => string.Equals(status, "Geplant", StringComparison.OrdinalIgnoreCase)
+           || string.Equals(status, "Aktiv", StringComparison.OrdinalIgnoreCase)
+           || string.Equals(status, "Gestartet", StringComparison.OrdinalIgnoreCase);
+
     private record DartRecord
     {
         public int Value { get; set; }
@@ -692,3 +1303,96 @@ else
         public DartRecord[] DartRecords { get; set; } = [];
     }
 }
+
+<style>
+    .mm-manual-board {
+        max-width: 640px;
+        margin: 0 auto;
+        border: 1px solid #2b5a9a;
+        border-radius: 0.6rem;
+        overflow: hidden;
+        background: linear-gradient(180deg, #2f5fa1 0%, #284d87 100%);
+    }
+
+    .mm-mode-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0;
+    }
+
+    .mm-mode-btn {
+        border-radius: 0;
+        min-height: 56px;
+        font-weight: 700;
+    }
+
+    .mm-grid {
+        display: grid;
+        grid-template-columns: 1fr repeat(5, 1fr);
+        gap: 1px;
+        background: #2b5a9a;
+        padding: 1px;
+    }
+
+    .mm-cell {
+        border-radius: 0;
+        min-height: 58px;
+        font-weight: 700;
+    }
+
+    .mm-miss {
+        grid-column: 1;
+        grid-row: 1 / span 2;
+    }
+
+    .mm-bull {
+        grid-column: 1;
+        grid-row: 3 / span 2;
+    }
+
+    .mm-bottom-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1px;
+        background: #2b5a9a;
+        padding: 1px 1px 0 1px;
+    }
+
+    .mm-bottom-btn {
+        border-radius: 0;
+        min-height: 52px;
+        font-weight: 700;
+    }
+
+    .mm-bust-banner {
+        margin-bottom: 0.75rem;
+        border: 1px solid #b02a37;
+        background: linear-gradient(90deg, #f8d7da, #fff3cd);
+        color: #842029;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.4rem;
+        animation: mm-bust-pulse 0.28s ease-in-out 0s 3;
+    }
+
+    .mm-player-box {
+        border: 1px solid #d7dce5;
+        border-radius: 0.55rem;
+        padding: 0.6rem 0.5rem;
+        background: #f8fafc;
+    }
+
+    .mm-player-box-active {
+        border-color: #0d6efd;
+        background: linear-gradient(180deg, #e8f1ff 0%, #dceaff 100%);
+        box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.2);
+    }
+
+    @@keyframes mm-bust-pulse {
+        0% { transform: translateX(0); }
+        25% { transform: translateX(-4px); }
+        50% { transform: translateX(4px); }
+        100% { transform: translateX(0); }
+    }
+</style>

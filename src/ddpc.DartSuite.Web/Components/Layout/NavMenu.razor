@@ -4,6 +4,7 @@
 @inject AppStateService AppState
 @inject BoardHubService BoardHubService
 @inject IUiHelpService UiHelp
+@inject NavigationManager Navigation
 @implements IAsyncDisposable
 
 <div class="top-row ps-3 navbar navbar-dark">
@@ -59,8 +60,8 @@
             </NavLink>
         </div>
 
-        <div class="nav-item px-3 nav-group-head">
-            <NavLink class="nav-link flex-grow-1" href="@TournamentOverviewHref">
+        <div class="nav-item nav-level-0 nav-group-head">
+            <NavLink class="nav-link flex-grow-1" href="@TournamentOverviewHref" @onclick="OnOverviewParentClick">
                 <span class="bi bi-kanban-nav-menu" aria-hidden="true"></span> Turnieruebersicht
             </NavLink>
             <button type="button" class="btn btn-link nav-expand-btn" title="Untermenue ein-/ausklappen"
@@ -69,11 +70,11 @@
 
         @if (isOverviewExpanded)
         {
-            <div class="nav-item px-4">
-                <NavLink class="nav-link small" href="my-tournaments?filter=overview">- Meine Turniere</NavLink>
+            <div class="nav-item nav-level-1">
+                <NavLink class="nav-link small nav-level-1-link" href="my-tournaments?filter=overview">Meine Turniere</NavLink>
             </div>
-            <div class="nav-item px-4">
-                <NavLink class="nav-link small" href="my-tournaments?filter=running">- Laufende</NavLink>
+            <div class="nav-item nav-level-1">
+                <NavLink class="nav-link small nav-level-1-link" href="my-tournaments?filter=running">Laufende</NavLink>
             </div>
         }
 
@@ -92,8 +93,8 @@
             </NavLink>
         </div>
 
-        <div class="nav-item px-3 nav-group-head">
-            <NavLink class="nav-link flex-grow-1" href="settings?tab=general">
+        <div class="nav-item nav-level-0 nav-group-head">
+            <NavLink class="nav-link flex-grow-1" href="settings?tab=general" @onclick="OnSettingsParentClick">
                 <span class="bi bi-gear-nav-menu" aria-hidden="true"></span> Einstellungen
             </NavLink>
             <button type="button" class="btn btn-link nav-expand-btn" title="Untermenue ein-/ausklappen"
@@ -102,11 +103,11 @@
 
         @if (isSettingsExpanded)
         {
-            <div class="nav-item px-4">
-                <NavLink class="nav-link small" href="settings?tab=user">- Benutzer</NavLink>
+            <div class="nav-item nav-level-1">
+                <NavLink class="nav-link small nav-level-1-link" href="settings?tab=user">Benutzer</NavLink>
             </div>
-            <div class="nav-item px-4">
-                <NavLink class="nav-link small" href="profile">- Profil</NavLink>
+            <div class="nav-item nav-level-1">
+                <NavLink class="nav-link small nav-level-1-link" href="profile">Profil</NavLink>
             </div>
         }
 
@@ -115,9 +116,12 @@
         @foreach (var tournament in Tournaments.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
         {
             var isSelectedTournament = IsSelectedTournament(tournament.Id);
-            <div class="nav-item px-3 mt-1 nav-group-head">
+            <div class="nav-item nav-level-0 mt-1 nav-group-head">
                 <NavLink class="@($"nav-link flex-grow-1 {(isSelectedTournament ? "text-info fw-semibold" : string.Empty)}")"
-                         href="@TournamentTabHref(tournament.Id, "general")">@tournament.Name</NavLink>
+                         href="@TournamentTabHref(tournament.Id, "general")"
+                         @onclick="() => OnTournamentParentClick(tournament.Id)">
+                    <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> @tournament.Name
+                </NavLink>
                 @if (!isSelectedTournament)
                 {
                     <button type="button" class="btn btn-link nav-expand-btn" title="Turniermenue ein-/ausklappen"
@@ -127,53 +131,61 @@
 
             @if (IsTournamentExpanded(tournament.Id))
             {
-                <div class="nav-item px-4"><NavLink class="nav-link small" href="@TournamentTabHref(tournament.Id, "general")">- Allgemein</NavLink></div>
-                <div class="nav-item px-4"><NavLink class="nav-link small" href="@TournamentTabHref(tournament.Id, "boards-participants")">- Teilnehmer & Boards</NavLink></div>
-                <div class="nav-item px-4"><NavLink class="nav-link small" href="@TournamentTabHref(tournament.Id, "draw")">- Auslosung</NavLink></div>
-                <div class="nav-item px-4"><NavLink class="nav-link small" href="@TournamentTabHref(tournament.Id, "rounds")">- Spielmodus</NavLink></div>
+                <div class="nav-item nav-level-1"><NavLink class="nav-link small nav-level-1-link" href="@TournamentTabHref(tournament.Id, "general")">Allgemein</NavLink></div>
+                <div class="nav-item nav-level-1"><NavLink class="nav-link small nav-level-1-link" href="@TournamentTabHref(tournament.Id, "boards-participants")">Teilnehmer & Boards</NavLink></div>
+                <div class="nav-item nav-level-1"><NavLink class="nav-link small nav-level-1-link" href="@TournamentTabHref(tournament.Id, "draw")">Auslosung</NavLink></div>
+                <div class="nav-item nav-level-1"><NavLink class="nav-link small nav-level-1-link" href="@TournamentTabHref(tournament.Id, "rounds")">Spielmodus</NavLink></div>
                 @if (string.Equals(tournament.Mode, "GroupAndKnockout", StringComparison.OrdinalIgnoreCase))
                 {
-                    <div class="nav-item px-4"><NavLink class="nav-link small" href="@TournamentTabHref(tournament.Id, "groups")">- Gruppenphase</NavLink></div>
+                    <div class="nav-item nav-level-1"><NavLink class="nav-link small nav-level-1-link" href="@TournamentTabHref(tournament.Id, "groups")">Gruppenphase</NavLink></div>
                 }
-                <div class="nav-item px-4"><NavLink class="nav-link small" href="@TournamentTabHref(tournament.Id, "knockout")">- Knockout</NavLink></div>
-                <div class="nav-item px-4"><NavLink class="nav-link small" href="@TournamentTabHref(tournament.Id, "schedule")">- Spielplan</NavLink></div>
+                <div class="nav-item nav-level-1"><NavLink class="nav-link small nav-level-1-link" href="@TournamentTabHref(tournament.Id, "knockout")">Knockout</NavLink></div>
+                <div class="nav-item nav-level-1"><NavLink class="nav-link small nav-level-1-link" href="@TournamentTabHref(tournament.Id, "schedule")">Spielplan</NavLink></div>
             }
         }
 
         @if (IsAdminMenuVisible)
         {
-            <div class="nav-item px-3 nav-group-head mt-2">
-                <span class="nav-link flex-grow-1">Admin</span>
+            <div class="nav-item nav-level-0 nav-group-head mt-2">
+                <button type="button" class="btn btn-link nav-link flex-grow-1 text-start text-decoration-none" @onclick="ToggleAdminGroup">
+                    <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Admin
+                </button>
                 <button type="button" class="btn btn-link nav-expand-btn" title="Untermenue ein-/ausklappen"
                         @onclick="ToggleAdminGroup" @onclick:stopPropagation="true">@ExpandIndicator(isAdminExpanded)</button>
             </div>
 
             @if (isAdminExpanded)
             {
-                <div class="nav-item px-4">
-                    <NavLink class="nav-link small" href="tournaments">- Turniere</NavLink>
+                <div class="nav-item nav-level-1">
+                    <NavLink class="nav-link small nav-level-1-link" href="tournaments">Turniere</NavLink>
                 </div>
-                <div class="nav-item px-4">
-                    <NavLink class="nav-link small" href="matches">- Matches</NavLink>
+                <div class="nav-item nav-level-1">
+                    <NavLink class="nav-link small nav-level-1-link" href="matches">Matches</NavLink>
+                </div>
+                <div class="nav-item nav-level-1">
+                    <NavLink class="nav-link small nav-level-1-link" href="infowall" title="Live Kamerastream mit Scoring-Overlay">Infowall</NavLink>
                 </div>
                 @if (AppState.IsAdmin)
                 {
-                    <div class="nav-item px-4">
-                        <NavLink class="nav-link small" href="admin/accounts">- Accounts</NavLink>
+                    <div class="nav-item nav-level-1">
+                        <NavLink class="nav-link small nav-level-1-link" href="admin/accounts">Accounts</NavLink>
                     </div>
                 }
-                <div class="nav-item px-4 nav-group-head nav-subgroup-head">
-                    <NavLink class="nav-link small flex-grow-1" href="boards">- Boards</NavLink>
-                    <button type="button" class="btn btn-link nav-expand-btn" title="Boards ein-/ausklappen"
-                            @onclick="ToggleBoardsGroup" @onclick:stopPropagation="true">@ExpandIndicator(isBoardsExpanded)</button>
+                <div class="nav-item nav-level-1 nav-group-head nav-subgroup-head">
+                    <NavLink class="nav-link small flex-grow-1 nav-level-1-link" href="boards" @onclick="OnBoardsParentClick">Boards</NavLink>
+                    @if (HasBoardSubentries)
+                    {
+                        <button type="button" class="btn btn-link nav-expand-btn" title="Boards ein-/ausklappen"
+                                @onclick="ToggleBoardsGroup" @onclick:stopPropagation="true">@ExpandIndicator(isBoardsExpanded)</button>
+                    }
                 </div>
 
-                @if (isBoardsExpanded)
+                @if (isBoardsExpanded && HasBoardSubentries)
                 {
                     @foreach (var board in VisibleBoards)
                     {
-                        <div class="nav-item px-5">
-                            <NavLink class="nav-link small board-subentry" href="@TournamentBoardHref(board.Id)">
+                        <div class="nav-item nav-level-2">
+                            <NavLink class="nav-link small board-subentry nav-level-2-link" href="@TournamentBoardHref(board.Id)">
                                 <span class="status-dot @StatusDotClass(board.OverallStatus)"></span>
                                 @board.Name
                             </NavLink>
@@ -260,6 +272,8 @@
         }
     }
 
+    private bool HasBoardSubentries => VisibleBoards.Count > 0;
+
     protected override async Task OnParametersSetAsync()
     {
         var normalized = SelectedTournamentId ?? string.Empty;
@@ -277,6 +291,8 @@
             }
         }
 
+        SyncExpansionWithRoute();
+
         if (string.Equals(_loadedScopeTournamentId, normalized, StringComparison.Ordinal))
             return;
 
@@ -285,6 +301,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        SyncExpansionWithRoute();
         await LoadBoardsAsync(SelectedTournamentId);
 
         try
@@ -371,8 +388,22 @@
 
     private void ToggleOverviewGroup() => isOverviewExpanded = !isOverviewExpanded;
     private void ToggleSettingsGroup() => isSettingsExpanded = !isSettingsExpanded;
-    private void ToggleAdminGroup() => isAdminExpanded = !isAdminExpanded;
+    private void ToggleAdminGroup()
+    {
+        isAdminExpanded = !isAdminExpanded;
+        if (isAdminExpanded)
+            isBoardsExpanded = true;
+    }
     private void ToggleBoardsGroup() => isBoardsExpanded = !isBoardsExpanded;
+
+    private void OnOverviewParentClick() => isOverviewExpanded = true;
+    private void OnSettingsParentClick() => isSettingsExpanded = true;
+    private void OnBoardsParentClick() => isBoardsExpanded = true;
+
+    private void OnTournamentParentClick(Guid tournamentId)
+    {
+        expandedTournamentIds.Add(tournamentId);
+    }
 
     private bool IsSelectedTournament(Guid tournamentId)
         => Guid.TryParse(SelectedTournamentId, out var selectedId) && selectedId == tournamentId;
@@ -403,6 +434,23 @@
             return !board.TournamentId.HasValue;
 
         return !board.TournamentId.HasValue || board.TournamentId == selectedId;
+    }
+
+    private void SyncExpansionWithRoute()
+    {
+        var relative = Navigation.ToBaseRelativePath(Navigation.Uri).ToLowerInvariant();
+
+        if (relative.StartsWith("tournaments") || relative.StartsWith("my-tournaments"))
+            isOverviewExpanded = true;
+
+        if (relative.StartsWith("settings") || relative.StartsWith("profile"))
+            isSettingsExpanded = true;
+
+        if (relative.StartsWith("boards"))
+        {
+            isAdminExpanded = true;
+            isBoardsExpanded = true;
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -449,6 +497,72 @@
         display: flex;
         align-items: center;
         gap: 0.4rem;
+    }
+
+    .nav-level-0 ::deep .nav-link {
+        padding-left: 0.9rem;
+        min-height: 2.75rem;
+        line-height: 2.75rem;
+    }
+
+    .nav-level-1-link {
+        padding-left: 2.15rem !important;
+        min-height: 2.15rem !important;
+        line-height: 2.15rem !important;
+        font-size: 0.82rem !important;
+    }
+
+    .nav-level-2-link {
+        padding-left: 3.2rem !important;
+        min-height: 2.05rem !important;
+        line-height: 2.05rem !important;
+        font-size: 0.8rem !important;
+    }
+
+    .nav-level-1,
+    .nav-level-2 {
+        position: relative;
+    }
+
+    .nav-level-1::before {
+        content: "";
+        position: absolute;
+        left: 1.45rem;
+        top: 0.45rem;
+        bottom: 0.45rem;
+        width: 1px;
+        background: rgba(255, 255, 255, 0.16);
+    }
+
+    .nav-level-2::before {
+        content: "";
+        position: absolute;
+        left: 2.55rem;
+        top: 0.4rem;
+        bottom: 0.4rem;
+        width: 1px;
+        background: rgba(255, 255, 255, 0.16);
+    }
+
+    .nav-level-1::after,
+    .nav-level-2::after {
+        content: "";
+        position: absolute;
+        left: 1.45rem;
+        top: 50%;
+        width: 0.6rem;
+        height: 1px;
+        background: rgba(255, 255, 255, 0.24);
+    }
+
+    .nav-level-2::after {
+        left: 2.55rem;
+        width: 0.55rem;
+    }
+
+    .nav-level-1 ::deep .nav-link:hover,
+    .nav-level-2 ::deep .nav-link:hover {
+        background-color: rgba(255, 255, 255, 0.08);
     }
 
     .status-dot {

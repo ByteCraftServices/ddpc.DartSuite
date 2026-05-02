@@ -520,8 +520,18 @@ public sealed class BoardsController(
     [HttpPatch("{id:guid}/virtualize")]
     public async Task<ActionResult<BoardDto>> ConvertToVirtual(Guid id, [FromQuery] string? ownerAccountName, CancellationToken cancellationToken)
     {
-        var adminAccess = ToDeniedResult(await tournamentAuthorization.EnsureAdminAsync(HttpContext, cancellationToken));
-        if (adminAccess is not null) return adminAccess;
+        var adminCheck = await tournamentAuthorization.EnsureAdminAsync(HttpContext, cancellationToken);
+        if (!adminCheck.Allowed)
+        {
+            var existing = await boardService.GetBoardAsync(id, cancellationToken);
+            if (existing is null) return NotFound();
+
+            if (!existing.TournamentId.HasValue)
+                return ToDeniedResult(adminCheck)!;
+
+            var managerDenied = ToDeniedResult(await tournamentAuthorization.EnsureManagerOrIntegrationAsync(HttpContext, existing.TournamentId.Value, cancellationToken));
+            if (managerDenied is not null) return managerDenied;
+        }
 
         var board = await boardService.ConvertBoardToVirtualAsync(id, ownerAccountName, cancellationToken);
         if (board is null) return NotFound();

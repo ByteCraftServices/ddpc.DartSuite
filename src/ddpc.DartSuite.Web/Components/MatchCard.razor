@@ -3,11 +3,13 @@
 @implements IAsyncDisposable
 @inject TournamentHubService TournamentHubService
 @inject DartSuiteApiService Api
+@inject IJSRuntime JS
 
 <div class="@CardClass" style="@CardInlineStyle" @onclick="HandleClickAsync">
     @if (string.Equals(EffectiveLayout, "List", StringComparison.Ordinal))
     {
         <div class="match-card-list-row py-1 px-2 small">
+            <div class="match-list-leading-meta" style="display:contents">
             @if (ShowListDetailChevron)
             {
                 <button type="button"
@@ -34,6 +36,8 @@
             {
                 <span class="badge text-bg-secondary flex-shrink-0">@Label</span>
             }
+            </div>
+            <div class="match-list-player-slot-home" style="display:contents">
             <PlayerName Name="@ResolvedHomeName"
                         HighlightWinner="@(Match.WinnerParticipantId == Match.HomeParticipantId)"
                         ShowAverage="@ShowPlayerAverage"
@@ -43,14 +47,15 @@
             {
                 <span class="badge text-bg-info flex-shrink-0" style="font-size:.65em">am Zug</span>
             }
-            <div class="d-flex align-items-center gap-1 flex-shrink-0 match-card-list-score">
+            </div>
+            <div class="d-flex align-items-center gap-1 flex-shrink-0 match-card-list-score match-list-score-slot">
                 @if (ShouldShowSets)
                 {
-                    <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">S @EffectiveHomeSets</span>
+                    <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">@ScoreChipContent("S", EffectiveHomeSets)</span>
                 }
                 @if (ShouldShowLegs)
                 {
-                    <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">L @EffectiveHomeLegs</span>
+                    <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">@ScoreChipContent("L", EffectiveHomeLegs)</span>
                 }
                 @if (ShouldShowLivePoints)
                 {
@@ -62,6 +67,10 @@
                 {
                     <span class="text-muted fw-semibold" style="font-size:.85em">@FinalResultScoreText</span>
                 }
+                    else if (IsRunning)
+                    {
+                        <span class="text-muted small">Live aktiv</span>
+                    }
                 else if (ShouldShowNotStartedStartTimeFallback)
                 {
                     <span class="badge text-bg-light border">@NotStartedFallbackStartTimeText</span>
@@ -79,86 +88,16 @@
                 {
                     <span class="text-muted" style="font-size:.8em">vs</span>
                 }
-                @if (ShowInlineBodyActions && UseActionMenu)
-                {
-                    <div class="dropdown flex-shrink-0" @onclick:stopPropagation="true">
-                        <button type="button" class="btn btn-outline-secondary btn-sm match-action-menu-button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Match-Aktionen oeffnen" title="Aktionen">
-                            <span class="match-action-menu-glyph" aria-hidden="true">⋮</span>
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end">
-                            @if (ShowStartMatchActionItem)
-                            {
-                                <li><button type="button" class="dropdown-item d-flex align-items-center gap-2 match-action-menu-item" disabled="@DisableStartMatchActionItem" title="Match starten" @onclick="HandleStartMatchAsync"><i class="bi bi-play-fill"></i><span class="match-action-label">Match starten</span></button></li>
-                            }
-                            @if (ShowResetActionItem)
-                            {
-                                <li><button type="button" class="dropdown-item d-flex align-items-center gap-2 match-action-menu-item" disabled="@DisableResetActionItem" title="Match zuruecksetzen" @onclick="HandleResetMatchAsync"><i class="bi bi-arrow-counterclockwise"></i><span class="match-action-label">Zuruecksetzen</span></button></li>
-                            }
-                            @if (ShowStartListenerActionItem)
-                            {
-                                <li><button type="button" class="dropdown-item d-flex align-items-center gap-2 match-action-menu-item" disabled="@DisableStartListenerActionItem" title="Listener starten" @onclick="HandleStartListenerAsync"><i class="bi bi-broadcast-pin"></i><span class="match-action-label">Listener starten</span></button></li>
-                            }
-                            @if (ShowSyncActionItem)
-                            {
-                                <li><button type="button" class="dropdown-item d-flex align-items-center gap-2 match-action-menu-item" disabled="@DisableSyncActionItem" title="Synchronisieren" @onclick="HandleSyncAsync"><i class="bi bi-arrow-repeat"></i><span class="match-action-label">Sync</span></button></li>
-                            }
-                            @if (ShowFollowActionItem)
-                            {
-                                <li><button type="button" class="dropdown-item d-flex align-items-center gap-2 match-action-menu-item" disabled="@DisableFollowActionItem" title="@(IsFollowing ? "Nicht mehr folgen" : "Match folgen")" @onclick="HandleFollowAsync"><i class="bi @(IsFollowing ? "bi-bell-fill" : "bi-bell")"></i><span class="match-action-label">@(IsFollowing ? "Folgen aktiv" : "Folgen")</span></button></li>
-                            }
-                            @if (ShowToggleStartTimeLockActionItem)
-                            {
-                                <li><button type="button" class="dropdown-item d-flex align-items-center gap-2 match-action-menu-item" disabled="@DisableToggleStartTimeLockActionItem" title="Startzeit sperren oder entsperren" @onclick="HandleToggleStartTimeLockAsync"><span>@StartTimeLockGlyph</span><span class="match-action-label">@(Match.IsStartTimeLocked ? "Startzeit entsperren" : "Startzeit sperren")</span></button></li>
-                            }
-                            @if (ShowToggleBoardLockActionItem)
-                            {
-                                <li><button type="button" class="dropdown-item d-flex align-items-center gap-2 match-action-menu-item" disabled="@DisableToggleBoardLockActionItem" title="Board sperren oder entsperren" @onclick="HandleToggleBoardLockAsync"><span>@BoardLockGlyph</span><span class="match-action-label">@(Match.IsBoardLocked ? "Board entsperren" : "Board sperren")</span></button></li>
-                            }
-                        </ul>
-                    </div>
-                }
-                @if (ShowInlineBodyActions && !UseActionMenu)
-                {
-                    <div class="d-flex flex-wrap align-items-center gap-1 flex-shrink-0 match-action-inline-buttons" @onclick:stopPropagation="true">
-                        @if (ShowStartMatchActionItem)
-                        {
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@DisableStartMatchActionItem" title="Match starten" aria-label="Match starten" @onclick="HandleStartMatchAsync"><span aria-hidden="true">▶</span></button>
-                        }
-                        @if (ShowResetActionItem)
-                        {
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@DisableResetActionItem" title="Match zuruecksetzen" @onclick="HandleResetMatchAsync"><i class="bi bi-arrow-counterclockwise"></i></button>
-                        }
-                        @if (ShowStartListenerActionItem)
-                        {
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@DisableStartListenerActionItem" title="Listener starten" @onclick="HandleStartListenerAsync"><i class="bi bi-broadcast-pin"></i></button>
-                        }
-                        @if (ShowSyncActionItem)
-                        {
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@DisableSyncActionItem" title="Synchronisieren" @onclick="HandleSyncAsync"><i class="bi bi-arrow-repeat"></i></button>
-                        }
-                        @if (ShowFollowActionItem)
-                        {
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@DisableFollowActionItem" title="@(IsFollowing ? "Nicht mehr folgen" : "Match folgen")" @onclick="HandleFollowAsync"><i class="bi @(IsFollowing ? "bi-bell-fill" : "bi-bell")"></i></button>
-                        }
-                        @if (ShowToggleStartTimeLockActionItem)
-                        {
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@DisableToggleStartTimeLockActionItem" title="Startzeit sperren oder entsperren" @onclick="HandleToggleStartTimeLockAsync">@StartTimeLockGlyph</button>
-                        }
-                        @if (ShowToggleBoardLockActionItem)
-                        {
-                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@DisableToggleBoardLockActionItem" title="Board sperren oder entsperren" @onclick="HandleToggleBoardLockAsync">@BoardLockGlyph</button>
-                        }
-                    </div>
-                }
                 @if (ShouldShowLegs)
                 {
-                    <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">L @EffectiveAwayLegs</span>
+                    <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">@ScoreChipContent("L", EffectiveAwayLegs)</span>
                 }
                 @if (ShouldShowSets)
                 {
-                    <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">S @EffectiveAwaySets</span>
+                    <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">@ScoreChipContent("S", EffectiveAwaySets)</span>
                 }
             </div>
+            <div class="match-list-player-slot-away" style="display:contents">
             <PlayerName Name="@ResolvedAwayName"
                         HighlightWinner="@(Match.WinnerParticipantId == Match.AwayParticipantId)"
                         ShowAverage="@ShowPlayerAverage"
@@ -168,6 +107,10 @@
             {
                 <span class="badge text-bg-info flex-shrink-0" style="font-size:.65em">am Zug</span>
             }
+            </div>
+            @if (ShowListInlineActions)
+            {
+            <div class="match-list-actions-slot" style="display:contents">
             @if (ShowAnyActionButtons && ShowListInlineActions && UseActionMenu)
             {
                 <div class="dropdown flex-shrink-0" @onclick:stopPropagation="true">
@@ -239,6 +182,9 @@
                     }
                 </div>
             }
+            </div>
+            }
+            <div class="match-list-trailing-meta" style="display:contents">
             @if (!string.IsNullOrWhiteSpace(ResolvedBoardName))
             {
                 @if (ShouldShowListBoardLockOverlay)
@@ -279,10 +225,11 @@
             {
                 <span class="badge @MatchStatusBadgeClass flex-shrink-0">@Match.Status</span>
             }
+            </div>
         </div>
         @if (ShowAnyActionButtons && !ShowListInlineActions && UseActionMenu)
         {
-            <div class="match-card-list-actions" @onclick:stopPropagation="true">
+            <div class="match-card-list-actions match-list-actions-slot" @onclick:stopPropagation="true">
                 <div class="dropdown">
                     <button type="button" class="btn btn-outline-secondary btn-sm match-action-menu-button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Match-Aktionen oeffnen" title="Aktionen">
                         <span class="match-action-menu-glyph" aria-hidden="true">⋮</span>
@@ -322,7 +269,7 @@
         }
         @if (ShowAnyActionButtons && !ShowListInlineActions && !UseActionMenu)
         {
-            <div class="match-card-list-actions d-flex flex-wrap align-items-center gap-1" @onclick:stopPropagation="true">
+            <div class="match-card-list-actions match-list-actions-slot d-flex flex-wrap align-items-center gap-1" @onclick:stopPropagation="true">
                 @if (ShowStartMatchActionItem)
                 {
                     <button type="button" class="btn btn-outline-secondary btn-sm" disabled="@DisableStartMatchActionItem" title="Match starten" aria-label="Match starten" @onclick="HandleStartMatchAsync"><span aria-hidden="true">▶</span></button>
@@ -358,7 +305,7 @@
     {
     @if (!ResolvedSuppressHeader && ShowHeaderSection)
     {
-        <div class="card-header py-1 px-3 d-flex align-items-center gap-2 overflow-hidden @(ResolvedEmbedHeader ? "border-0 bg-transparent pb-0" : string.Empty)">
+        <div class="card-header py-1 px-3 d-flex align-items-center gap-2 @(ResolvedEmbedHeader ? "border-0 bg-transparent pb-0" : string.Empty)">
             @if (ShowHeaderTitleLine)
             {
                 <span class="fw-semibold small text-nowrap flex-shrink-0" style="overflow:hidden;text-overflow:ellipsis;max-width:50%">@HeaderTitleLine</span>
@@ -428,11 +375,11 @@
                         }
                         @if (ResolvedShowHeaderMatchStatus)
                         {
-                            <span class="badge @MatchStatusBadgeClass">@Match.Status</span>
+                            <span class="badge @MatchStatusBadgeClass" title="@MatchStatusTooltipText">@Match.Status</span>
                         }
                         @if (ResolvedShowHeaderLiveBadge && IsRunning)
                         {
-                            <span class="badge text-bg-info">Live</span>
+                            <span class="badge text-bg-info" title="Live-Match: Werte werden in Echtzeit aktualisiert">Live</span>
                         }
                         @if (ResolvedShowMonitoringStatus && !string.IsNullOrWhiteSpace(MonitoringStatusText))
                         {
@@ -617,11 +564,11 @@
                     <div class="d-flex align-items-center gap-1">
                         @if (ShouldShowSets)
                         {
-                            <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">S @EffectiveHomeSets</span>
+                            <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">@ScoreChipContent("S", EffectiveHomeSets)</span>
                         }
                         @if (ShouldShowLegs)
                         {
-                            <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">L @EffectiveHomeLegs</span>
+                            <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">@ScoreChipContent("L", EffectiveHomeLegs)</span>
                         }
                         @if (ShouldShowLivePoints)
                         {
@@ -728,11 +675,11 @@
                     <div class="d-flex align-items-center gap-1">
                         @if (ShouldShowSets)
                         {
-                            <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">S @EffectiveAwaySets</span>
+                            <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">@ScoreChipContent("S", EffectiveAwaySets)</span>
                         }
                         @if (ShouldShowLegs)
                         {
-                            <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">L @EffectiveAwayLegs</span>
+                            <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">@ScoreChipContent("L", EffectiveAwayLegs)</span>
                         }
                         @if (ShouldShowLivePoints)
                         {
@@ -776,7 +723,7 @@
                     }
                     else
                     {
-                        <span class="text-muted small">Live-Daten warten ...</span>
+                        <span class="text-muted small">Live aktiv ...</span>
                     }
                     @if (ShowInlineBodyActions && UseActionMenu)
                     {
@@ -856,20 +803,20 @@
                     <div class="d-flex align-items-center justify-content-center gap-1 flex-wrap">
                             @if (ShouldShowSets)
                             {
-                                <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">S @EffectiveHomeSets</span>
+                                <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">@ScoreChipContent("S", EffectiveHomeSets)</span>
                             }
                             @if (ShouldShowLegs)
                             {
-                                <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">L @EffectiveHomeLegs</span>
+                                <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">@ScoreChipContent("L", EffectiveHomeLegs)</span>
                             }
                         <span class="text-muted small">vs</span>
                             @if (ShouldShowSets)
                             {
-                                <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">S @EffectiveAwaySets</span>
+                                <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">@ScoreChipContent("S", EffectiveAwaySets)</span>
                             }
                             @if (ShouldShowLegs)
                             {
-                                <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">L @EffectiveAwayLegs</span>
+                                <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass">@ScoreChipContent("L", EffectiveAwayLegs)</span>
                             }
                     </div>
                 }
@@ -1145,11 +1092,11 @@
                             <div class="match-score-horizontal-side match-score-horizontal-side-home">
                                 @if (ShouldShowSets)
                                 {
-                                    <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass @HomeSetsPulseClass">S @EffectiveHomeSets</span>
+                                    <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass @HomeSetsPulseClass">@ScoreChipContent("S", EffectiveHomeSets)</span>
                                 }
                                 @if (ShouldShowLegs)
                                 {
-                                    <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass @HomeLegsPulseClass">L @EffectiveHomeLegs</span>
+                                    <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass @HomeLegsPulseClass">@ScoreChipContent("L", EffectiveHomeLegs)</span>
                                 }
                             </div>
 
@@ -1173,11 +1120,11 @@
                             <div class="match-score-horizontal-side match-score-horizontal-side-away">
                                 @if (ShouldShowSets)
                                 {
-                                    <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass @AwaySetsPulseClass">S @EffectiveAwaySets</span>
+                                    <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass @AwaySetsPulseClass">@ScoreChipContent("S", EffectiveAwaySets)</span>
                                 }
                                 @if (ShouldShowLegs)
                                 {
-                                    <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass @AwayLegsPulseClass">L @EffectiveAwayLegs</span>
+                                    <span class="badge border @ScoreChipMainClass @ScoreStatusChipClass @AwayLegsPulseClass">@ScoreChipContent("L", EffectiveAwayLegs)</span>
                                 }
                             </div>
                         </div>
@@ -1257,11 +1204,6 @@
                     </div>
                 </div>
             }
-        }
-
-        @if (Match.WinnerParticipantId.HasValue)
-        {
-            <div class="small text-center mt-2">🏆</div>
         }
 
         @if (!string.IsNullOrWhiteSpace(SlotOrigin))
@@ -1437,8 +1379,9 @@
                                     <div class="fw-semibold">Matchprediction</div>
                                     <div class="mt-1 d-flex justify-content-between"><span class="text-muted">Siegwahrscheinlichkeit</span><span class="fw-semibold">@MatchPredictionSummary</span></div>
                                     <div class="d-flex justify-content-between"><span class="text-muted">Vermutetes Endergebnis</span><span>@PredictedFinalScoreText</span></div>
+                                    <div class="d-flex justify-content-between"><span class="text-muted">Erwartete Spieldauer</span><span>@PredictedExpectedDurationText</span></div>
                                     <div class="d-flex justify-content-between"><span class="text-muted">Erwartete Checkout-Punkte</span><span>@PredictedExpectedCheckoutPoints.ToString("0.0")</span></div>
-                                    <div class="d-flex justify-content-between"><span class="text-muted">Checkout-Wahrscheinlichkeit</span><span>@(PredictedCheckoutProbability * 100d).ToString("0.0")%</span></div>
+                                    <div class="d-flex justify-content-between"><span class="text-muted">Checkout-Wahrscheinlichkeit</span><span>@($"{PredictedCheckoutProbability * 100d:0.0}%")</span></div>
                                     <div class="d-flex justify-content-between"><span class="text-muted">Erwartete verbleibende Darts (Leg)</span><span>@PredictedExpectedRemainingDartsInLeg.ToString("0.0")</span></div>
                                     <div class="d-flex justify-content-between"><span class="text-muted">Erwartete Punkte pro Aufnahme (PPR)</span><span>@PredictedExpectedPpr.ToString("0.0")</span></div>
                                 </div>
@@ -1596,11 +1539,18 @@
     private bool _consumerSubscribed;
     private bool _detailsExpanded;
     private bool _detailsExpandedInitialized;
+    private Guid? _detailsPreferenceMatchId;
+    private bool _detailsPreferenceLoaded;
+
+    private const string DetailPanelStoragePrefix = "dartsuite.matchcard.details.expanded";
     private Guid? _joinedTournamentId;
     private Guid? _joinedMatchId;
     private System.Threading.Timer? _runtimeTimer;
 
-    private bool IsRunning => Match.StartedUtc is not null && Match.FinishedUtc is null;
+    private bool IsRunning => (string.Equals(Match.Status, "Aktiv", StringComparison.OrdinalIgnoreCase)
+                               || string.Equals(Match.Status, "Gestartet", StringComparison.OrdinalIgnoreCase)
+                               || Match.StartedUtc is not null)
+                              && Match.FinishedUtc is null;
 
     private string ResolvedHomeName => HomeName ?? Match.HomeParticipantName ?? "?";
     private string ResolvedAwayName => AwayName ?? Match.AwayParticipantName ?? "?";
@@ -1659,7 +1609,7 @@
     private string ResolvedHighlightPhaseBackgroundPreset => MatchCardViewSettings.NormalizeHighlightPreset(ViewSettings?.HighlightPhaseBackgroundPreset ?? HighlightPhaseBackgroundPreset);
 
     private bool IsFinalOnlyScoreMode => string.Equals(EffectiveScoreMode, "FinalOnly", StringComparison.OrdinalIgnoreCase);
-    private bool HasStartedOrFinished => Match.StartedUtc is not null || Match.FinishedUtc is not null;
+    private bool HasStartedOrFinished => IsRunning || Match.FinishedUtc is not null || Match.StartedUtc is not null;
     private bool RealtimeScoreEnabled => ViewSettings?.LiveScoreEnabled ?? LiveScoreEnabled;
     private bool HasAnyProgressScore => Match.HomeLegs > 0 || Match.AwayLegs > 0 || Match.HomeSets > 0 || Match.AwaySets > 0 || Match.WinnerParticipantId.HasValue;
     private bool ShouldShowLegs => !IsFinalOnlyScoreMode && (IsRunning || Match.FinishedUtc is not null);
@@ -1983,6 +1933,23 @@
         => _predictionData?.ExpectedRemainingDartsInLeg
            ?? Math.Round(Math.Clamp((Math.Max(1d, EffectiveLowestRemainingPoints) / Math.Max(35d, PredictedExpectedPpr)) * 3d, 1d, 24d), 2);
 
+    private string PredictedExpectedDurationText
+    {
+        get
+        {
+            var remainingMinutes = _predictionData is not null
+                ? Math.Max(0, _predictionData.EstimatedRemainingMinutes)
+                : Math.Max(1, (int)Math.Ceiling(PredictedExpectedRemainingDartsInLeg * 0.35d));
+
+            var elapsedMinutes = Match.StartedUtc.HasValue
+                ? Math.Max(0, (int)Math.Floor((DateTimeOffset.UtcNow - Match.StartedUtc.Value).TotalMinutes))
+                : 0;
+
+            var totalMinutes = Math.Max(remainingMinutes, elapsedMinutes + remainingMinutes);
+            return $"~{totalMinutes} min (noch ~{remainingMinutes} min)";
+        }
+    }
+
     private bool IsDelayedMatch => string.Equals(Match.SchedulingStatus, "Delayed", StringComparison.OrdinalIgnoreCase) || Match.DelayMinutes > 0;
     private bool IsAheadMatch => string.Equals(Match.SchedulingStatus, "Ahead", StringComparison.OrdinalIgnoreCase) || Match.DelayMinutes < 0;
     private bool IsNoBoardMatch => string.IsNullOrWhiteSpace(ResolvedBoardName);
@@ -2067,6 +2034,18 @@
 
     private string MatchStatusBadgeClass => MatchStatusToBadgeCss(Match.Status, Match.SchedulingStatus, Match.DelayMinutes);
 
+    private string MatchStatusTooltipText => (Match.Status ?? string.Empty) switch
+    {
+        "Aktiv" => "Aktiv: Match laeuft gerade",
+        "Gestartet" => "Aktiv: Match laeuft gerade",
+        "Geplant" => "Geplant: Match ist eingeplant",
+        "Warten" => "Warten: Wartet auf Spieler oder Board",
+        "Beendet" => "Beendet: Match wurde abgeschlossen",
+        "Erstellt" => "Erstellt: Match wurde erstellt",
+        "WalkOver" => "WalkOver: Match wurde nicht gespielt",
+        _ => Match.Status ?? string.Empty
+    };
+
     private string ResolveScoreStatusChipClass()
     {
         var normalizedStatus = (Match.Status ?? string.Empty).Trim();
@@ -2085,6 +2064,14 @@
             return isDelayed ? "text-bg-warning text-dark" : "text-bg-success";
 
         return "text-bg-light";
+    }
+
+    private MarkupString ScoreChipContent(string prefix, int value)
+    {
+        if (!SetModeActive)
+            return new MarkupString(value.ToString());
+
+        return new MarkupString($"<span class=\"match-score-prefix\">{prefix}</span><span class=\"match-score-value\">{value}</span>");
     }
 
     private static string MatchStatusToBadgeCss(string? status, string? schedulingStatus, int delayMinutes)
@@ -2255,6 +2242,15 @@
             _detailsExpandedInitialized = true;
         }
 
+        if (_detailsPreferenceMatchId != Match.Id)
+        {
+            _detailsPreferenceMatchId = Match.Id;
+            _detailsPreferenceLoaded = false;
+        }
+
+        if (!_detailsPreferenceLoaded && !ForceDetailsExpanded.HasValue)
+            await LoadDetailPanelPreferenceAsync();
+
         if (ForceDetailsExpanded.HasValue)
             _detailsExpanded = ForceDetailsExpanded.Value;
 
@@ -2361,13 +2357,13 @@
     private Task HandleClickAsync()
         => OnClick.HasDelegate ? OnClick.InvokeAsync() : Task.CompletedTask;
 
-    private Task ToggleDetailsExpanded()
+    private async Task ToggleDetailsExpanded()
     {
         if (ForceDetailsExpanded.HasValue)
-            return Task.CompletedTask;
+            return;
 
         _detailsExpanded = !_detailsExpanded;
-        return Task.CompletedTask;
+        await SaveDetailPanelPreferenceAsync();
     }
 
     private Task HandleBoardChipClickAsync()
@@ -2394,13 +2390,48 @@
     private Task HandleToggleBoardLockAsync()
         => OnToggleBoardLock.HasDelegate && CanToggleBoardLock ? OnToggleBoardLock.InvokeAsync() : Task.CompletedTask;
 
-    private Task OnDetailPanelToggle()
+    private async Task OnDetailPanelToggle()
     {
         if (ForceDetailsExpanded.HasValue)
-            return Task.CompletedTask;
+            return;
 
         _detailsExpanded = !_detailsExpanded;
-        return Task.CompletedTask;
+        await SaveDetailPanelPreferenceAsync();
+    }
+
+    private string BuildDetailPanelStorageKey()
+        => $"{DetailPanelStoragePrefix}.{Match.Id:N}";
+
+    private async Task LoadDetailPanelPreferenceAsync()
+    {
+        _detailsPreferenceLoaded = true;
+        try
+        {
+            var raw = await JS.InvokeAsync<string?>("localStorage.getItem", BuildDetailPanelStorageKey());
+            if (string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase))
+                _detailsExpanded = true;
+            else if (string.Equals(raw, "false", StringComparison.OrdinalIgnoreCase))
+                _detailsExpanded = false;
+        }
+        catch
+        {
+            // Best effort restore only.
+        }
+    }
+
+    private async Task SaveDetailPanelPreferenceAsync()
+    {
+        if (ForceDetailsExpanded.HasValue)
+            return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", BuildDetailPanelStorageKey(), _detailsExpanded ? "true" : "false");
+        }
+        catch
+        {
+            // Best effort persistence only.
+        }
     }
 
     private void SetDetailTab(string tab)
@@ -2441,12 +2472,15 @@
 
         if (_liveData is not null)
         {
-            if (payload.Sequence > 0 && _liveData.Sequence > 0)
+            // Only enforce monotonic checks while existing data is still fresh.
+            // This avoids lockout after API restarts where sequence counters reset.
+            var existingIsFresh = (DateTimeOffset.UtcNow - _liveData.Timestamp) <= TimeSpan.FromSeconds(30);
+            if (existingIsFresh && payload.Sequence > 0 && _liveData.Sequence > 0)
             {
                 if (payload.Sequence <= _liveData.Sequence)
                     return Task.CompletedTask;
             }
-            else if (payload.Timestamp <= _liveData.Timestamp)
+            else if (existingIsFresh && payload.Timestamp <= _liveData.Timestamp)
             {
                 return Task.CompletedTask;
             }

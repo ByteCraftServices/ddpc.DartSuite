@@ -7,6 +7,9 @@ public sealed class TournamentHubService : IAsyncDisposable
 {
     private HubConnection? _connection;
     private readonly string _hubUrl;
+    private readonly HashSet<string> _joinedTournamentIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _joinedMatchIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _joinSync = new(1, 1);
 
     public event Func<string, Task>? OnMatchUpdated;
     public event Func<MatchUpdatedTimestampedDto, Task>? OnMatchUpdatedTimestamped;
@@ -31,68 +34,75 @@ public sealed class TournamentHubService : IAsyncDisposable
 
     public async Task StartAsync()
     {
-        if (_connection is not null) return;
-
-        _connection = new HubConnectionBuilder()
-            .WithUrl(_hubUrl)
-            .WithAutomaticReconnect([TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30)])
-            .Build();
-
-        _connection.On<string>("MatchUpdated", async tournamentId =>
+        if (_connection is null)
         {
-            if (OnMatchUpdated is not null) await OnMatchUpdated.Invoke(tournamentId);
-        });
+            _connection = new HubConnectionBuilder()
+                .WithUrl(_hubUrl)
+                .WithAutomaticReconnect([TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(30)])
+                .Build();
 
-        _connection.On<MatchUpdatedTimestampedDto>("MatchUpdatedTimestamped", async payload =>
-        {
-            if (OnMatchUpdatedTimestamped is not null) await OnMatchUpdatedTimestamped.Invoke(payload);
-        });
+            _connection.On<string>("MatchUpdated", async tournamentId =>
+            {
+                if (OnMatchUpdated is not null) await OnMatchUpdated.Invoke(tournamentId);
+            });
 
-        _connection.On<string>("BoardsUpdated", async tournamentId =>
-        {
-            if (OnBoardsUpdated is not null) await OnBoardsUpdated.Invoke(tournamentId);
-        });
+            _connection.On<MatchUpdatedTimestampedDto>("MatchUpdatedTimestamped", async payload =>
+            {
+                if (OnMatchUpdatedTimestamped is not null) await OnMatchUpdatedTimestamped.Invoke(payload);
+            });
 
-        _connection.On<string>("ParticipantsUpdated", async tournamentId =>
-        {
-            if (OnParticipantsUpdated is not null) await OnParticipantsUpdated.Invoke(tournamentId);
-        });
+            _connection.On<string>("BoardsUpdated", async tournamentId =>
+            {
+                if (OnBoardsUpdated is not null) await OnBoardsUpdated.Invoke(tournamentId);
+            });
 
-        _connection.On<string>("TournamentUpdated", async tournamentId =>
-        {
-            if (OnTournamentUpdated is not null) await OnTournamentUpdated.Invoke(tournamentId);
-        });
+            _connection.On<string>("ParticipantsUpdated", async tournamentId =>
+            {
+                if (OnParticipantsUpdated is not null) await OnParticipantsUpdated.Invoke(tournamentId);
+            });
 
-        _connection.On<string>("ScheduleUpdated", async tournamentId =>
-        {
-            if (OnScheduleUpdated is not null) await OnScheduleUpdated.Invoke(tournamentId);
-        });
+            _connection.On<string>("TournamentUpdated", async tournamentId =>
+            {
+                if (OnTournamentUpdated is not null) await OnTournamentUpdated.Invoke(tournamentId);
+            });
 
-        _connection.On<MatchDataReceivedDto>("MatchDataReceived", async payload =>
-        {
-            if (OnMatchDataReceived is not null) await OnMatchDataReceived.Invoke(payload);
-        });
+            _connection.On<string>("ScheduleUpdated", async tournamentId =>
+            {
+                if (OnScheduleUpdated is not null) await OnScheduleUpdated.Invoke(tournamentId);
+            });
 
-        _connection.On<MatchStatisticsUpdatedDto>("MatchStatisticsUpdated", async payload =>
-        {
-            if (OnMatchStatisticsUpdated is not null) await OnMatchStatisticsUpdated.Invoke(payload);
-        });
+            _connection.On<MatchDataReceivedDto>("MatchDataReceived", async payload =>
+            {
+                if (OnMatchDataReceived is not null) await OnMatchDataReceived.Invoke(payload);
+            });
 
-        _connection.Reconnected += async _ =>
-        {
-            if (OnConnectionChanged is not null) await OnConnectionChanged.Invoke(true);
-            if (OnReconnected is not null) await OnReconnected.Invoke();
-        };
+            _connection.On<MatchStatisticsUpdatedDto>("MatchStatisticsUpdated", async payload =>
+            {
+                if (OnMatchStatisticsUpdated is not null) await OnMatchStatisticsUpdated.Invoke(payload);
+            });
 
-        _connection.Reconnecting += async _ =>
-        {
-            if (OnConnectionChanged is not null) await OnConnectionChanged.Invoke(false);
-        };
+            _connection.Reconnected += async _ =>
+            {
+                await RejoinGroupsAsync();
+                if (OnConnectionChanged is not null) await OnConnectionChanged.Invoke(true);
+                if (OnReconnected is not null) await OnReconnected.Invoke();
+            };
 
-        _connection.Closed += async _ =>
-        {
-            if (OnConnectionChanged is not null) await OnConnectionChanged.Invoke(false);
-        };
+            _connection.Reconnecting += async _ =>
+            {
+                if (OnConnectionChanged is not null) await OnConnectionChanged.Invoke(false);
+            };
+
+            _connection.Closed += async _ =>
+            {
+                if (OnConnectionChanged is not null) await OnConnectionChanged.Invoke(false);
+            };
+        }
+
+        if (_connection.State == HubConnectionState.Connected
+            || _connection.State == HubConnectionState.Connecting
+            || _connection.State == HubConnectionState.Reconnecting)
+            return;
 
         await _connection.StartAsync();
         if (OnConnectionChanged is not null) await OnConnectionChanged.Invoke(true);
@@ -137,26 +147,62 @@ public sealed class TournamentHubService : IAsyncDisposable
 
     public async Task JoinTournamentAsync(string tournamentId)
     {
+        if (string.IsNullOrWhiteSpace(tournamentId))
+            return;
+
+        _joinedTournamentIds.Add(tournamentId);
+
         if (_connection?.State == HubConnectionState.Connected)
             await _connection.InvokeAsync("JoinTournament", tournamentId);
     }
 
     public async Task LeaveTournamentAsync(string tournamentId)
     {
+        if (!string.IsNullOrWhiteSpace(tournamentId))
+            _joinedTournamentIds.Remove(tournamentId);
+
         if (_connection?.State == HubConnectionState.Connected)
             await _connection.InvokeAsync("LeaveTournament", tournamentId);
     }
 
     public async Task JoinMatchAsync(string matchId)
     {
+        if (string.IsNullOrWhiteSpace(matchId))
+            return;
+
+        _joinedMatchIds.Add(matchId);
+
         if (_connection?.State == HubConnectionState.Connected)
             await _connection.InvokeAsync("JoinMatch", matchId);
     }
 
     public async Task LeaveMatchAsync(string matchId)
     {
+        if (!string.IsNullOrWhiteSpace(matchId))
+            _joinedMatchIds.Remove(matchId);
+
         if (_connection?.State == HubConnectionState.Connected)
             await _connection.InvokeAsync("LeaveMatch", matchId);
+    }
+
+    private async Task RejoinGroupsAsync()
+    {
+        if (_connection?.State != HubConnectionState.Connected)
+            return;
+
+        await _joinSync.WaitAsync();
+        try
+        {
+            foreach (var tournamentId in _joinedTournamentIds)
+                await _connection.InvokeAsync("JoinTournament", tournamentId);
+
+            foreach (var matchId in _joinedMatchIds)
+                await _connection.InvokeAsync("JoinMatch", matchId);
+        }
+        finally
+        {
+            _joinSync.Release();
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -166,5 +212,7 @@ public sealed class TournamentHubService : IAsyncDisposable
             await _connection.DisposeAsync();
             _connection = null;
         }
+
+        _joinSync.Dispose();
     }
 }

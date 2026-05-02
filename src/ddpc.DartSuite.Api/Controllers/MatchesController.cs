@@ -26,6 +26,8 @@ public sealed class MatchesController(
     IHubContext<TournamentHub> tournamentHub,
     ILogger<MatchesController> logger) : ControllerBase
 {
+    private static long _matchMakerRealtimeSequence;
+
     [HttpGet("{tournamentId:guid}")]
     public async Task<ActionResult<IReadOnlyList<MatchDto>>> Get(Guid tournamentId, CancellationToken cancellationToken)
     {
@@ -663,7 +665,48 @@ public sealed class MatchesController(
         }
 
         if (result is not null)
+        {
             await NotifyTournamentAsync(result.TournamentId, "MatchUpdated");
+
+            var roundCandidates = await dbContext.TournamentRounds
+                .AsNoTracking()
+                .Where(r => r.TournamentId == result.TournamentId && r.RoundNumber == result.Round)
+                .ToListAsync(cancellationToken);
+            var roundConfig = roundCandidates.FirstOrDefault(r => string.Equals(r.Phase.ToString(), result.Phase, StringComparison.OrdinalIgnoreCase))
+                ?? roundCandidates.FirstOrDefault();
+            var startScore = roundConfig?.BaseScore ?? 501;
+
+            var startPayload = JsonSerializer.SerializeToElement(new
+            {
+                id = matchId.ToString(),
+                eventType = "match-started",
+                timestamp = DateTimeOffset.UtcNow,
+                players = new[]
+                {
+                    new { score = startScore, points = startScore },
+                    new { score = startScore, points = startScore }
+                },
+                turns = new[]
+                {
+                    new { player = 0, dart = 0, throws = Array.Empty<object>() }
+                }
+            });
+
+            var startScores = new AutodartsMappedScoreResult(
+                result.HomeLegs,
+                result.AwayLegs,
+                result.HomeSets,
+                result.AwaySets,
+                startScore,
+                startScore,
+                null,
+                null,
+                "matchmaker-start",
+                0,
+                1);
+
+            await BroadcastMatchMakerRealtimeAsync(result, startPayload, startScores, finished: false, statisticsChanged: false, cancellationToken);
+        }
 
         return result is null ? NotFound() : Ok(result);
     }
@@ -750,6 +793,8 @@ public sealed class MatchesController(
 
             await NotifyTournamentAsync(result.TournamentId, "MatchUpdated");
 
+            await BroadcastMatchMakerRealtimeAsync(result, payload, mappedScores, finished, syncResult.Changed, cancellationToken);
+
             if (syncResult.Changed)
             {
                 await tournamentHub.Clients.Group($"tournament-{result.TournamentId}").SendAsync(
@@ -766,6 +811,226 @@ public sealed class MatchesController(
         }
 
         return Ok(new { processed = true });
+    }
+
+    private async Task BroadcastMatchMakerRealtimeAsync(
+        MatchDto match,
+        JsonElement payload,
+        AutodartsMappedScoreResult mappedScores,
+        bool finished,
+        bool statisticsChanged,
+        CancellationToken cancellationToken)
+    {
+        var activePlayerIndex = TryGetFirstTurnInt(payload, "player");
+        var round = TryGetFirstTurnInt(payload, "round");
+        var turn = TryGetFirstTurnInt(payload, "dart");
+        var turnScore = TryGetFirstTurnThrowsScoreSum(payload);
+        var turnBusted = TryGetFirstTurnBool(payload, "busted") ?? TryGetBool(payload, "turnBusted");
+        var currentTurnId = TryGetFirstTurnString(payload, "id");
+        var currentTurnThrowCount = TryGetFirstTurnThrowsCount(payload);
+        var sourceTimestamp = TryGetDateTimeOffset(payload, "timestamp");
+        var sequence = Interlocked.Increment(ref _matchMakerRealtimeSequence);
+        var homePoints = mappedScores.HomePoints ?? TryGetPlayerPoints(payload, 0);
+        var awayPoints = mappedScores.AwayPoints ?? TryGetPlayerPoints(payload, 1);
+
+        var livePayload = new
+        {
+            tournamentId = match.TournamentId,
+            matchId = match.Id,
+            externalMatchId = match.ExternalMatchId,
+            boardId = match.BoardId,
+            homeLegs = mappedScores.HomeLegs,
+            awayLegs = mappedScores.AwayLegs,
+            homeSets = mappedScores.HomeSets,
+            awaySets = mappedScores.AwaySets,
+            homePoints,
+            awayPoints,
+            activePlayerIndex,
+            activePlayerId = activePlayerIndex?.ToString(),
+            round,
+            turn,
+            turnScore,
+            turnBusted,
+            currentTurnId,
+            currentTurnThrowCount,
+            finished,
+            statisticsChanged,
+            rawJson = payload.GetRawText(),
+            sourceTimestamp,
+            timestamp = DateTimeOffset.UtcNow,
+            sequence
+        };
+
+        await tournamentHub.Clients.Group($"tournament-{match.TournamentId}")
+            .SendAsync("MatchDataReceived", livePayload, cancellationToken);
+    }
+
+    private static int? TryGetFirstTurnInt(JsonElement payload, string propertyName)
+    {
+        if (!payload.TryGetProperty("turns", out var turns) || turns.ValueKind != JsonValueKind.Array)
+            return null;
+
+        foreach (var turn in turns.EnumerateArray())
+        {
+            if (turn.ValueKind != JsonValueKind.Object)
+                continue;
+
+            return TryGetInt(turn, propertyName);
+        }
+
+        return null;
+    }
+
+    private static bool? TryGetFirstTurnBool(JsonElement payload, string propertyName)
+    {
+        if (!payload.TryGetProperty("turns", out var turns) || turns.ValueKind != JsonValueKind.Array)
+            return null;
+
+        foreach (var turn in turns.EnumerateArray())
+        {
+            if (turn.ValueKind != JsonValueKind.Object)
+                continue;
+
+            return TryGetBool(turn, propertyName);
+        }
+
+        return null;
+    }
+
+    private static string? TryGetFirstTurnString(JsonElement payload, string propertyName)
+    {
+        if (!payload.TryGetProperty("turns", out var turns) || turns.ValueKind != JsonValueKind.Array)
+            return null;
+
+        foreach (var turn in turns.EnumerateArray())
+        {
+            if (turn.ValueKind != JsonValueKind.Object)
+                continue;
+
+            if (turn.TryGetProperty(propertyName, out var property) && property.ValueKind == JsonValueKind.String)
+                return property.GetString();
+        }
+
+        return null;
+    }
+
+    private static int TryGetFirstTurnThrowsCount(JsonElement payload)
+    {
+        if (!payload.TryGetProperty("turns", out var turns) || turns.ValueKind != JsonValueKind.Array)
+            return 0;
+
+        foreach (var turn in turns.EnumerateArray())
+        {
+            if (turn.ValueKind != JsonValueKind.Object)
+                continue;
+
+            if (!TryGetThrowsOrDarts(turn, out var throwsElement) || throwsElement.ValueKind != JsonValueKind.Array)
+                return 0;
+
+            return throwsElement.GetArrayLength();
+        }
+
+        return 0;
+    }
+
+    private static int? TryGetFirstTurnThrowsScoreSum(JsonElement payload)
+    {
+        if (!payload.TryGetProperty("turns", out var turns) || turns.ValueKind != JsonValueKind.Array)
+            return null;
+
+        foreach (var turn in turns.EnumerateArray())
+        {
+            if (turn.ValueKind != JsonValueKind.Object)
+                continue;
+
+            if (!TryGetThrowsOrDarts(turn, out var throwsElement) || throwsElement.ValueKind != JsonValueKind.Array)
+                return null;
+
+            var sum = 0;
+            foreach (var dart in throwsElement.EnumerateArray())
+            {
+                if (dart.ValueKind == JsonValueKind.Object)
+                    sum += TryGetInt(dart, "score") ?? 0;
+            }
+
+            return sum;
+        }
+
+        return null;
+    }
+
+    private static bool TryGetThrowsOrDarts(JsonElement turn, out JsonElement dartsElement)
+    {
+        if (turn.TryGetProperty("throws", out dartsElement) && dartsElement.ValueKind == JsonValueKind.Array)
+            return true;
+
+        if (turn.TryGetProperty("darts", out dartsElement) && dartsElement.ValueKind == JsonValueKind.Array)
+            return true;
+
+        dartsElement = default;
+        return false;
+    }
+
+    private static int? TryGetPlayerPoints(JsonElement payload, int playerIndex)
+    {
+        if (!payload.TryGetProperty("players", out var players) || players.ValueKind != JsonValueKind.Array)
+            return null;
+
+        var index = 0;
+        foreach (var player in players.EnumerateArray())
+        {
+            if (player.ValueKind != JsonValueKind.Object)
+            {
+                index++;
+                continue;
+            }
+
+            if (index == playerIndex)
+            {
+                return TryGetInt(player, "points") ?? TryGetInt(player, "score");
+            }
+
+            index++;
+        }
+
+        return null;
+    }
+
+    private static int? TryGetInt(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property))
+            return null;
+
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out var asNumber))
+            return asNumber;
+
+        if (property.ValueKind == JsonValueKind.String && int.TryParse(property.GetString(), out var asString))
+            return asString;
+
+        return null;
+    }
+
+    private static bool? TryGetBool(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property))
+            return null;
+
+        if (property.ValueKind == JsonValueKind.True)
+            return true;
+        if (property.ValueKind == JsonValueKind.False)
+            return false;
+        if (property.ValueKind == JsonValueKind.String && bool.TryParse(property.GetString(), out var asString))
+            return asString;
+
+        return null;
+    }
+
+    private static DateTimeOffset? TryGetDateTimeOffset(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property) || property.ValueKind != JsonValueKind.String)
+            return null;
+
+        return DateTimeOffset.TryParse(property.GetString(), out var parsed) ? parsed : null;
     }
 
     private async Task<ActionResult?> RequireManagerAccessAsync(Guid tournamentId, CancellationToken cancellationToken)

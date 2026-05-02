@@ -33,13 +33,18 @@ public sealed class BoardManagementService(DartSuiteDbContext dbContext) : IBoar
         var exists = await dbContext.Boards.AnyAsync(x => x.ExternalBoardId == request.ExternalBoardId, cancellationToken);
         if (exists) throw new InvalidOperationException("Board already exists.");
 
+        var hasGuidExternalId = Guid.TryParse(request.ExternalBoardId, out _);
         var board = new Board
         {
             ExternalBoardId = request.ExternalBoardId,
             Name = request.Name,
-            LocalIpAddress = request.LocalIpAddress,
-            BoardManagerUrl = request.BoardManagerUrl,
-            Status = BoardStatus.Starting,
+            LocalIpAddress = hasGuidExternalId ? request.LocalIpAddress : null,
+            BoardManagerUrl = hasGuidExternalId ? request.BoardManagerUrl : null,
+            IsVirtual = !hasGuidExternalId,
+            Status = hasGuidExternalId ? BoardStatus.Starting : BoardStatus.Running,
+            ConnectionState = hasGuidExternalId ? ConnectionState.Offline : ConnectionState.Online,
+            ExtensionStatus = ExtensionConnectionStatus.Offline,
+            LastExtensionPollUtc = null,
             UpdatedUtc = DateTimeOffset.UtcNow
         };
 
@@ -56,8 +61,32 @@ public sealed class BoardManagementService(DartSuiteDbContext dbContext) : IBoar
         board.Name = request.Name;
         board.LocalIpAddress = request.LocalIpAddress;
         board.BoardManagerUrl = request.BoardManagerUrl;
-        if (board.IsVirtual && request.OwnerAccountName is not null)
-            board.OwnerAccountName = request.OwnerAccountName;
+        board.OwnerAccountName = request.OwnerAccountName;
+
+        // ExternalBoardId: allow change if provided and different (uniqueness check)
+        if (!string.IsNullOrWhiteSpace(request.ExternalBoardId) &&
+            !string.Equals(board.ExternalBoardId, request.ExternalBoardId, StringComparison.Ordinal))
+        {
+            var taken = await dbContext.Boards.AnyAsync(x => x.ExternalBoardId == request.ExternalBoardId && x.Id != request.Id, cancellationToken);
+            if (taken) throw new InvalidOperationException("Eine andere Board mit dieser External ID existiert bereits.");
+            board.ExternalBoardId = request.ExternalBoardId;
+        }
+
+        // IsVirtual: if explicitly set to true, fully normalize; if set to false, just clear the flag
+        if (request.IsVirtual.HasValue && request.IsVirtual.Value != board.IsVirtual)
+        {
+            board.IsVirtual = request.IsVirtual.Value;
+            if (board.IsVirtual)
+            {
+                board.Status = Domain.Enums.BoardStatus.Running;
+                board.ConnectionState = Domain.Enums.ConnectionState.Online;
+                board.ExtensionStatus = Domain.Enums.ExtensionConnectionStatus.Offline;
+                board.LocalIpAddress = null;
+                board.BoardManagerUrl = null;
+                board.LastExtensionPollUtc = null;
+            }
+        }
+
         board.UpdatedUtc = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
         return ToDto(board);

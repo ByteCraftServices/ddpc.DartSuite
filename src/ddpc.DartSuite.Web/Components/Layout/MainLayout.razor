@@ -65,6 +65,10 @@
 </div>
 
 @code {
+    private const string StorageKeyEmail = "autodarts.email";
+    private const string StorageKeyPassword = "autodarts.password";
+    private const string StorageKeyRememberLogin = "autodarts.rememberLogin";
+
     private List<TournamentDto> tournaments = new();
     private string selectedTournamentId = "";
     private bool initialized;
@@ -183,6 +187,10 @@
             {
                 AppState.SetAutodartsProfileSilent(status.Profile, true);
             }
+            else
+            {
+                await TryAutoReconnectAutodartsAsync(cancellationToken);
+            }
 
             // Load admin status
             var isAdmin = await Api.CheckIsAdminAsync(cancellationToken);
@@ -191,6 +199,34 @@
         catch { /* Secondary initialisation calls may fail if the API goes offline again immediately after the health check; degrade gracefully. */ }
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task TryAutoReconnectAutodartsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var rememberSetting = await LocalStorage.GetAsync<bool>(StorageKeyRememberLogin);
+            if (!rememberSetting.Success || !rememberSetting.Value)
+                return;
+
+            var storedEmail = await LocalStorage.GetAsync<string>(StorageKeyEmail);
+            var storedPassword = await LocalStorage.GetAsync<string>(StorageKeyPassword);
+
+            if (!storedEmail.Success || string.IsNullOrWhiteSpace(storedEmail.Value)
+                || !storedPassword.Success || string.IsNullOrWhiteSpace(storedPassword.Value))
+                return;
+
+            var response = await Api.LoginAutodartsAsync(storedEmail.Value, storedPassword.Value, cancellationToken);
+            var profile = response.Profile;
+            if (profile is null || string.IsNullOrWhiteSpace(profile.DisplayName) || string.IsNullOrWhiteSpace(profile.Email))
+                return;
+
+            AppState.SetAutodartsProfileSilent(profile, true);
+        }
+        catch
+        {
+            // Best effort: keep UI usable and let user login manually if reconnect fails.
+        }
     }
 
     private async Task OnTournamentChanged(ChangeEventArgs e)

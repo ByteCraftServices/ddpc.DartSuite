@@ -7,11 +7,21 @@
                 @onclick="HandleClickAsync"
                 @onclick:stopPropagation="true">
             @ResolvedName
+            @if (HighlightWinner)
+            {
+                <span class="ms-1" title="Sieger" aria-label="Sieger">🏆</span>
+            }
         </button>
     }
     else
     {
-        <span class="@(HighlightWinner ? "fw-bold text-success" : string.Empty)">@ResolvedName</span>
+        <span class="@(HighlightWinner ? "fw-bold text-success" : string.Empty)">
+            @ResolvedName
+            @if (HighlightWinner)
+            {
+                <span class="ms-1" title="Sieger" aria-label="Sieger">🏆</span>
+            }
+        </span>
     }
 
     @if (ShowAverage && Average is not null)

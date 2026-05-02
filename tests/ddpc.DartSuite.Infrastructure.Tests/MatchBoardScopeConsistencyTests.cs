@@ -120,7 +120,8 @@ public sealed class MatchBoardScopeConsistencyTests
             OrganizerAccount = "manager",
             StartDate = DateOnly.FromDateTime(DateTime.Today),
             EndDate = DateOnly.FromDateTime(DateTime.Today),
-            StartTime = new TimeOnly(18, 0)
+            StartTime = new TimeOnly(18, 0),
+            Variant = TournamentVariant.OnSite
         };
         var tournamentB = new Tournament
         {
@@ -129,7 +130,8 @@ public sealed class MatchBoardScopeConsistencyTests
             OrganizerAccount = "manager",
             StartDate = DateOnly.FromDateTime(DateTime.Today),
             EndDate = DateOnly.FromDateTime(DateTime.Today),
-            StartTime = new TimeOnly(18, 0)
+            StartTime = new TimeOnly(18, 0),
+            Variant = TournamentVariant.OnSite
         };
 
         var boardA = new Board { Id = Guid.NewGuid(), Name = "Board A", ExternalBoardId = "b-a", TournamentId = tournamentA.Id };

@@ -335,7 +335,7 @@ else
 {
     var homeP = participants.FirstOrDefault(p => p.Id == detailMatch.HomeParticipantId);
     var awayP = participants.FirstOrDefault(p => p.Id == detailMatch.AwayParticipantId);
-    var round = roundSettings.FirstOrDefault(r => r.Phase == detailMatch.Phase && r.RoundNumber == detailMatch.Round);
+    var round = ResolveRoundForMatch(detailMatch);
     <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="CloseModal">
         <div class="modal-dialog modal-dialog-centered modal-lg" @onclick:stopPropagation>
             <div class="modal-content">
@@ -375,7 +375,7 @@ else
                                OnAwayPlayerClick="BuildDetailPlayerNavigationCallback(detailMatch.AwayParticipantId)"
                                OnBoardClick="BuildDetailBoardNavigationCallback()"
                                SlotOrigin="@BuildSlotOrigin(detailMatch)"
-                               SetModeActive="@(round?.GameMode == "Sets")"
+                               SetModeActive="@IsSetsGameMode(round)"
                                LiveScoreEnabled="@DetailMatchCardSettings.LiveScoreEnabled"
                                ShowMatchStatus="@DetailMatchCardSettings.ShowMatchStatus"
                                ShowSchedulingStatus="@DetailMatchCardSettings.ShowSchedulingStatus"
@@ -389,7 +389,10 @@ else
                                EnableDetailPanel="true"
                                DetailsExpandedByDefault="@(!DetailMatchCardSettings.CollapseDetailsOnMobile || !isCompactViewport)"
                                ForceDetailsExpanded="@forcedMatchDetailsExpanded"
-                               EnableRealtimeConsumer="@(detailMatch.StartedUtc is not null && detailMatch.FinishedUtc is null)" />
+                               EnableRealtimeConsumer="@((string.Equals(detailMatch.Status, "Aktiv", StringComparison.OrdinalIgnoreCase)
+                                                       || string.Equals(detailMatch.Status, "Gestartet", StringComparison.OrdinalIgnoreCase)
+                                                       || detailMatch.StartedUtc is not null)
+                                                       && detailMatch.FinishedUtc is null)" />
 
                     @* ─── MatchMaker (for virtual boards, managers only) ─── *@
                     @{
@@ -567,22 +570,40 @@ else
                                     }
                                 </select>
                             </div>
+
+                            @{ 
+                                var homeEditName = homeP?.DisplayName ?? homeP?.AccountName ?? "Spieler 1";
+                                var awayEditName = awayP?.DisplayName ?? awayP?.AccountName ?? "Spieler 2";
+                            }
+
                             <div class="col-6 col-sm-3">
-                                <label class="form-label small">Home Legs</label>
-                                <input type="number" class="form-control form-control-sm" min="0" @bind="editHomeLegs" />
+                                <div class="form-floating">
+                                    <input type="number" class="form-control form-control-sm" min="0" placeholder=" " @bind="editHomeLegs" />
+                                    <label>@($"{homeEditName} Legs")</label>
+                                </div>
                             </div>
                             <div class="col-6 col-sm-3">
-                                <label class="form-label small">Away Legs</label>
-                                <input type="number" class="form-control form-control-sm" min="0" @bind="editAwayLegs" />
+                                <div class="form-floating">
+                                    <input type="number" class="form-control form-control-sm" min="0" placeholder=" " @bind="editAwayLegs" />
+                                    <label>@($"{awayEditName} Legs")</label>
+                                </div>
                             </div>
-                            <div class="col-6 col-sm-3">
-                                <label class="form-label small">Home Sets</label>
-                                <input type="number" class="form-control form-control-sm" min="0" @bind="editHomeSets" />
-                            </div>
-                            <div class="col-6 col-sm-3">
-                                <label class="form-label small">Away Sets</label>
-                                <input type="number" class="form-control form-control-sm" min="0" @bind="editAwaySets" />
-                            </div>
+
+                            @if (IsSetsGameMode(round))
+                            {
+                                <div class="col-6 col-sm-3">
+                                    <div class="form-floating">
+                                        <input type="number" class="form-control form-control-sm" min="0" placeholder=" " @bind="editHomeSets" />
+                                        <label>@($"{homeEditName} Sets")</label>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-sm-3">
+                                    <div class="form-floating">
+                                        <input type="number" class="form-control form-control-sm" min="0" placeholder=" " @bind="editAwaySets" />
+                                        <label>@($"{awayEditName} Sets")</label>
+                                    </div>
+                                </div>
+                            }
                             <div class="col-sm-6">
                                 <label class="form-label small">Gewinner</label>
                                 <select class="form-select form-select-sm" @bind="editWinnerId">
@@ -789,12 +810,26 @@ else
 
     private string GetMonitoringBadgeText(MatchDto match)
     {
+        var board = boards.FirstOrDefault(b => b.Id == match.BoardId);
+        var isVirtualMatchMaker = board?.IsVirtual == true
+            && string.Equals(match.Status, "Aktiv", StringComparison.OrdinalIgnoreCase)
+            && match.FinishedUtc is null;
+        if (isVirtualMatchMaker)
+            return "MatchMaker";
+
         var listener = GetMatchListener(match.Id);
         return MatchCardUiPolicy.MonitoringBadgeText(listener);
     }
 
     private string GetMonitoringBadgeCss(MatchDto match)
     {
+        var board = boards.FirstOrDefault(b => b.Id == match.BoardId);
+        var isVirtualMatchMaker = board?.IsVirtual == true
+            && string.Equals(match.Status, "Aktiv", StringComparison.OrdinalIgnoreCase)
+            && match.FinishedUtc is null;
+        if (isVirtualMatchMaker)
+            return "text-bg-info";
+
         var listener = GetMatchListener(match.Id);
         return MatchCardUiPolicy.MonitoringBadgeCss(listener);
     }
@@ -1176,23 +1211,79 @@ else
 
     private async Task LoadDataAsync()
     {
-        if (AppState.SelectedTournament is not null)
+        var selectedTournament = AppState.SelectedTournament;
+        Guid parsedQueryMatchId = Guid.Empty;
+        var hasQueryMatchId = false;
+        if (!string.IsNullOrWhiteSpace(QueryMatchId))
+            hasQueryMatchId = Guid.TryParse(QueryMatchId, out parsedQueryMatchId);
+
+        if (selectedTournament is null
+            && hasQueryMatchId)
         {
-            var id = AppState.SelectedTournament.Id;
-            matches = (await Api.GetMatchesAsync(id)).ToList();
-            participants = (await Api.GetParticipantsAsync(id)).ToList();
-            roundSettings = (await Api.GetRoundsAsync(id)).ToList();
-            boards = (await Api.GetBoardsByTournamentAsync(id)).ToList();
-            await LoadMatchListenersAsync();
+            selectedTournament = await ResolveTournamentForMatchAsync(parsedQueryMatchId);
+            if (selectedTournament is not null)
+                AppState.SetSelectedTournamentSilent(selectedTournament);
         }
-        else
+
+        if (selectedTournament is null)
         {
             matches = [];
             participants = [];
             roundSettings = [];
             boards = [];
             matchListeners = [];
+            return;
         }
+
+        await LoadTournamentDataAsync(selectedTournament.Id);
+
+        if (hasQueryMatchId && matches.All(m => m.Id != parsedQueryMatchId))
+        {
+            var resolvedTournament = await ResolveTournamentForMatchAsync(parsedQueryMatchId);
+            if (resolvedTournament is not null && resolvedTournament.Id != selectedTournament.Id)
+            {
+                AppState.SetSelectedTournamentSilent(resolvedTournament);
+                await LoadTournamentDataAsync(resolvedTournament.Id);
+            }
+        }
+    }
+
+    private async Task LoadTournamentDataAsync(Guid tournamentId)
+    {
+        matches = (await Api.GetMatchesAsync(tournamentId)).ToList();
+        participants = (await Api.GetParticipantsAsync(tournamentId)).ToList();
+        roundSettings = (await Api.GetRoundsAsync(tournamentId)).ToList();
+        boards = (await Api.GetBoardsByTournamentAsync(tournamentId)).ToList();
+        await LoadMatchListenersAsync();
+    }
+
+    private async Task<TournamentDto?> ResolveTournamentForMatchAsync(Guid matchId)
+    {
+        try
+        {
+            var tournaments = await Api.GetTournamentsAsync();
+            foreach (var tournament in tournaments)
+            {
+                IReadOnlyList<MatchDto> tournamentMatches;
+                try
+                {
+                    tournamentMatches = await Api.GetMatchesAsync(tournament.Id);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (tournamentMatches.Any(m => m.Id == matchId))
+                    return tournament;
+            }
+        }
+        catch
+        {
+            // Keep default null fallback when the deep-link lookup fails.
+        }
+
+        return null;
     }
 
     // ─── Selection ───
@@ -1590,10 +1681,16 @@ else
         {
             Guid? boardId = Guid.TryParse(editBoardId, out var bid) ? bid : null;
             Guid? winnerId = Guid.TryParse(editWinnerId, out var wid) ? wid : null;
+            var isSetMode = IsSetsGameMode(ResolveRoundForMatch(detailMatch));
+
+            var homeLegs = Math.Max(0, editHomeLegs);
+            var awayLegs = Math.Max(0, editAwayLegs);
+            var homeSets = isSetMode ? Math.Max(0, editHomeSets) : detailMatch.HomeSets;
+            var awaySets = isSetMode ? Math.Max(0, editAwaySets) : detailMatch.AwaySets;
 
             var request = new UpdateMatchRequest(
                 detailMatch.Id, boardId,
-                editHomeLegs, editAwayLegs, editHomeSets, editAwaySets,
+                homeLegs, awayLegs, homeSets, awaySets,
                 editStatus, editIsStartTimeLocked, editIsBoardLocked, winnerId);
 
             var updated = await Api.UpdateMatchAsync(request);
@@ -1697,12 +1794,34 @@ else
 
     private string FormatScore(MatchDto match)
     {
-        var isSetMode = roundSettings
-            .FirstOrDefault(r => r.Phase == match.Phase && r.RoundNumber == match.Round)?.GameMode == "Sets";
+        var isSetMode = IsSetsGameMode(ResolveRoundForMatch(match));
         if (isSetMode)
             return $"{match.HomeSets}:{match.AwaySets} ({match.HomeLegs}:{match.AwayLegs})";
         return $"{match.HomeLegs}:{match.AwayLegs}";
     }
+
+    private TournamentRoundDto? ResolveRoundForMatch(MatchDto match)
+    {
+        var exact = roundSettings.FirstOrDefault(r =>
+            r.RoundNumber == match.Round
+            && string.Equals(r.Phase, match.Phase, StringComparison.OrdinalIgnoreCase));
+        if (exact is not null)
+            return exact;
+
+        // Fallback: for inconsistent phase naming use round number first.
+        var byRoundOnly = roundSettings.Where(r => r.RoundNumber == match.Round).ToList();
+        if (byRoundOnly.Count == 1)
+            return byRoundOnly[0];
+
+        var phaseNormalized = (match.Phase ?? string.Empty).Trim();
+        return byRoundOnly.FirstOrDefault(r =>
+            string.Equals(r.Phase, phaseNormalized, StringComparison.OrdinalIgnoreCase))
+            ?? roundSettings.FirstOrDefault(r =>
+                string.Equals(r.Phase, phaseNormalized, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsSetsGameMode(TournamentRoundDto? round)
+        => string.Equals(round?.GameMode, "Sets", StringComparison.OrdinalIgnoreCase);
 
     private MatchPlayerStatisticDto? DetailHomeStatistic
         => ResolveMatchStatistic(detailMatch, detailMatch?.HomeParticipantId ?? Guid.Empty);

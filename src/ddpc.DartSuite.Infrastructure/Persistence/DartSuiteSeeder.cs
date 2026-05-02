@@ -9,6 +9,7 @@ public static class DartSuiteSeeder
     public static async Task SeedAsync(DartSuiteDbContext dbContext, CancellationToken cancellationToken = default)
     {
         await SeedAdminsAsync(dbContext, cancellationToken);
+        await NormalizeBoardsWithoutGuidExternalIdAsync(dbContext, cancellationToken);
 
         if (dbContext.Boards.Any())
         {
@@ -162,5 +163,32 @@ public static class DartSuiteSeeder
             });
             await dbContext.SaveChangesAsync(cancellationToken);
         }
+    }
+
+    private static async Task NormalizeBoardsWithoutGuidExternalIdAsync(DartSuiteDbContext dbContext, CancellationToken cancellationToken)
+    {
+        var boardsToVirtualize = await dbContext.Boards
+            .Where(x => !x.IsVirtual)
+            .ToListAsync(cancellationToken);
+
+        var changed = false;
+        foreach (var board in boardsToVirtualize)
+        {
+            if (Guid.TryParse(board.ExternalBoardId, out _))
+                continue;
+
+            board.IsVirtual = true;
+            board.Status = BoardStatus.Running;
+            board.ConnectionState = ConnectionState.Online;
+            board.ExtensionStatus = ExtensionConnectionStatus.Offline;
+            board.LocalIpAddress = null;
+            board.BoardManagerUrl = null;
+            board.LastExtensionPollUtc = null;
+            board.UpdatedUtc = DateTimeOffset.UtcNow;
+            changed = true;
+        }
+
+        if (changed)
+            await dbContext.SaveChangesAsync(cancellationToken);
     }
 }

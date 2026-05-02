@@ -1,0 +1,12 @@
+.match-score-prefix {
+    font-size: 0.72em;
+    font-weight: 600;
+    opacity: 0.85;
+    margin-right: 0.25rem;
+    vertical-align: baseline;
+}
+
+.match-score-value {
+    font-size: 1em;
+    font-weight: 600;
+}

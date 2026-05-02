@@ -357,6 +357,10 @@
                                        OnStartMatch="() => SendUpcomingMatchAsync(detailMatch)"
                                        OnResetMatch="() => ResetMatchByIdAsync(detailMatch.Id)"
                                        OnStartListener="() => EnsureListenerAsync(detailMatch)"
+                                       OnToggleStartTimeLock="() => ToggleTimeLockAsync(detailMatch)"
+                                       CanToggleStartTimeLock="@(CanToggleStartTimeLockFromMatchCard(detailMatch))"
+                                       OnToggleBoardLock="() => ToggleBoardLockAsync(detailMatch)"
+                                       CanToggleBoardLock="@(CanToggleBoardLockFromMatchCard(detailMatch))"
                                        EnablePlayerLinks="@detailCardSettings.EnablePlayerLinks"
                                        EnableBoardLink="@detailCardSettings.EnableBoardLink"
                                        OnHomePlayerClick="BuildPlayerDetailCallback(detailMatch.HomeParticipantId)"
@@ -521,7 +525,7 @@
                                             <MatchStatistics Statistics="@detailMatchStatistics" />
                                         }
 
-                                        @if (CanSetWalkover(detailMatch))
+                                        @if (AppState.IsAdmin && CanSetWalkover(detailMatch))
                                         {
                                             <div class="d-flex align-items-center gap-2 mt-2 mb-2">
                                                 <button class="btn btn-outline-dark btn-sm" @onclick="() => OpenWalkoverDialog(detailMatch)" disabled="@isWorking">
@@ -559,7 +563,13 @@
                                         }
 
                                         <hr />
-                                        @if (showManualResultEditor)
+                                        @if (!AppState.IsAdmin)
+                                        {
+                                            <div class="alert alert-info py-2 small">
+                                                Manuelle Ergebniskorrekturen und tiefe Match-Aenderungen sind nur fuer Admins erlaubt.
+                                            </div>
+                                        }
+                                        else if (showManualResultEditor)
                                         {
                                             <h6 class="fw-semibold">Ergebnis manuell eintragen / korrigieren</h6>
                                             @if (IsSetMode(detailMatch))
@@ -604,10 +614,13 @@
                                     </div>
                                 </div>
                                 <div class="modal-footer">
-                                    <button class="btn btn-outline-danger me-auto" @onclick="ResetMatchAsync" disabled="@isWorking"
-                                            title="Spielstand, Start-/Endzeit und ExternalMatchId zurücksetzen">
-                                        🗑 Zurücksetzen
-                                    </button>
+                                    @if (AppState.IsAdmin)
+                                    {
+                                        <button class="btn btn-outline-danger me-auto" @onclick="ResetMatchAsync" disabled="@isWorking"
+                                                title="Spielstand, Start-/Endzeit und ExternalMatchId zurücksetzen">
+                                            🗑 Zurücksetzen
+                                        </button>
+                                    }
                                     <button class="btn btn-secondary" @onclick="CloseMatchDetail">Schließen</button>
                                 </div>
                             </div>
@@ -2025,6 +2038,10 @@
                                    OnStartMatch="() => SendUpcomingMatchAsync(currentMatch)"
                                    OnResetMatch="() => ResetMatchByIdAsync(currentMatch.Id)"
                                    OnStartListener="() => EnsureListenerAsync(currentMatch)"
+                                   OnToggleStartTimeLock="() => ToggleTimeLockAsync(currentMatch)"
+                                   CanToggleStartTimeLock="@(CanToggleStartTimeLockFromMatchCard(currentMatch))"
+                                   OnToggleBoardLock="() => ToggleBoardLockAsync(currentMatch)"
+                                   CanToggleBoardLock="@(CanToggleBoardLockFromMatchCard(currentMatch))"
                                    EnablePlayerLinks="@boardCardSettings.EnablePlayerLinks"
                                    EnableBoardLink="@boardCardSettings.EnableBoardLink"
                                    OnHomePlayerClick="BuildPlayerDetailCallback(currentMatch.HomeParticipantId)"
@@ -2130,6 +2147,10 @@
                                            OnStartMatch="() => SendUpcomingMatchAsync(m)"
                                            OnResetMatch="() => ResetMatchByIdAsync(m.Id)"
                                            OnStartListener="() => EnsureListenerAsync(m)"
+                                           OnToggleStartTimeLock="() => ToggleTimeLockAsync(m)"
+                                           CanToggleStartTimeLock="@(CanToggleStartTimeLockFromMatchCard(m))"
+                                           OnToggleBoardLock="() => ToggleBoardLockAsync(m)"
+                                           CanToggleBoardLock="@(CanToggleBoardLockFromMatchCard(m))"
                                            OnHomePlayerClick="BuildPlayerDetailCallback(m.HomeParticipantId)"
                                            OnAwayPlayerClick="BuildPlayerDetailCallback(m.AwayParticipantId)"
                                            EnableDetailPanel="false"

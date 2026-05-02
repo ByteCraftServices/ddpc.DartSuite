@@ -37,6 +37,12 @@ public sealed class Match
     public string? AwaySlotOrigin { get; set; }
     public string? NextMatchInfo { get; set; }
 
+    // Online lobby (Issue #83)
+    public string? ExternalLobbyId { get; set; }
+    public string? ExternalLobbyJoinUrl { get; set; }
+    public Guid? LobbyCreatedByParticipantId { get; set; }
+    public DateTimeOffset? LobbyCreatedAtUtc { get; set; }
+
     /// <summary>Sentinel ID for bye slots.</summary>
     public static readonly Guid ByeParticipantId = Guid.Empty;
 
