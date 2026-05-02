@@ -1,0 +1,8 @@
+/* DS-UI-01: Moved from inline <style> block in BoardStatusIndicator.razor */
+.status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+}
