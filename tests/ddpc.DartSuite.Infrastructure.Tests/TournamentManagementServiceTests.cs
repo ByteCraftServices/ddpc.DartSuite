@@ -71,6 +71,90 @@ public sealed class TournamentManagementServiceTests
     }
 
     [Fact]
+    public async Task AddParticipant_ShouldRejectDuplicateDisplayName()
+    {
+        var options = new DbContextOptionsBuilder<DartSuiteDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var dbContext = new DartSuiteDbContext(options);
+        var service = new TournamentManagementService(dbContext);
+
+        var tournament = await service.CreateTournamentAsync(new CreateTournamentRequest(
+            "Demo",
+            "manager",
+            DateOnly.FromDateTime(DateTime.Today),
+            null,
+            false,
+            "Knockout",
+            "OnSite"));
+
+        await service.AddParticipantAsync(new AddParticipantRequest(
+            tournament.Id, "Player One", "player1", false, false, 1));
+
+        // Same DisplayName, different AccountName → should be rejected
+        var act = async () => await service.AddParticipantAsync(new AddParticipantRequest(
+            tournament.Id, "Player One", "player1-alt", false, false, 2));
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Anzeigenamen*");
+    }
+
+    [Fact]
+    public async Task AddParticipant_ShouldRejectDuplicateDisplayName_CaseInsensitive()
+    {
+        var options = new DbContextOptionsBuilder<DartSuiteDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var dbContext = new DartSuiteDbContext(options);
+        var service = new TournamentManagementService(dbContext);
+
+        var tournament = await service.CreateTournamentAsync(new CreateTournamentRequest(
+            "Demo",
+            "manager",
+            DateOnly.FromDateTime(DateTime.Today),
+            null,
+            false,
+            "Knockout",
+            "OnSite"));
+
+        await service.AddParticipantAsync(new AddParticipantRequest(
+            tournament.Id, "Anna", "anna1", false, false, 1));
+
+        var act = async () => await service.AddParticipantAsync(new AddParticipantRequest(
+            tournament.Id, "ANNA", "anna2", false, false, 2));
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Anzeigenamen*");
+    }
+
+    [Fact]
+    public async Task AddParticipant_ShouldAllowSameDisplayNameInDifferentTournaments()
+    {
+        var options = new DbContextOptionsBuilder<DartSuiteDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var dbContext = new DartSuiteDbContext(options);
+        var service = new TournamentManagementService(dbContext);
+
+        var t1 = await service.CreateTournamentAsync(new CreateTournamentRequest(
+            "Turnier A", "manager", DateOnly.FromDateTime(DateTime.Today), null, false, "Knockout", "OnSite"));
+        var t2 = await service.CreateTournamentAsync(new CreateTournamentRequest(
+            "Turnier B", "manager", DateOnly.FromDateTime(DateTime.Today), null, false, "Knockout", "OnSite"));
+
+        await service.AddParticipantAsync(new AddParticipantRequest(t1.Id, "Max", "max1", false, false, 1));
+
+        // Same DisplayName in a different tournament → must succeed
+        var act = async () => await service.AddParticipantAsync(
+            new AddParticipantRequest(t2.Id, "Max", "max1", false, false, 1));
+
+        await act.Should().NotThrowAsync();
+    }
+
+
+    [Fact]
     public async Task UpdateParticipant_ShouldRejectPlayerToTeamMemberConversion()
     {
         var options = new DbContextOptionsBuilder<DartSuiteDbContext>()

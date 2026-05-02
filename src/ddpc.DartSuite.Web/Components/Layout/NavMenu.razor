@@ -99,6 +99,9 @@
             <div class="nav-item nav-level-1">
                 <NavLink class="nav-link small nav-level-1-link" href="@RegisterHref" title="@UiHelp.GetTooltip("page.register")">Registrieren</NavLink>
             </div>
+            <div class="nav-item nav-level-1">
+                <NavLink class="nav-link small nav-level-1-link" href="spieler" title="@UiHelp.GetTooltip("page.spieler")">Meine Übersicht</NavLink>
+            </div>
         }
         <div class="nav-item nav-level-0 nav-group-head">
             <NavLink class="nav-link flex-grow-1" href="settings?tab=general" @onclick="OnSettingsParentClick">
@@ -115,6 +118,9 @@
             </div>
             <div class="nav-item nav-level-1">
                 <NavLink class="nav-link small nav-level-1-link" href="profile">Profil</NavLink>
+            </div>
+            <div class="nav-item nav-level-1">
+                <NavLink class="nav-link small nav-level-1-link" href="manual" title="@UiHelp.GetTooltip("page.manual")">Handbuch</NavLink>
             </div>
         }
 
@@ -243,7 +249,6 @@
     private bool isPlayerExpanded;
     private bool isAdminExpanded;
     private bool isBoardsExpanded = true;
-    private bool isPlayerExpanded;
     private string _lastKnownSelectedTournamentId = string.Empty;
     private readonly HashSet<Guid> expandedTournamentIds = [];
 
@@ -475,10 +480,10 @@
         if (relative.StartsWith("tournaments") || relative.StartsWith("my-tournaments"))
             isOverviewExpanded = true;
 
-        if (relative.StartsWith("settings") || relative.StartsWith("profile"))
+        if (relative.StartsWith("settings") || relative.StartsWith("profile") || relative.StartsWith("manual"))
             isSettingsExpanded = true;
 
-        if (relative.StartsWith("register") || relative.StartsWith("landing"))
+        if (relative.StartsWith("register") || relative.StartsWith("landing") || relative.StartsWith("spieler"))
             isPlayerExpanded = true;
 
         if (relative.StartsWith("boards"))

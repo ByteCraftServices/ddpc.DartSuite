@@ -3,16 +3,16 @@
 @using ddpc.DartSuite.Application.Contracts.Tournaments
 @inject DartSuiteApiService Api
 @inject IUiHelpService UiHelp
+@inject IJSRuntime JS
 
 <PageTitle>Landing</PageTitle>
 
 <h1 class="mb-3">Willkommen bei DartSuite <UiHelpIcon HelpKey="page.landing" /></h1>
-<p class="text-muted">Oeffentliche Turnieransicht. Direktlink: <code>?tournamentId=GUID</code>.</p>
 
 <div class="card shadow-sm mb-3">
     <div class="card-body">
         <h5 class="card-title mb-2">Zugang</h5>
-        <p class="text-muted small mb-3">Autodarts-Login fuer Konto-Funktionen oder Registrierung als lokaler Spieler.</p>
+        <p class="text-muted small mb-3">Autodarts-Login für Konto-Funktionen oder Registrierung als lokaler Spieler.</p>
         <div class="d-flex flex-wrap gap-2">
             <a class="btn btn-primary btn-sm" href="/login">Mit Autodarts anmelden</a>
             @if (selectedTournament is not null)
@@ -52,32 +52,102 @@ else
                     <span class="badge bg-secondary">@selectedTournament.Status</span>
                 </div>
                 <div class="small text-muted mb-3">
-                    Zeitraum: @selectedTournament.StartDate.ToString("dd.MM.yyyy") - @selectedTournament.EndDate.ToString("dd.MM.yyyy")
+                    Zeitraum: @selectedTournament.StartDate.ToString("dd.MM.yyyy") – @selectedTournament.EndDate.ToString("dd.MM.yyyy")
                 </div>
 
+                @* My Matches section shown when a player identity is known *@
+                @if (myParticipant is not null)
+                {
+                    <div class="alert alert-success py-2 mb-3">
+                        <strong>Willkommen, @myParticipant.DisplayName!</strong> Deine nächsten Matches werden unten hervorgehoben.
+                        <button class="btn btn-sm btn-link py-0 ms-2" @onclick="ClearMyIdentityAsync">Abmelden</button>
+                    </div>
+
+                    @if (MyNextMatches.Count > 0)
+                    {
+                        <h6 class="mb-2">Deine nächsten Matches</h6>
+                        <div class="table-responsive mb-3">
+                            <table class="table table-sm align-middle mb-0 table-bordered">
+                                <thead class="table-success">
+                                    <tr>
+                                        <th>Match</th>
+                                        <th>Status</th>
+                                        <th>Geplanter Start</th>
+                                        <th>Ergebnis</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var match in MyNextMatches)
+                                    {
+                                        <tr>
+                                            <td><strong>@MatchTitle(match)</strong></td>
+                                            <td><span class="badge bg-secondary">@match.Status</span></td>
+                                            <td>@(match.PlannedStartUtc?.LocalDateTime.ToString("dd.MM HH:mm") ?? "–")</td>
+                                            <td>@($"{match.HomeLegs}:{match.AwayLegs}")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-info py-2 mb-3">Keine eigenen anstehenden Matches gefunden.</div>
+                    }
+
+                    @* Notification preferences *@
+                    <details class="mb-3">
+                        <summary class="text-muted small" style="cursor:pointer">Benachrichtigungseinstellungen</summary>
+                        <div class="mt-2">
+                            <p class="small text-muted">Legt fest, über welche Matches du informiert werden möchtest (sofern Push-Benachrichtigungen unterstützt werden).</p>
+                            <div class="form-check">
+                                <input id="notifOwn" class="form-check-input" type="checkbox"
+                                       checked="@HasNotificationFlag("OwnMatches")"
+                                       @onchange="@((e) => ToggleNotificationFlag("OwnMatches", (bool)(e.Value ?? false)))" />
+                                <label class="form-check-label" for="notifOwn">Eigene Matches (Startzeit, Änderungen)</label>
+                            </div>
+                            <div class="form-check">
+                                <input id="notifAll" class="form-check-input" type="checkbox"
+                                       checked="@HasNotificationFlag("AllMatches")"
+                                       @onchange="@((e) => ToggleNotificationFlag("AllMatches", (bool)(e.Value ?? false)))" />
+                                <label class="form-check-label" for="notifAll">Alle Matches</label>
+                            </div>
+                            <p class="small text-muted mt-1 mb-0">
+                                <i class="bi bi-info-circle me-1"></i>
+                                Startzeit-Änderungen innerhalb von 5 Minuten werden nicht als separate Benachrichtigung gesendet.
+                            </p>
+                            @if (!string.IsNullOrWhiteSpace(notifMessage))
+                            {
+                                <div class="alert @(notifError ? "alert-danger" : "alert-success") py-1 mt-2 mb-0 small">@notifMessage</div>
+                            }
+                        </div>
+                    </details>
+                }
+
+                <h6 class="mb-2">Alle Matches</h6>
                 <div class="row g-2 mb-3">
                     <div class="col-md-4">
-                        <label class="form-label small">Spielername (optional)</label>
-                           <input class="form-control form-control-sm" @bind="viewerName" placeholder="Eigene Matches filtern"
+                        <label class="form-label small">Spielername (Filter)</label>
+                        <input class="form-control form-control-sm" @bind="viewerName" placeholder="Eigene Matches filtern"
                                title="@UiHelp.GetTooltip("landing.viewer-name")" />
                     </div>
                     <div class="col-md-8 d-flex flex-wrap align-items-end gap-3 pb-1">
                         <div class="form-check">
                             <input id="showAll" class="form-check-input" type="checkbox" @bind="showAllMatches"
-                                title="@UiHelp.GetTooltip("landing.show-all")" />
+                                   title="@UiHelp.GetTooltip("landing.show-all")" />
                             <label class="form-check-label" for="showAll">Alle Matches anzeigen</label>
                         </div>
                         <div class="form-check">
                             <input id="hideDone" class="form-check-input" type="checkbox" @bind="hideFinishedMatches"
-                                title="@UiHelp.GetTooltip("landing.hide-finished")" />
-                            <label class="form-check-label" for="hideDone">Abgeschlossene Matches ausblenden</label>
+                                   title="@UiHelp.GetTooltip("landing.hide-finished")" />
+                            <label class="form-check-label" for="hideDone">Abgeschlossene ausblenden</label>
                         </div>
                     </div>
                 </div>
 
                 @if (VisibleMatches.Count == 0)
                 {
-                    <div class="alert alert-info py-2 mb-0">Keine oeffentlichen Matches fuer den aktuellen Filter.</div>
+                    <div class="alert alert-info py-2 mb-0">Keine öffentlichen Matches für den aktuellen Filter.</div>
                 }
                 else
                 {
@@ -94,10 +164,11 @@ else
                             <tbody>
                                 @foreach (var match in VisibleMatches)
                                 {
-                                    <tr>
+                                    var isMyMatch = myParticipant is not null && IsMyMatch(match);
+                                    <tr class="@(isMyMatch ? "table-success" : "")">
                                         <td>@MatchTitle(match)</td>
                                         <td><span class="badge bg-secondary">@match.Status</span></td>
-                                        <td>@(match.PlannedStartUtc?.LocalDateTime.ToString("dd.MM HH:mm") ?? "-")</td>
+                                        <td>@(match.PlannedStartUtc?.LocalDateTime.ToString("dd.MM HH:mm") ?? "–")</td>
                                         <td>@($"{match.HomeLegs}:{match.AwayLegs}")</td>
                                     </tr>
                                 }
@@ -133,7 +204,7 @@ else
                             <td><span class="badge bg-secondary">@tournament.Status</span></td>
                             <td>@tournament.StartDate.ToString("dd.MM.yyyy")</td>
                             <td class="d-flex gap-2 justify-content-end">
-                                <a class="btn btn-outline-primary btn-sm" href="/landing?tournamentId=@tournament.Id">Oeffnen</a>
+                                <a class="btn btn-outline-primary btn-sm" href="/landing?tournamentId=@tournament.Id">Öffnen</a>
                                 <a class="btn btn-outline-secondary btn-sm" href="/register?tournamentId=@tournament.Id">Registrieren</a>
                             </td>
                         </tr>
@@ -145,19 +216,26 @@ else
 }
 
 @code {
+    private const string StorageKeyTournamentId = "ds-landing-tournament-id";
+    private const string StorageKeyPlayerName = "ds-landing-player-name";
+
     [SupplyParameterFromQuery(Name = "tournamentId")]
     public string? QueryTournamentId { get; set; }
 
     private readonly List<TournamentDto> tournaments = [];
     private readonly List<MatchDto> tournamentMatches = [];
     private readonly Dictionary<Guid, string> participantNames = [];
+    private readonly Dictionary<Guid, Guid> participantById = []; // displayName key → participantId
     private TournamentDto? selectedTournament;
+    private ParticipantDto? myParticipant;
     private bool isLoading = true;
     private string? queryError;
     private string? loadError;
     private string viewerName = string.Empty;
     private bool showAllMatches = true;
     private bool hideFinishedMatches;
+    private string? notifMessage;
+    private bool notifError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -166,8 +244,13 @@ else
             tournaments.Clear();
             tournaments.AddRange(await Api.GetTournamentsAsync());
 
-            if (!string.IsNullOrWhiteSpace(QueryTournamentId))
-                await LoadTournamentFromQueryAsync(QueryTournamentId);
+            // Use query parameter first, fall back to LocalStorage
+            var tournamentIdStr = QueryTournamentId;
+            if (string.IsNullOrWhiteSpace(tournamentIdStr))
+                tournamentIdStr = await JS.InvokeAsync<string?>("dartSuiteUi.localStorageGet", StorageKeyTournamentId);
+
+            if (!string.IsNullOrWhiteSpace(tournamentIdStr))
+                await LoadTournamentFromQueryAsync(tournamentIdStr);
         }
         catch (Exception ex)
         {
@@ -182,24 +265,36 @@ else
     private List<MatchDto> VisibleMatches
         => tournamentMatches
             .Where(m => !hideFinishedMatches || m.FinishedUtc is null)
-            .Where(m => showAllMatches || IsOwnMatch(m))
+            .Where(m => showAllMatches || IsNameMatch(m, viewerName))
             .OrderBy(m => m.FinishedUtc is not null)
             .ThenBy(m => m.PlannedStartUtc ?? DateTimeOffset.MaxValue)
             .ThenBy(m => m.Round)
             .ThenBy(m => m.MatchNumber)
             .ToList();
 
-    private bool IsOwnMatch(MatchDto match)
+    private List<MatchDto> MyNextMatches
+        => myParticipant is null ? [] :
+            tournamentMatches
+                .Where(m => m.FinishedUtc is null && IsMyMatch(m))
+                .OrderBy(m => m.PlannedStartUtc ?? DateTimeOffset.MaxValue)
+                .ThenBy(m => m.Round)
+                .Take(5)
+                .ToList();
+
+    private bool IsMyMatch(MatchDto match)
     {
-        if (string.IsNullOrWhiteSpace(viewerName))
-            return false;
+        if (myParticipant is null) return false;
+        return match.HomeParticipantId == myParticipant.Id
+            || match.AwayParticipantId == myParticipant.Id;
+    }
 
-        var normalizedViewer = viewerName.Trim();
-        var homeName = participantNames.GetValueOrDefault(match.HomeParticipantId) ?? string.Empty;
-        var awayName = participantNames.GetValueOrDefault(match.AwayParticipantId) ?? string.Empty;
-
-        return homeName.Contains(normalizedViewer, StringComparison.OrdinalIgnoreCase)
-            || awayName.Contains(normalizedViewer, StringComparison.OrdinalIgnoreCase);
+    private bool IsNameMatch(MatchDto match, string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        var home = participantNames.GetValueOrDefault(match.HomeParticipantId) ?? string.Empty;
+        var away = participantNames.GetValueOrDefault(match.AwayParticipantId) ?? string.Empty;
+        return home.Contains(name.Trim(), StringComparison.OrdinalIgnoreCase)
+            || away.Contains(name.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     private string MatchTitle(MatchDto match)
@@ -209,30 +304,91 @@ else
         return $"{home} vs {away}";
     }
 
-    private async Task LoadTournamentFromQueryAsync(string queryTournamentId)
+    private bool HasNotificationFlag(string flag)
+    {
+        if (myParticipant is null) return false;
+        return myParticipant.NotificationPreference.Contains(flag, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task ToggleNotificationFlag(string flag, bool enabled)
+    {
+        if (myParticipant is null || selectedTournament is null) return;
+        notifMessage = null;
+        notifError = false;
+
+        // Compute new combined preference string
+        var flags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (myParticipant.NotificationPreference != "None")
+        {
+            foreach (var f in myParticipant.NotificationPreference.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                flags.Add(f);
+        }
+        if (enabled) flags.Add(flag);
+        else flags.Remove(flag);
+
+        var newPref = flags.Count == 0 ? "None" : string.Join(", ", flags);
+        try
+        {
+            var updated = await Api.UpdateParticipantNotificationPreferenceAsync(selectedTournament.Id, myParticipant.Id, newPref);
+            if (updated is not null)
+            {
+                myParticipant = updated;
+                notifMessage = "Einstellung gespeichert.";
+            }
+        }
+        catch (Exception ex)
+        {
+            notifError = true;
+            notifMessage = ex.Message;
+        }
+    }
+
+    private async Task ClearMyIdentityAsync()
+    {
+        myParticipant = null;
+        await JS.InvokeVoidAsync("dartSuiteUi.localStorageSet", StorageKeyTournamentId, "");
+        await JS.InvokeVoidAsync("dartSuiteUi.localStorageSet", StorageKeyPlayerName, "");
+    }
+
+    private async Task LoadTournamentFromQueryAsync(string tournamentIdStr)
     {
         queryError = null;
         tournamentMatches.Clear();
         participantNames.Clear();
+        myParticipant = null;
         selectedTournament = null;
 
-        if (!Guid.TryParse(queryTournamentId, out var parsedId))
+        if (!Guid.TryParse(tournamentIdStr, out var parsedId))
         {
-            queryError = "Die angegebene tournamentId ist ungueltig.";
+            queryError = "Die angegebene tournamentId ist ungültig.";
             return;
         }
 
         selectedTournament = tournaments.FirstOrDefault(t => t.Id == parsedId);
         if (selectedTournament is null)
         {
-            queryError = "Kein oeffentliches Turnier zu dieser tournamentId gefunden.";
+            queryError = "Kein öffentliches Turnier zu dieser tournamentId gefunden.";
             return;
         }
 
         var participants = await Api.GetParticipantsAsync(selectedTournament.Id);
-        foreach (var participant in participants)
-            participantNames[participant.Id] = string.IsNullOrWhiteSpace(participant.DisplayName) ? participant.AccountName : participant.DisplayName;
+        foreach (var p in participants)
+        {
+            var name = string.IsNullOrWhiteSpace(p.DisplayName) ? p.AccountName : p.DisplayName;
+            participantNames[p.Id] = name;
+        }
 
         tournamentMatches.AddRange(await Api.GetMatchesAsync(selectedTournament.Id));
+
+        // Try to restore the player identity from LocalStorage
+        var storedName = await JS.InvokeAsync<string?>("dartSuiteUi.localStorageGet", StorageKeyPlayerName);
+        if (!string.IsNullOrWhiteSpace(storedName))
+        {
+            myParticipant = participants.FirstOrDefault(p =>
+                string.Equals(p.DisplayName, storedName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Persist tournament ID to LocalStorage for future visits
+        await JS.InvokeVoidAsync("dartSuiteUi.localStorageSet", StorageKeyTournamentId, selectedTournament.Id.ToString());
     }
 }

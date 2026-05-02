@@ -325,6 +325,14 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
             cancellationToken);
         if (exists) throw new InvalidOperationException("Participant already exists.");
 
+        var trimmedDisplayName = request.DisplayName.Trim();
+        var displayNameExists = await dbContext.Participants.AnyAsync(
+            x => x.TournamentId == request.TournamentId
+                 && x.DisplayName.ToLower() == trimmedDisplayName.ToLower(),
+            cancellationToken);
+        if (displayNameExists)
+            throw new InvalidOperationException($"Ein Teilnehmer mit dem Anzeigenamen \"{trimmedDisplayName}\" ist bereits in diesem Turnier registriert. Bitte waehle einen anderen Namen.");
+
         var participantType = ParseParticipantTypeOrDefault(request.Type, ParticipantType.Spieler);
         if (participantType == ParticipantType.TeamMember)
             throw new InvalidOperationException("Team-Teilnehmer werden automatisch ueber die Teamverwaltung erstellt.");
@@ -403,6 +411,19 @@ public sealed class TournamentManagementService(DartSuiteDbContext dbContext) : 
 
         await dbContext.SaveChangesAsync(cancellationToken);
             return new ParticipantDto(participant.Id, participant.DisplayName, participant.AccountName, participant.IsAutodartsAccount, participant.IsManager, participant.Seed, participant.SeedPot, participant.GroupNumber, participant.TeamId, participant.NotificationPreference.ToString(), participant.Type.ToString());
+    }
+
+    public async Task<ParticipantDto?> UpdateParticipantNotificationPreferenceAsync(Guid tournamentId, Guid participantId, string preference, CancellationToken cancellationToken = default)
+    {
+        var participant = await dbContext.Participants
+            .FirstOrDefaultAsync(x => x.Id == participantId && x.TournamentId == tournamentId, cancellationToken);
+        if (participant is null) return null;
+
+        participant.NotificationPreference = Enum.TryParse<NotificationPreference>(preference, true, out var pref)
+            ? pref : NotificationPreference.OwnMatches;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return new ParticipantDto(participant.Id, participant.DisplayName, participant.AccountName, participant.IsAutodartsAccount, participant.IsManager, participant.Seed, participant.SeedPot, participant.GroupNumber, participant.TeamId, participant.NotificationPreference.ToString(), participant.Type.ToString());
     }
 
     public async Task<bool> RemoveParticipantAsync(Guid tournamentId, Guid participantId, CancellationToken cancellationToken = default)

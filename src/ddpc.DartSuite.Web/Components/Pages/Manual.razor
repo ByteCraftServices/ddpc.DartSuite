@@ -1,0 +1,169 @@
+@page "/manual"
+@inject IUiHelpService UiHelp
+@inject NavigationManager Navigation
+
+<PageTitle>Online-Handbuch</PageTitle>
+
+<h1 class="mb-3">Online-Handbuch <UiHelpIcon HelpKey="page.manual" /></h1>
+<p class="text-muted small mb-3">Kontextbezogene Hilfetexte für alle Seiten und Eingabefelder der Anwendung.</p>
+
+<div class="mb-3">
+    <input class="form-control" @bind="searchQuery" @bind:event="oninput"
+           placeholder="Suchen (z. B. 'Registrierung', 'Match', 'Board') ..." />
+</div>
+
+@if (PageSections.Count == 0)
+{
+    <div class="alert alert-info">Keine Hilfeeinträge gefunden.</div>
+}
+else
+{
+    @foreach (var helpSection in PageSections)
+    {
+        <div class="card shadow-sm mb-3">
+            <div class="card-header py-2 fw-semibold">@helpSection.Title</div>
+            <div class="card-body py-2">
+                @foreach (var entry in helpSection.Entries)
+                {
+                    <div class="border-bottom py-2">
+                        <code class="small text-muted me-2">@entry.Key</code>
+                        <p class="mb-0 small">@entry.Value</p>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private string searchQuery = string.Empty;
+
+    // Ordered page routes with their help keys
+    private static readonly (string PageKey, string Label)[] PageRoutes =
+    [
+        ("page.dashboard", "Dashboard"),
+        ("page.landing", "Landing / Öffentliche Ansicht"),
+        ("page.register", "Registrierung"),
+        ("page.spieler", "Meine Übersicht (Spieler)"),
+        ("page.my-tournaments", "Meine Turniere"),
+        ("page.profile", "Profil"),
+        ("page.settings", "Einstellungen"),
+        ("page.boards", "Boards"),
+        ("page.tournaments", "Turnierverwaltung"),
+        ("page.matches", "Match-Verwaltung"),
+        ("page.manual", "Online-Handbuch"),
+    ];
+
+    // Key prefix groups for sub-entries
+    private static readonly string[] KeyPrefixes =
+    [
+        "dashboard.",
+        "landing.",
+        "register.",
+        "spieler.",
+        "my-tournaments.",
+        "profile.",
+        "settings.",
+        "boards.",
+        "tournaments.",
+        "matches.",
+        "manual.",
+        "consistency.",
+    ];
+
+    private sealed class HelpSection
+    {
+        public string Title { get; init; } = string.Empty;
+        public List<(string Key, string Value)> Entries { get; init; } = [];
+    }
+
+    private List<HelpSection> PageSections
+    {
+        get
+        {
+            var q = searchQuery.Trim();
+            var sections = new List<HelpSection>();
+
+            foreach (var (pageKey, label) in PageRoutes)
+            {
+                var pageContent = UiHelp.GetContent(pageKey);
+                var subEntries = KeyPrefixes
+                    .Where(prefix => pageKey.Contains('.') && prefix.StartsWith(pageKey.Split('.').Last() + ".", StringComparison.OrdinalIgnoreCase)
+                                  || prefix.StartsWith(pageKey.Split('.').Last() + ".", StringComparison.OrdinalIgnoreCase))
+                    .SelectMany(prefix => GetEntriesForPrefix(prefix))
+                    .Where(e => MatchesSearch(e.Key, e.Value, q))
+                    .ToList();
+
+                var pageMatches = MatchesSearch(pageKey, pageContent, q);
+
+                if (!pageMatches && subEntries.Count == 0 && !string.IsNullOrWhiteSpace(q))
+                    continue;
+
+                var entries = new List<(string Key, string Value)>();
+                if (!string.IsNullOrWhiteSpace(pageContent))
+                    entries.Add((pageKey, pageContent));
+                entries.AddRange(subEntries);
+
+                if (entries.Count == 0 && !string.IsNullOrWhiteSpace(q))
+                    continue;
+
+                sections.Add(new HelpSection
+                {
+                    Title = label,
+                    Entries = entries
+                });
+            }
+
+            return sections;
+        }
+    }
+
+    private IEnumerable<(string Key, string Value)> GetEntriesForPrefix(string prefix)
+    {
+        // We rely on the help service to provide known keys via well-known naming
+        // Use reflection-safe known keys pattern
+        var wellKnownKeys = GetWellKnownKeysForPrefix(prefix);
+        foreach (var key in wellKnownKeys)
+        {
+            var val = UiHelp.GetContent(key);
+            if (!string.IsNullOrWhiteSpace(val))
+                yield return (key, val);
+        }
+    }
+
+    private static readonly string[] AllWellKnownKeys =
+    [
+        // dashboard
+        "dashboard.tournament.select", "dashboard.toggle.finished",
+        // landing
+        "landing.viewer-name", "landing.show-all", "landing.hide-finished",
+        // register
+        "register.display-name", "register.account-name", "register.is-autodarts",
+        "register.submit", "register.unregister", "register.join-code", "register.tournament-id",
+        // my-tournaments
+        "my-tournaments.filter.overview", "my-tournaments.filter.running",
+        // profile
+        "profile.pref.own", "profile.pref.followed", "profile.pref.all", "profile.save",
+        // settings
+        "settings.tab.general", "settings.tab.user",
+        // boards
+        "boards.external-id", "boards.name", "boards.create",
+        // tournaments
+        "tournaments.status", "tournaments.schedule.generate",
+        "tournaments.tab.boards-participants", "tournaments.subtab.players", "tournaments.subtab.teams",
+        // matches
+        "matches.filter.status", "matches.filter.phase", "matches.search", "matches.bulk.reset",
+        // consistency
+        "consistency.tournament-board-scope",
+    ];
+
+    private static IEnumerable<string> GetWellKnownKeysForPrefix(string prefix)
+        => AllWellKnownKeys.Where(k => k.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+
+    private static bool MatchesSearch(string key, string value, string query)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return true;
+        return key.Contains(query, StringComparison.OrdinalIgnoreCase)
+            || value.Contains(query, StringComparison.OrdinalIgnoreCase);
+    }
+}

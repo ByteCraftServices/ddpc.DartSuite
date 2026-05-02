@@ -132,3 +132,15 @@ Setzt mehrere ausgewaehlte Matches in den Ausgangszustand zurueck.
 
 ### [help:consistency.tournament-board-scope]
 Daten werden strikt nach tournamentId und boardId getrennt. Board-Zuweisungen duerfen nicht in fremde Turniere schreiben.
+
+### [help:page.spieler]
+Persoenliche Spieler-Uebersicht: Eigene Registrierungen, naechste Matches und Austragen aus Turnieren. Identitaet wird aus Autodarts-Login oder lokalem Browser-Speicher ermittelt.
+
+### [help:register.join-code]
+3-stelliger Turniercode, den du vom Veranstalter erhaeltst. Eingabe in Grossbuchstaben ist optional, die Suche ist nicht case-sensitiv.
+
+### [help:register.tournament-id]
+Vollstaendige Turnier-UUID im Format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx. Wird normalerweise als Link-Parameter erhalten.
+
+### [help:page.manual]
+Online-Handbuch mit allen kontextbezogenen Hilfetexten der Anwendung. Nutze die Suche, um schnell Hilfe zu einem Thema zu finden.

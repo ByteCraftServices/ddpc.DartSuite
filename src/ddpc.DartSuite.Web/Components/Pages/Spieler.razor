@@ -1,0 +1,285 @@
+@page "/spieler"
+@using ddpc.DartSuite.Application.Contracts.Matches
+@using ddpc.DartSuite.Application.Contracts.Tournaments
+@inject DartSuiteApiService Api
+@inject AppStateService AppState
+@inject IJSRuntime JS
+@inject IUiHelpService UiHelp
+
+<PageTitle>Meine Übersicht</PageTitle>
+
+<h1 class="mb-3">Meine Übersicht <UiHelpIcon HelpKey="page.spieler" /></h1>
+
+@if (isLoading)
+{
+    <div class="text-muted">Daten werden geladen ...</div>
+}
+else
+{
+    @if (myRegistrations.Count == 0)
+    {
+        <div class="alert alert-info">
+            Du bist aktuell in keinem Turnier registriert.
+            <a href="/register" class="alert-link">Jetzt registrieren</a>.
+        </div>
+    }
+    else
+    {
+        @* Next matches section *@
+        @if (upcomingMatches.Count > 0)
+        {
+            <div class="card shadow-sm mb-3">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Nächste Matches</h5>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Turnier</th>
+                                    <th>Match</th>
+                                    <th>Geplanter Start</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var entry in upcomingMatches)
+                                {
+                                    <tr>
+                                        <td>
+                                            <a href="/landing?tournamentId=@entry.TournamentId" class="text-decoration-none">
+                                                @(tournamentNames.GetValueOrDefault(entry.TournamentId) ?? entry.TournamentId.ToString()[..8])
+                                            </a>
+                                        </td>
+                                        <td>@entry.Title</td>
+                                        <td>@(entry.PlannedStart?.LocalDateTime.ToString("dd.MM HH:mm") ?? "–")</td>
+                                        <td><span class="badge bg-secondary">@entry.Status</span></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-info py-2 mb-3">Keine anstehenden Matches gefunden.</div>
+        }
+
+        @* Registrations section *@
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <h5 class="card-title mb-3">Meine Registrierungen</h5>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Turnier</th>
+                                <th>Status</th>
+                                <th>Registrierung</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var reg in myRegistrations)
+                            {
+                                <tr>
+                                    <td>
+                                        <a href="/landing?tournamentId=@reg.TournamentId" class="text-decoration-none">
+                                            @reg.TournamentName
+                                        </a>
+                                    </td>
+                                    <td><span class="badge bg-secondary">@reg.TournamentStatus</span></td>
+                                    <td>
+                                        @if (reg.CanUnregister)
+                                        {
+                                            <span class="badge bg-success">Offen</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Abgeschlossen</span>
+                                        }
+                                    </td>
+                                    <td class="text-end">
+                                        @if (reg.CanUnregister)
+                                        {
+                                            <button class="btn btn-sm btn-outline-danger"
+                                                    disabled="@isWorking"
+                                                    @onclick="() => UnregisterAsync(reg)">Austragen</button>
+                                        }
+                                        else
+                                        {
+                                            <a class="btn btn-sm btn-outline-secondary"
+                                               href="/landing?tournamentId=@reg.TournamentId">Ansehen</a>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(actionMessage))
+                {
+                    <div class="alert @(actionError ? "alert-danger" : "alert-success") py-2 mt-2 mb-0">@actionMessage</div>
+                }
+            </div>
+        </div>
+
+        @* Notification preferences shortcut *@
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title mb-2">Benachrichtigungseinstellungen</h5>
+                <p class="text-muted small mb-2">
+                    Die Einstellungen gelten pro Turnier-Registrierung. Verwalte sie im jeweiligen Turnier über die Landing-Seite.
+                </p>
+                <a href="/profile" class="btn btn-outline-secondary btn-sm">Zum Profil</a>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private const string StorageKeyTournamentId = "ds-landing-tournament-id";
+    private const string StorageKeyPlayerName = "ds-landing-player-name";
+
+    private sealed class RegistrationEntry
+    {
+        public Guid TournamentId { get; init; }
+        public string TournamentName { get; init; } = string.Empty;
+        public string TournamentStatus { get; init; } = string.Empty;
+        public ParticipantDto Participant { get; init; } = null!;
+        public bool CanUnregister { get; init; }
+    }
+
+    private sealed class MatchEntry
+    {
+        public Guid TournamentId { get; init; }
+        public string Title { get; init; } = string.Empty;
+        public string Status { get; init; } = string.Empty;
+        public DateTimeOffset? PlannedStart { get; init; }
+    }
+
+    private readonly List<RegistrationEntry> myRegistrations = [];
+    private readonly List<MatchEntry> upcomingMatches = [];
+    private readonly Dictionary<Guid, string> tournamentNames = [];
+    private bool isLoading = true;
+    private bool isWorking;
+    private string? actionMessage;
+    private bool actionError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await LoadAsync();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        myRegistrations.Clear();
+        upcomingMatches.Clear();
+        tournamentNames.Clear();
+
+        // Determine current player identity: prefer Autodarts profile, fall back to LocalStorage
+        var playerName = AppState.AutodartsProfile?.DisplayName
+            ?? await JS.InvokeAsync<string?>("dartSuiteUi.localStorageGet", StorageKeyPlayerName);
+
+        if (string.IsNullOrWhiteSpace(playerName))
+            return;
+
+        var allTournaments = await Api.GetTournamentsAsync();
+        foreach (var t in allTournaments)
+            tournamentNames[t.Id] = t.Name;
+
+        // Only consider active/upcoming tournaments
+        var relevantTournaments = allTournaments
+            .Where(t => !string.Equals(t.Status, "Beendet", StringComparison.OrdinalIgnoreCase)
+                     && !string.Equals(t.Status, "Abgebrochen", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var tournament in relevantTournaments)
+        {
+            try
+            {
+                var participants = await Api.GetParticipantsAsync(tournament.Id);
+                var me = participants.FirstOrDefault(p =>
+                    string.Equals(p.DisplayName, playerName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(p.AccountName, playerName, StringComparison.OrdinalIgnoreCase));
+
+                if (me is null) continue;
+
+                var canUnregister = tournament.IsRegistrationOpen
+                    && !string.Equals(tournament.Status, "Gestartet", StringComparison.OrdinalIgnoreCase);
+
+                myRegistrations.Add(new RegistrationEntry
+                {
+                    TournamentId = tournament.Id,
+                    TournamentName = tournament.Name,
+                    TournamentStatus = tournament.Status,
+                    Participant = me,
+                    CanUnregister = canUnregister
+                });
+
+                // Load upcoming matches for this tournament
+                var matches = await Api.GetMatchesAsync(tournament.Id);
+                var myMatches = matches
+                    .Where(m => m.FinishedUtc is null
+                        && (m.HomeParticipantId == me.Id || m.AwayParticipantId == me.Id))
+                    .OrderBy(m => m.PlannedStartUtc ?? DateTimeOffset.MaxValue)
+                    .Take(3);
+
+                foreach (var match in myMatches)
+                {
+                    var homeP = participants.FirstOrDefault(p => p.Id == match.HomeParticipantId);
+                    var awayP = participants.FirstOrDefault(p => p.Id == match.AwayParticipantId);
+                    var home = homeP?.DisplayName ?? "TBD";
+                    var away = awayP?.DisplayName ?? "TBD";
+
+                    upcomingMatches.Add(new MatchEntry
+                    {
+                        TournamentId = tournament.Id,
+                        Title = $"{home} vs {away}",
+                        Status = match.Status,
+                        PlannedStart = match.PlannedStartUtc
+                    });
+                }
+            }
+            catch
+            {
+                // Skip tournaments where we can't load participants (transient error)
+            }
+        }
+
+        // Sort upcoming matches globally by planned start
+        upcomingMatches.Sort((a, b) =>
+            (a.PlannedStart ?? DateTimeOffset.MaxValue)
+                .CompareTo(b.PlannedStart ?? DateTimeOffset.MaxValue));
+    }
+
+    private async Task UnregisterAsync(RegistrationEntry reg)
+    {
+        actionMessage = null;
+        actionError = false;
+        isWorking = true;
+        try
+        {
+            await Api.RemoveParticipantAsync(reg.TournamentId, reg.Participant.Id);
+            myRegistrations.Remove(reg);
+            actionMessage = $"Du wurdest erfolgreich aus \"{reg.TournamentName}\" ausgetragen.";
+        }
+        catch (Exception ex)
+        {
+            actionError = true;
+            actionMessage = ex.Message;
+        }
+        finally
+        {
+            isWorking = false;
+        }
+    }
+}
