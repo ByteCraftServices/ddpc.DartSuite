@@ -3,6 +3,7 @@
 @inject DartSuiteApiService Api
 @inject AppStateService AppState
 @inject IUiHelpService UiHelp
+@inject IJSRuntime JS
 
 <PageTitle>Registrieren</PageTitle>
 
@@ -409,6 +410,10 @@ else
                 isAutodartsAccount,
                 false,
                 nextSeed));
+
+            // Persist registration to LocalStorage so Landing page can auto-restore
+            await JS.InvokeVoidAsync("dartSuiteUi.localStorageSet", "ds-landing-tournament-id", activeTournament.Id.ToString());
+            await JS.InvokeVoidAsync("dartSuiteUi.localStorageSet", "ds-landing-player-name", trimmedName);
 
             message = "Registrierung erfolgreich gespeichert.";
         }

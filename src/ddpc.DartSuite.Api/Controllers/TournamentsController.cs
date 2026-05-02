@@ -145,6 +145,16 @@ public sealed class TournamentsController(
         }
     }
 
+    [HttpPatch("{tournamentId:guid}/participants/{participantId:guid}/notification-preference")]
+    public async Task<ActionResult<ParticipantDto>> UpdateParticipantNotificationPreference(
+        Guid tournamentId, Guid participantId,
+        [FromQuery] string preference,
+        CancellationToken cancellationToken)
+    {
+        var result = await tournamentService.UpdateParticipantNotificationPreferenceAsync(tournamentId, participantId, preference, cancellationToken);
+        return result is null ? NotFound() : Ok(result);
+    }
+
     [HttpDelete("{tournamentId:guid}/participants/{participantId:guid}")]
     public async Task<IActionResult> RemoveParticipant(Guid tournamentId, Guid participantId, CancellationToken cancellationToken)
     {

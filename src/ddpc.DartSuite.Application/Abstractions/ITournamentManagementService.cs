@@ -18,6 +18,7 @@ public interface ITournamentManagementService
     Task<IReadOnlyList<ParticipantDto>> SearchParticipantsAsync(string query, CancellationToken cancellationToken = default);
     Task<ParticipantDto> AddParticipantAsync(AddParticipantRequest request, CancellationToken cancellationToken = default);
     Task<ParticipantDto?> UpdateParticipantAsync(UpdateParticipantRequest request, CancellationToken cancellationToken = default);
+    Task<ParticipantDto?> UpdateParticipantNotificationPreferenceAsync(Guid tournamentId, Guid participantId, string preference, CancellationToken cancellationToken = default);
     Task<bool> RemoveParticipantAsync(Guid tournamentId, Guid participantId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ParticipantDto>> AssignSeedPotsAsync(Guid tournamentId, CancellationToken cancellationToken = default);
 

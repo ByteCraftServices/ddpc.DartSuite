@@ -241,6 +241,16 @@ public sealed class DartSuiteApiService
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
     }
 
+    public async Task<ParticipantDto?> UpdateParticipantNotificationPreferenceAsync(Guid tournamentId, Guid participantId, string preference, CancellationToken cancellationToken = default)
+    {
+        var response = await _httpClient.PatchAsync(
+            $"api/tournaments/{tournamentId}/participants/{participantId}/notification-preference?preference={Uri.EscapeDataString(preference)}",
+            null, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<ParticipantDto>(cancellationToken: cancellationToken);
+    }
+
     public async Task<ParticipantDto> UpdateParticipantAsync(Guid tournamentId, UpdateParticipantRequest request, CancellationToken cancellationToken = default)
     {
         var response = await _httpClient.PutAsJsonAsync($"api/tournaments/{tournamentId}/participants/{request.ParticipantId}", request, cancellationToken);
