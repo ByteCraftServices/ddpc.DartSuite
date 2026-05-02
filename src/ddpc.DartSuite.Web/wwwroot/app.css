@@ -1020,3 +1020,21 @@ h1:focus {
     display: inline-block;
     vertical-align: middle;
 }
+
+/* DS-UI-01: General-purpose utility classes used across multiple components */
+
+/* Semi-transparent backdrop for inline modal dialogs */
+.ds-modal-overlay {
+    background: rgba(0, 0, 0, 0.5);
+}
+
+/* Pointer cursor for interactive non-button elements */
+.ds-clickable {
+    cursor: pointer;
+}
+
+/* Dotted underline link style for inline navigation triggers */
+.ds-link-dotted {
+    cursor: pointer;
+    text-decoration: underline dotted;
+}
