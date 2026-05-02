@@ -87,11 +87,22 @@
             </div>
         }
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="@RegisterHref" title="@UiHelp.GetTooltip("page.register")">
-                <span class="bi bi-person-plus-nav-menu" aria-hidden="true"></span> Registrieren
-            </NavLink>
+        <div class="nav-item nav-level-0 nav-group-head">
+            <button type="button" class="btn btn-link nav-link flex-grow-1 text-start text-decoration-none"
+                    @onclick="OnPlayerParentClick">
+                <span class="bi bi-person-nav-menu" aria-hidden="true"></span> Spieler
+            </button>
+            <button type="button" class="btn btn-link nav-expand-btn" title="Untermenü ein-/ausklappen"
+                    @onclick="TogglePlayerGroup" @onclick:stopPropagation="true">@ExpandIndicator(isPlayerExpanded)</button>
         </div>
+
+        @if (isPlayerExpanded)
+        {
+            <div class="nav-item nav-level-1">
+                <NavLink class="nav-link small nav-level-1-link" href="@RegisterHref"
+                         title="@UiHelp.GetTooltip("page.register")">Registrieren</NavLink>
+            </div>
+        }
 
         <div class="nav-item nav-level-0 nav-group-head">
             <NavLink class="nav-link flex-grow-1" href="settings?tab=general" @onclick="OnSettingsParentClick">
@@ -200,7 +211,25 @@
 
         <div class="nav-item px-3 mt-2">
             <NavLink class="nav-link" href="login">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Autodarts - Login
+                @if (AppState.IsAutodartsConnected && AppState.AutodartsProfile is not null)
+                {
+                    @if (!string.IsNullOrEmpty(AppState.AutodartsProfile.Email))
+                    {
+                        <img src="@GravatarUrl(AppState.AutodartsProfile.Email)" alt="Avatar"
+                             class="rounded-circle me-2 flex-shrink-0" width="20" height="20"
+                             referrerpolicy="no-referrer" />
+                    }
+                    else
+                    {
+                        <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span>
+                    }
+                    <span class="text-truncate" title="@(AppState.AutodartsProfile.DisplayName ?? AppState.AutodartsProfile.Email ?? "Autodarts")">@(AppState.AutodartsProfile.DisplayName ?? AppState.AutodartsProfile.Email ?? "Autodarts")</span>
+                }
+                else
+                {
+                    <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span>
+                    <span>Autodarts - Login</span>
+                }
             </NavLink>
         </div>
     </nav>
@@ -217,6 +246,7 @@
     private bool isSettingsExpanded;
     private bool isAdminExpanded;
     private bool isBoardsExpanded = true;
+    private bool isPlayerExpanded;
     private string _lastKnownSelectedTournamentId = string.Empty;
     private readonly HashSet<Guid> expandedTournamentIds = [];
 
@@ -391,6 +421,7 @@
 
     private void ToggleOverviewGroup() => isOverviewExpanded = !isOverviewExpanded;
     private void ToggleSettingsGroup() => isSettingsExpanded = !isSettingsExpanded;
+    private void TogglePlayerGroup() => isPlayerExpanded = !isPlayerExpanded;
     private void ToggleAdminGroup()
     {
         isAdminExpanded = !isAdminExpanded;
@@ -401,6 +432,7 @@
 
     private void OnOverviewParentClick() => isOverviewExpanded = true;
     private void OnSettingsParentClick() => isSettingsExpanded = true;
+    private void OnPlayerParentClick() => isPlayerExpanded = true;
     private void OnBoardsParentClick() => isBoardsExpanded = true;
 
     private void OnTournamentParentClick(Guid tournamentId)
@@ -448,6 +480,9 @@
 
         if (relative.StartsWith("settings") || relative.StartsWith("profile"))
             isSettingsExpanded = true;
+
+        if (relative.StartsWith("register") || relative.StartsWith("landing"))
+            isPlayerExpanded = true;
 
         if (relative.StartsWith("boards"))
         {
