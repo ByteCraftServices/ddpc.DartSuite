@@ -80,7 +80,7 @@
 
         <div class="nav-item nav-level-0 nav-group-head">
             <button type="button" class="btn btn-link nav-link flex-grow-1 text-start text-decoration-none"
-                    @onclick="OnPlayerParentClick">
+                    @onclick="OnPlayerParentClick" @onclick:stopPropagation="true">
                 <span class="bi bi-person-nav-menu" aria-hidden="true"></span> Spieler
             </button>
             <button type="button" class="btn btn-link nav-expand-btn" title="Untermenue ein-/ausklappen"
@@ -154,10 +154,11 @@
         @if (IsAdminMenuVisible)
         {
             <div class="nav-item nav-level-0 nav-group-head mt-2">
-                <button type="button" class="btn btn-link nav-link flex-grow-1 text-start text-decoration-none" @onclick="ToggleAdminGroup">
+                <button type="button" class="btn btn-link nav-link flex-grow-1 text-start text-decoration-none"
+                        @onclick="OnAdminParentClick" @onclick:stopPropagation="true">
                     <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Admin
                 </button>
-                <button type="button" class="btn btn-link nav-expand-btn" title="Untermenue ein-/ausklappen"
+                <button type="button" class="btn btn-link nav-expand-btn" title="Untermenü ein-/ausklappen"
                         @onclick="ToggleAdminGroup" @onclick:stopPropagation="true">@ExpandIndicator(isAdminExpanded)</button>
             </div>
 
@@ -430,6 +431,11 @@
     private void OnOverviewParentClick() => isOverviewExpanded = true;
     private void OnSettingsParentClick() => isSettingsExpanded = true;
     private void OnPlayerParentClick() => isPlayerExpanded = true;
+    private void OnAdminParentClick()
+    {
+        isAdminExpanded = true;
+        isBoardsExpanded = true;
+    }
     private void OnBoardsParentClick() => isBoardsExpanded = true;
 
     private void OnTournamentParentClick(Guid tournamentId)
@@ -481,11 +487,11 @@
         if (relative.StartsWith("register") || relative.StartsWith("landing"))
             isPlayerExpanded = true;
 
-        if (relative.StartsWith("boards"))
-        {
+        if (relative.StartsWith("boards") || relative.StartsWith("admin") || relative.StartsWith("matches") || relative.StartsWith("infowall"))
             isAdminExpanded = true;
+
+        if (relative.StartsWith("boards"))
             isBoardsExpanded = true;
-        }
     }
 
     public async ValueTask DisposeAsync()
@@ -500,3 +506,132 @@
         await Task.CompletedTask;
     }
 }
+
+<style>
+    .nav-group-head {
+        display: flex;
+        align-items: center;
+    }
+
+    .nav-expand-btn {
+        color: rgba(255, 255, 255, 0.75);
+        text-decoration: none;
+        padding: 0.4rem 0.5rem;
+        min-width: 2.5rem;
+        min-height: 2.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        font-size: 1.1rem;
+    }
+
+    .nav-expand-btn:hover {
+        color: #fff;
+    }
+
+    .nav-subgroup-head {
+        margin-top: 0.1rem;
+    }
+
+    .nav-separator {
+        border-color: rgba(255, 255, 255, 0.25);
+        margin: 0.55rem 0.9rem;
+    }
+
+    .board-subentry {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .nav-level-0 ::deep .nav-link {
+        padding-left: 0.9rem;
+        min-height: 2.75rem;
+        line-height: 2.75rem;
+    }
+
+    .nav-level-1-link {
+        padding-left: 2.15rem !important;
+        min-height: 2.15rem !important;
+        line-height: 2.15rem !important;
+        font-size: 0.82rem !important;
+    }
+
+    .nav-level-2-link {
+        padding-left: 3.2rem !important;
+        min-height: 2.05rem !important;
+        line-height: 2.05rem !important;
+        font-size: 0.8rem !important;
+    }
+
+    .nav-level-1,
+    .nav-level-2 {
+        position: relative;
+    }
+
+    .nav-level-1::before {
+        content: "";
+        position: absolute;
+        left: 1.45rem;
+        top: 0.45rem;
+        bottom: 0.45rem;
+        width: 1px;
+        background: rgba(255, 255, 255, 0.16);
+    }
+
+    .nav-level-2::before {
+        content: "";
+        position: absolute;
+        left: 2.55rem;
+        top: 0.4rem;
+        bottom: 0.4rem;
+        width: 1px;
+        background: rgba(255, 255, 255, 0.16);
+    }
+
+    .nav-level-1::after,
+    .nav-level-2::after {
+        content: "";
+        position: absolute;
+        left: 1.45rem;
+        top: 50%;
+        width: 0.6rem;
+        height: 1px;
+        background: rgba(255, 255, 255, 0.24);
+    }
+
+    .nav-level-2::after {
+        left: 2.55rem;
+        width: 0.55rem;
+    }
+
+    .nav-level-1 ::deep .nav-link:hover,
+    .nav-level-2 ::deep .nav-link:hover {
+        background-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+        flex-shrink: 0;
+    }
+
+    .dot-ok {
+        background: #21c55d;
+    }
+
+    .dot-warning {
+        background: #facc15;
+    }
+
+    .dot-error {
+        background: #ef4444;
+    }
+
+    .dot-unknown {
+        background: #9ca3af;
+    }
+</style>
