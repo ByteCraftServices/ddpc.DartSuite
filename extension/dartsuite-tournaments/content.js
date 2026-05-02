@@ -88,8 +88,9 @@ function refreshPanelVisibilityDuringMatch() {
     const panel = document.getElementById("dartsuite-panel");
     if (!panel) return;
 
-    if (currentMatchStatus === "playing") {
-        // Minimize panel if not already minimized so Autodarts screen is unobstructed
+    if (ACTIVE_MATCH_STATES.has(currentMatchStatus)) {
+        // Minimize panel during ANY active match state so the Autodarts game screen is fully visible
+        // Issue #74: "Keine Panels/Overlays während eines laufenden Matches."
         if (panel.dataset.minimized !== "true") {
             minimizeDartSuitePanel();
             panel.dataset.autoMinimized = "true";
@@ -2179,7 +2180,8 @@ function setupQuickConfig() {
             if (result?.ok && Array.isArray(result.body)) dsBoards = result.body;
         } catch { /* silent */ }
 
-        // Show boards that are registered in DartSuite and available locally
+        // Show boards that are registered in DartSuite and available locally.
+        // Mark each option with data-in-tournament so the change handler can detect new boards.
         for (const board of capturedBoards) {
             const dsBoard = dsBoards.find(b => b.externalBoardId === board.id);
             if (!dsBoard) continue;
@@ -2187,6 +2189,7 @@ function setupQuickConfig() {
             const opt = document.createElement("option");
             opt.value = dsBoard.id;
             opt.dataset.name = dsBoard.name || board.name || board.id;
+            opt.dataset.inTournament = inTournament ? "1" : "0";
             opt.textContent = (board.name || board.id) + (inTournament ? "" : " (nicht im Turnier)");
             boardSelect.appendChild(opt);
         }
@@ -2195,7 +2198,32 @@ function setupQuickConfig() {
             boardSelect.innerHTML = '<option value="">Keine Boards im Turnier registriert</option>';
         }
 
-        boardSelect.addEventListener("change", updateQuickJoinButton);
+        // Remove any existing listener before adding to prevent duplicates when called multiple times
+        boardSelect.removeEventListener("change", handleBoardSelectChange);
+        boardSelect.addEventListener("change", handleBoardSelectChange);
+    }
+
+    function handleBoardSelectChange() {
+        const boardSelect = document.getElementById("dartsuite-quick-board");
+        if (!boardSelect) return;
+
+        const selectedOption = boardSelect.selectedOptions[0];
+        // If the selected board is not yet in the tournament, ask the user to confirm adding it.
+        // window.confirm() is intentional here: this is a Chrome extension content script running
+        // inside the Autodarts app. The native dialog is simple, always accessible, and appropriate
+        // for this desktop-focused operator tool context.
+        if (selectedOption && selectedOption.dataset.inTournament === "0") {
+            const boardName = selectedOption.dataset.name || selectedOption.textContent;
+            const confirmed = window.confirm(
+                `Das Board "${boardName}" ist noch nicht im Turnier registriert.\n\nSoll es jetzt zum Turnier hinzugefügt werden?`
+            );
+            if (!confirmed) {
+                // Reset selection so the user can pick a different board
+                boardSelect.value = "";
+            }
+        }
+
+        updateQuickJoinButton();
     }
 
     function updateQuickJoinButton() {

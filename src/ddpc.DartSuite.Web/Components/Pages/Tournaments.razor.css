@@ -1,0 +1,63 @@
+/* DS-UI-01: Tournaments page scoped styles */
+
+/* Dropdown menu pinned to the right edge (replaces right:0;left:auto inline style) */
+.ds-dropdown-align-end {
+    right: 0;
+    left: auto;
+}
+
+/* Extra-small badge for inline join codes */
+.badge-xs {
+    font-size: 0.65rem;
+}
+
+/* Seeding drag-handle badge (editable rank) */
+.seed-badge-editable {
+    min-width: 34px;
+    cursor: grab;
+}
+
+/* Seeding display-only badge */
+.seed-badge {
+    min-width: 34px;
+}
+
+/* Autocomplete / suggestion dropdown overlay */
+.ds-autocomplete-dropdown {
+    z-index: 1050;
+    max-height: 200px;
+    overflow-y: auto;
+    top: 100%;
+}
+
+/* Fixed-width animation-mode selector */
+.ds-select-narrow {
+    width: 140px;
+}
+
+/* Draggable participant chip in team-draw view */
+.ds-drag-badge {
+    cursor: grab;
+    font-size: .85em;
+}
+
+/* Constrain team-name elements to prevent layout overflow */
+.ds-team-name-max {
+    max-width: 220px;
+}
+
+/* Minimum height for the team-slot drop-target area */
+.team-slot-area {
+    min-height: 64px;
+}
+
+/* Remove-member button inside a drag badge */
+.ds-remove-btn {
+    font-size: .7em;
+    line-height: 1;
+}
+
+/* Small font for admin toggle buttons within headings */
+.ds-btn-xs {
+    font-size: 0.75em;
+}
